@@ -30,6 +30,11 @@ functional = args.functional
 basis_set = args.basis_set
 cpus = int(args.cpus)
 
+# Debug variables
+run_conformers = True
+run_optimization = True
+run_resp = True
+
 ### Read input ligand ###
 print('Reading ligand file: %s' % input_file)
 for st in structure.StructureReader(input_file):
@@ -73,10 +78,11 @@ command += '-jobname confgen_1 '
 command += '-max_num_conformers '+str(n_conformers)+' '
 command += ' -optimize -HOST localhost'
 
-p = subprocess.Popen(command, shell=True)
-# Wait until conformers file is generated
-while not os.path.exists('confgen_1-out.maegz'):
-    time.sleep(1)
+if run_conformers:
+    p = subprocess.Popen(command, shell=True)
+    # Wait until conformers file is generated
+    while not os.path.exists('confgen_1-out.maegz'):
+        time.sleep(1)
 
 # Get the number of conformers generated
 generated_conformers = 0
@@ -113,9 +119,10 @@ command += '-HOST localhost '
 command += '-PARALLEL '+str(cpus)+' '
 command += '-TMPLAUNCHDIR'
 
-p = subprocess.Popen(command, shell=True)
-# Check until all optimizations are finished
+if run_optimization:
+    p = subprocess.Popen(command, shell=True)
 
+# Check until all optimizations are finished
 log_files = {}
 # Get log file paths
 for f in os.listdir():
@@ -220,13 +227,15 @@ def changeRespinWeight(respin_file, weights):
 command = 'antechamber -fi mol2 -fo ac -i '+ligand_name+'.mol2'+' -o '+ligand_name+'.ac\n'
 command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin1 -f resp1 -n '+str(generated_conformers)+'\n'
 command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin2 -f resp2 -n '+str(generated_conformers)
-subprocess.call(command, shell=True)
+if run_resp:
+    subprocess.call(command, shell=True)
 changeRespinWeight(ligand_name+'.respin1', probabilities)
 changeRespinWeight(ligand_name+'.respin2', probabilities)
 command = 'resp -O -i '+ligand_name+'.respin1 -o '+ligand_name+'.respout1 -e MC.resp -t '+ligand_name+'_qout_stage1\n'
 command += 'resp -O -i '+ligand_name+'.respin2 -o '+ligand_name+'.respout2 -e MC.resp -q '+ligand_name+'_qout_stage1 -t '+ligand_name+'_qout_stage2\n'
 command += 'antechamber -i '+ligand_name+'.mol2 -fi mol2 -o '+ligand_name+'_resp.mol2 -fo mol2 -c rc -cf '+ligand_name+'_qout_stage2\n'
-subprocess.call(command, shell=True)
+if run_resp:
+    subprocess.call(command, shell=True)
 os.chdir('..')
 print('RESP fitting finished.')
 
