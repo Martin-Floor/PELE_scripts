@@ -77,6 +77,17 @@ p = subprocess.Popen(command, shell=True)
 # Wait until conformers file is generated
 while not os.path.exists('confgen_1-out.maegz'):
     time.sleep(1)
+
+# Get the number of conformers generated
+generated_conformers = 0
+with open('confgen_1.log') as cgl:
+    for l in cgl:
+        if 'structures stored' in l:
+            generated_conformers = int(l.split()[0])
+
+if generated_conformers < n_conformers:
+    print('Only %s of %s conformers were generated!' % (generated_conformers, n_conformers))
+
 print('Finished conformer generation.')
 os.chdir('..')
 
@@ -104,6 +115,7 @@ command += '-TMPLAUNCHDIR'
 
 p = subprocess.Popen(command, shell=True)
 # Check until all optimizations are finished
+
 log_files = {}
 # Get log file paths
 for f in os.listdir():
@@ -112,7 +124,7 @@ for f in os.listdir():
         log_files[index] = f
 
 finished = []
-while False in finished or len(finished) < n_conformers:
+while False in finished or len(finished) < generated_conformers:
     finished = []
     for isomer in log_files:
         ended = False
@@ -206,8 +218,8 @@ def changeRespinWeight(respin_file, weights):
     shutil.move(respin_file+'.tmp', respin_file)
 
 command = 'antechamber -fi mol2 -fo ac -i '+ligand_name+'.mol2'+' -o '+ligand_name+'.ac\n'
-command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin1 -f resp1 -n '+str(n_conformers)+'\n'
-command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin2 -f resp2 -n '+str(n_conformers)
+command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin1 -f resp1 -n '+str(generated_conformers)+'\n'
+command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin2 -f resp2 -n '+str(generated_conformers)
 subprocess.call(command, shell=True)
 changeRespinWeight(ligand_name+'.respin1', probabilities)
 changeRespinWeight(ligand_name+'.respin2', probabilities)
