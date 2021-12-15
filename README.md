@@ -14,3 +14,4 @@ Scripts for PELE:
     $SCHRODINGER/run python3 ligand_setup.py
     
   The final output file is found in folder 03_resp_charges (the only .mae file there).
+
