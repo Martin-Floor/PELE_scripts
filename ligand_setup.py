@@ -52,7 +52,6 @@ if skip_resp:
     run_resp = False
 else:
     run_resp = True
-print(skip_resp)
 
 ### Read input ligand ###
 print('Reading ligand file: %s' % input_file)
