@@ -19,9 +19,9 @@ parser.add_argument('--n_conformers', default=10, help='Number of conformers to 
 parser.add_argument('--functional', default='B3LYP-D3', help='DFT functional to use for conformer optimization (Jaguar).')
 parser.add_argument('--basis_set', default='CC-PVTZ', help='DFT basis set to use for conformer optimization (Jaguar).')
 parser.add_argument('--cpus', default=40, help='Number of CPUs to use in conformer optimization (Jaguar).')
-parser.add_argument('--skip_conformers', action='store_false', sthelp='Debug option: skip conformers generation step')
-parser.add_argument('--skip_optimization', action='store_false', help='Debug option: skip optimization step')
-parser.add_argument('--skip_resp', action='store_false', help='Debug option: skip resp fitting step')
+parser.add_argument('--skip_conformers', default=False, action='store_false', help='Debug option: skip conformers generation step')
+parser.add_argument('--skip_optimization', default=False, action='store_false', help='Debug option: skip optimization step')
+parser.add_argument('--skip_resp', default=False, action='store_false', help='Debug option: skip resp fitting step')
 
 args=parser.parse_args()
 
@@ -52,6 +52,7 @@ if skip_resp:
     run_resp = False
 else:
     run_resp = True
+print(skip_resp)
 
 ### Read input ligand ###
 print('Reading ligand file: %s' % input_file)
