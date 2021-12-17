@@ -153,7 +153,7 @@ if run_optimization:
     command += '-keyword=dftname='+functional+' '
     command += '-keyword=nogas=0 '
     command += '../'+conformer_folder+'/confgen_1-out.maegz '
-    command += '-HOST localhost '
+    command += '-HOST localhost:'+str(cpus)+' '
     command += '-PARALLEL '+str(cpus)+' '
     command += '-TMPLAUNCHDIR'
 
