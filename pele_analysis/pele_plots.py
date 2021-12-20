@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-def bindingLandscape(report_data, colormap='Blues_r', color_column='Ligand SASA', dpi=100):
+def bindingLandscape(report_data, colormap='Blues_r', color_column='Ligand SASA', dpi=100, **kwargs):
     """
     Creates a binding energy landscape according to the relevant distance. A column
     can be used as color mapping.
@@ -21,11 +21,12 @@ def bindingLandscape(report_data, colormap='Blues_r', color_column='Ligand SASA'
                      y='Binding Energy',
                      c=color_column,
                      colormap=colormap,
-                     ax=ax)
+                     ax=ax,
+                     **kwargs)
     plt.show()
 
 def energyLandscape(report_data, colormap='Blues_r', color_column='Binding Energy', dpi=100,
-                    x_delta_lim=50.0, ascending=False):
+                    x_delta_lim=50.0, ascending=False, **kwargs):
     """
     Creates a total energy landscape according to the relevant distance. A column
     can be used as color mapping.
@@ -52,12 +53,13 @@ def energyLandscape(report_data, colormap='Blues_r', color_column='Binding Energ
                      y='Total Energy',
                      x='Relevant Distance',
                      colormap=colormap,
-                     ax=ax)
+                     ax=ax,
+                     **kwargs)
     plt.ylim(int(report_data['Total Energy'].min()-(x_delta_lim*0.1)),
              int(report_data['Total Energy'].min()+(x_delta_lim*0.9)))
     plt.show()
 
-def plotValuesByEpoch(report_data, column):
+def plotValuesByEpoch(report_data, column, title=None):
     """
     Plot distribution of values by epoch based on a report_data column. It draws
     only the lowest outlier for each distribution.
@@ -68,6 +70,8 @@ def plotValuesByEpoch(report_data, column):
         Pandas data frame returned by the readReportFiles() function.
     column : str
         Column inside report_data containing the values to plot.
+    title : str
+        Plot title
     """
     column_values = []
     epochs = report_data.index.levels[0]
@@ -76,6 +80,7 @@ def plotValuesByEpoch(report_data, column):
         column_values.append(epoch_series[column])
 
     bp = plt.boxplot(column_values, labels=report_data.index.levels[0])
+    plt.title(title)
 
     # Get only the lowest value outlier in the plot
     for fly, cv in zip(bp['fliers'], column_values):
