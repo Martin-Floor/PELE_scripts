@@ -56,3 +56,18 @@ def showTrajectory(trajectory, residues=[]):
     show.center(selection='ligand')
 
     return show
+
+def addMetricFromFunction(metric_function, report_data, trajectory_files, topology_file, labels=[]):
+
+    e_values = report_data.index.get_level_values('Epoch')
+    t_values = report_data.index.get_level_values('Trajectory')
+
+    metrics = []
+    for v in zip(e_values, t_values):
+        traj = md.load(trajectory_files[v[0]][v[1]], top=topology_file)
+        metrics.append(metric_function(traj))
+        break
+
+    metrics = np.hstack(metrics)
+
+    return metrics
