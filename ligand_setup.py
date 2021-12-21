@@ -18,7 +18,8 @@ parser.add_argument('--max_min_steps', default=1000, help='Maximum ligand minimi
 parser.add_argument('--n_conformers', default=10, help='Number of conformers to generate.')
 parser.add_argument('--functional', default='B3LYP-D3', help='DFT functional to use for conformer optimization (Jaguar).')
 parser.add_argument('--basis_set', default='CC-PVTZ', help='DFT basis set to use for conformer optimization (Jaguar).')
-parser.add_argument('--cpus', default=40, help='Number of CPUs to use in conformer optimization (Jaguar).')
+parser.add_argument('--cpus', default=8, help='Number of CPUs to use in conformer optimization (Jaguar).')
+parser.add_argument('--simultaneous_jobs', default=5, help='Simultaneous jobs')
 parser.add_argument('--skip_minimization', default=False, action='store_true', help='Debug option: skip ligand minimization step')
 parser.add_argument('--skip_conformers', default=False, action='store_true', help='Debug option: skip conformers generation step')
 parser.add_argument('--skip_optimization', default=False, action='store_true', help='Debug option: skip optimization step')
@@ -37,6 +38,7 @@ basis_set = args.basis_set
 cpus = int(args.cpus)
 min_conv_threshold = float(args.min_conv_threshold)
 min_step_report = int(args.min_step_report)
+simultaneous_jobs = int(args.simultaneous_jobs)
 
 # Debug variables
 skip_minimization = args.skip_minimization
@@ -153,7 +155,7 @@ if run_optimization:
     command += '-keyword=dftname='+functional+' '
     command += '-keyword=nogas=0 '
     command += '../'+conformer_folder+'/confgen_1-out.maegz '
-    command += '-HOST localhost:'+str(cpus)+' '
+    command += '-HOST localhost:'+str(simultaneous_jobs)+' '
     command += '-PARALLEL '+str(cpus)+' '
     command += '-TMPLAUNCHDIR'
 
