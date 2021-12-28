@@ -57,17 +57,30 @@ def showTrajectory(trajectory, residues=[]):
 
     return show
 
-def addMetricFromFunction(metric_function, report_data, trajectory_files, topology_file, labels=[]):
-
-    e_values = report_data.index.get_level_values('Epoch')
-    t_values = report_data.index.get_level_values('Trajectory')
+def addMetricFromFunction(metric_function, report_data, trajectory_files, topology_file, labels=None, inplace=False):
 
     metrics = []
-    for v in zip(e_values, t_values):
-        traj = md.load(trajectory_files[v[0]][v[1]], top=topology_file)
-        metrics.append(metric_function(traj))
-        break
+    for e in trajectory_files:
+        for t in trajectory_files[e]:
+            traj = md.load(trajectory_files[e][t], top=topology_file)
+            metrics.append(metric_function(traj))
 
     metrics = np.hstack(metrics)
 
-    return metrics
+    n_metrics = metrics.shape[0]
+    new_labels = ['Metric '+str(x).zfill(len(str(n_metrics))) for x in range(n_metrics)]
+    if isinstance(labels, type(None)):
+        labels = new_labels
+    elif len(labels) != n_metrics:
+        print('Number of labels is different from number of metrics. Generic labels were given.')
+        labels = new_labels
+
+    if inplace:
+        report_data = report_data
+    else:
+        report_data = report_data.copy()
+
+    for i in range(n_metrics):
+        report_data[labels[i]] = metrics[i]
+
+    return report_data
