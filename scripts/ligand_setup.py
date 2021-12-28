@@ -195,6 +195,7 @@ if os.path.exists(optimization_folder):
         if 'isomer' in f and f.endswith('.log'):
             index = int(f.split('isomer')[-1].split('.')[0])
             log_files[index] = '../'+optimization_folder+'/'+f
+    optimized_conformers = len(log_files)
 else:
     if run_resp:
         print('Optimization folder not found. Cannot calculate RESP')
@@ -253,7 +254,7 @@ def changeRespinWeight(respin_file, weights):
                 if 'nmol' in l:
                     nmol = int(l.split()[-1].replace(',',''))
                     if len(weights) != nmol:
-                        raise ValueError('Wrong number of weights given! There is %s configurations' % nmol)
+                        raise ValueError('Wrong number of weights given! There is %s optimized configurations' % nmol)
                 if '&end' in l:
                     c = True
                     trif.write(l)
@@ -311,8 +312,8 @@ if run_resp:
     probabilities = np.exp(-relative_energies/KT)/partition_coefficient
 
     command = 'antechamber -fi mol2 -fo ac -i '+ligand_name+'.mol2'+' -o '+ligand_name+'.ac\n'
-    command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin1 -f resp1 -n '+str(generated_conformers)+'\n'
-    command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin2 -f resp2 -n '+str(generated_conformers)
+    command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin1 -f resp1 -n '+str(optimized_conformers)+'\n'
+    command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin2 -f resp2 -n '+str(optimized_conformers)
     subprocess.call(command, shell=True)
     changeRespinWeight(ligand_name+'.respin1', probabilities)
     changeRespinWeight(ligand_name+'.respin2', probabilities)
