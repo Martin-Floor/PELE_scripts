@@ -32,6 +32,8 @@ cpus = args.cpus
 simultaneous_jobs = args.simultaneous_jobs
 get_atom_indexes = args.get_atom_indexes
 
+match_attractive = True # Match better the attractive region of the potential.
+
 # Debug options
 skip_optimization = args.skip_optimization
 
@@ -93,9 +95,34 @@ def check_finished_jobs(log_file):
         print('Finished %s of %s scan jobs' % (count, total), end='\r')
     return finished
 
-if run_optimization:
+def addScanCoordinate(jaguar_input, atoms, initial_value, final_value, steps):
+    lines = []
+    zmat = False
+    end_zmat = False
+    with open(jaguar_input, 'r') as ji:
+        for l in ji:
+            lines.append(l)
+            if l.startswith('&zmat'):
+                zmat = True
+                continue
+            if l.startswith('&') and zmat:
+                end_zmat = True
+            if end_zmat:
+                lines.append('&zvar\n')
+                r_line = 'r = %12s to %12s in %s\n' % (initial_value, final_value, steps)
+                lines.append(r_line)
+                lines.append('&\n')
+                lines.append('&coord\n')
+                lines.append(' '+atoms[0]+' '+atoms[1]+' # r\n')
+                lines.append('&')
+                end_zmat = False
 
-    print('Running distance rigid scan for %s-%s Bond' % (atom_1_index, atom_2_index))
+    with open(jaguar_input, 'w') as ji:
+        for l in lines:
+            ji.write(l)
+
+if run_optimization:
+    print('Running distance rigid scan for %s-%s Bond' % (atom1.name, atom2.name))
     # Get current coordinate distance
     coord1 = np.array([atom1.property['r_m_'+x+'_coord'] for x in ['x', 'y', 'z']])
     coord2 = np.array([atom2.property['r_m_'+x+'_coord'] for x in ['x', 'y', 'z']])
@@ -119,10 +146,9 @@ if run_optimization:
                  'dftname':'B3LYP-D3'}
 
     jaguar_input.setValues(qm_values)
-    jaguar_input.setScanCoordinate(1, [atom1.index, atom2.index],
-                                   initial_distance, final_distance, steps, delta)
-
     jaguar_input.saveAs(job_name+'.in')
+    addScanCoordinate(job_name+'.in', [atom1.name, atom2.name], initial_distance,
+                      final_distance, steps)
 
     command = '"${SCHRODINGER}/jaguar" '
     command += 'run distributed_scan.py '
@@ -143,8 +169,7 @@ if run_optimization:
         # Check log file for job finish line
         finished = check_finished_jobs('../'+log_file)
     finished = check_finished_jobs('../'+log_file)
-    print('Finished distance rigid scan for %s-%s Bond' % (str(atom1.index)+'-'+atom1.name,
-                                                           str(atom2.index)+'-'+atom2.name))
+    print('Finished distance rigid scan for %s-%s Bond' % (atom1.name, atom2.name))
     os.chdir('..')
 
 if not os.path.exists(output_folder):
@@ -217,20 +242,34 @@ re = distances[np.argmin(energies)]
 def morse(x, De, a):
     return De*(1-np.exp(-a*(x-re)))**2
 
+# Fit De and a parameters to morse function
 params, covs = curve_fit(morse, distances, energies)
 with open('morse_parameters.txt', 'w') as mpf:
-    mpf.write('Scanned Bond: %s-%s\n' % (str(atom1.index)+'-'+atom1.name,
-                                         str(atom2.index)+'-'+atom2.name))
+    mpf.write('Scanned Bond: %s-%s\n' % (atom1.name, atom2.name))
     mpf.write('Morse parameters [De(1-exp(-a(r-re)))^2]:\n')
     mpf.write('\tDe: %.5f\n' % params[0])
     mpf.write('\ta: %.5f\n' % params[1])
     mpf.write('\tre: %.5f\n' % re)
 
+if match_attractive:
+    # Refit the plot to match attractive points only
+    attr_distances = distances[np.argmin(energies):]
+    attr_energies = energies[np.argmin(energies):]
+
+    # Fit De and a parameters to morse function
+    params, covs = curve_fit(morse, attr_distances, attr_energies, p0=params)
+    with open('morse_parameters.txt', 'w') as mpf:
+        mpf.write('Scanned Bond: %s-%s\n' % (atom1.name, atom2.name))
+        mpf.write('Morse parameters [De(1-exp(-a(r-re)))^2]:\n')
+        mpf.write('\tDe: %.5f\n' % params[0])
+        mpf.write('\ta: %.5f\n' % params[1])
+        mpf.write('\tre: %.5f\n' % re)
+
 # Create bond potential plot
 plt.figure()
 plt.scatter(distances, energies, marker='*', c='red', label='QM rigid-scan points')
 plt.plot(distances, morse(distances, params[0],  params[1]), c='k', label='Morse potential')
-plt.xlabel(str(atom1.index)+'-'+atom1.name+'_'+str(atom2.index)+'-'+atom2.name+' distance [$\AA$]')
+plt.xlabel(atom1.name+'_'+atom2.name+' distance [$\AA$]')
 plt.ylabel('Potential Energy [kcal/mol]')
 plt.legend()
 plt.savefig('morse_plot.svg')
