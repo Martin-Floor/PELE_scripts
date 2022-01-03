@@ -73,8 +73,8 @@ if atom2 == None:
 
 # Job name
 job_name = '.'.join(input_file.split('.mae')[:-1])
-job_name += '_'+str(atom1.index)+'-'+atom1.name
-job_name += '_'+str(atom2.index)+'-'+atom2.name
+job_name += '_'+atom1.name
+job_name += '_'+atom2.name
 # Log files
 output_folder = job_name+'/'+job_name+'_scan'
 log_file = job_name+'/'+job_name+'.log'
@@ -265,10 +265,26 @@ if match_attractive:
         mpf.write('\ta: %.5f\n' % params[1])
         mpf.write('\tre: %.5f\n' % re)
 
+# plot soft repulsion potential parameters
+
+def lj12(x, Aii, Ajj):
+    # print(np.sqrt(Aii)*np.sqrt(Ajj))
+    # print(x**12)
+    return (np.sqrt(Aii)*np.sqrt(Ajj))/(x**12)
+
+def soft(x, Ci, Cj):
+    return Ci*Cj*np.exp(-1.581*1.581*x)
+
+Aii = 1802.2385
+Ajj = 601.1488
+Ci = Aii*0.1
+Cj = Ajj*0.1
+
 # Create bond potential plot
 plt.figure()
 plt.scatter(distances, energies, marker='*', c='red', label='QM rigid-scan points')
 plt.plot(distances, morse(distances, params[0],  params[1]), c='k', label='Morse potential')
+
 plt.xlabel(atom1.name+'_'+atom2.name+' distance [$\AA$]')
 plt.ylabel('Potential Energy [kcal/mol]')
 plt.legend()
