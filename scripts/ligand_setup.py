@@ -26,6 +26,7 @@ parser.add_argument('--skip_optimization', default=False, action='store_true', h
 parser.add_argument('--skip_resp', default=False, action='store_true', help='Debug option: skip resp fitting step')
 parser.add_argument('--min_conv_threshold', default=0.0001, help='Threshold to stop ligand minimization before total number of steps are reached.')
 parser.add_argument('--min_step_report', default=10, help='Number of steps to report the change in minimized energy.')
+parser.add_argument('--system_charge', default=0, help='Charge to use in the optimization and RESP fitting.')
 
 args=parser.parse_args()
 
@@ -39,6 +40,7 @@ cpus = int(args.cpus)
 min_conv_threshold = float(args.min_conv_threshold)
 min_step_report = int(args.min_step_report)
 simultaneous_jobs = int(args.simultaneous_jobs)
+system_charge = int(args.system_charge)
 
 # Debug variables
 skip_minimization = args.skip_minimization
@@ -152,6 +154,7 @@ if run_optimization:
     command += '-keyword=gcharge=-2 '
     command += '-keyword=igeopt=1 '
     command += '-keyword=icfit=1 '
+    command += '-keyword=molchg='+str(system_charge)+' '
     command += '-keyword=dftname='+functional+' '
     command += '-keyword=nogas=0 '
     command += '../'+conformer_folder+'/confgen_1-out.maegz '
@@ -234,7 +237,7 @@ def readMol2Charges(mol2_file):
     return charges
 
 # Calculate MC RESP charges
-def changeRespinWeight(respin_file, weights):
+def changeRespinParameters(respin_file, weights, system_charge, ligand_name='UNK'):
     """
     given a list of weights it updates the weights in the RESP input file.
 
@@ -245,10 +248,13 @@ def changeRespinWeight(respin_file, weights):
     weights : list
         A list with the weights to add. The weights should match the order of the
         multiconfiguration resp file.
+    system_charge : int
+        Target system charge for the fitting.
     """
     with open(respin_file+'.tmp', 'w') as trif:
         with open(respin_file) as rif:
-            c = False
+            nmol = False
+            chrg = False
             count = 0
             for l in rif:
                 if 'nmol' in l:
@@ -256,16 +262,23 @@ def changeRespinWeight(respin_file, weights):
                     if len(weights) != nmol:
                         raise ValueError('Wrong number of weights given! There is %s optimized configurations' % nmol)
                 if '&end' in l:
-                    c = True
+                    nmol = True
                     trif.write(l)
                     continue
-                if c and '1.0' in l:
+                if nmol and '1.0' in l:
                     trif.write(l.replace('1.0', str(weights[count])))
                     count += 1
-                else:
-                    trif.write(l)
+                    continue
+                if 'Resp charges for organic molecule' in l:
+                    chrg = True
+                    trif.write(l.replace('organic molecule', ligand_name))
+                    continue
+                if chrg and l!= '\n':
+                    trif.write(l.replace(l.split()[0], str(system_charge)))
+                    chrg = False
+                    continue
+                trif.write(l)
     shutil.move(respin_file+'.tmp', respin_file)
-
 
 if run_resp:
 
@@ -315,8 +328,8 @@ if run_resp:
     command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin1 -f resp1 -n '+str(optimized_conformers)+'\n'
     command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin2 -f resp2 -n '+str(optimized_conformers)
     subprocess.call(command, shell=True)
-    changeRespinWeight(ligand_name+'.respin1', probabilities)
-    changeRespinWeight(ligand_name+'.respin2', probabilities)
+    changeRespinParameters(ligand_name+'.respin1', probabilities, system_charge, ligand_name=ligand_name)
+    changeRespinParameters(ligand_name+'.respin2', probabilities, system_charge, ligand_name=ligand_name)
     command = 'resp -O -i '+ligand_name+'.respin1 -o '+ligand_name+'.respout1 -e MC.resp -t '+ligand_name+'_qout_stage1\n'
     command += 'resp -O -i '+ligand_name+'.respin2 -o '+ligand_name+'.respout2 -e MC.resp -q '+ligand_name+'_qout_stage1 -t '+ligand_name+'_qout_stage2\n'
     command += 'antechamber -i '+ligand_name+'.mol2 -fi mol2 -o '+ligand_name+'_resp.mol2 -fo mol2 -c rc -cf '+ligand_name+'_qout_stage2\n'
