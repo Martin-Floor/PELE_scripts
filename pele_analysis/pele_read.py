@@ -132,6 +132,7 @@ def _readReportFile(report_file):
         for i,l in enumerate(rf):
             if i == 0:
                 terms = [t for t in l[1:].strip().split('    ')]
+                distance_index = 1
                 for t in terms:
                     if t == 'numberOfAcceptedPeleSteps':
                         t = 'Pele Step'
@@ -141,8 +142,9 @@ def _readReportFile(report_file):
                         t = 'Total Energy'
                     if t == 'Binding Energy':
                         t = 'Binding Energy'
-                    if t == 'distance0.5':
-                        t = 'Relevant Distance'
+                    if 'distance' in t:
+                        t = 'Relevant Distance '+str(distance_index)
+                        distance_index += 1
                     report_values[t] = []
             else:
                 for t,x in zip(report_values, l.split()):
