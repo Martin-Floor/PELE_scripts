@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-def bindingLandscape(report_data, distance_column='Relevant Distance 1',
+def bindingLandscape(report_data, metric_column='Relevant Distance 1',
                      color_column='Ligand SASA', colormap='Blues_r', dpi=100,
                      **kwargs):
     """
@@ -12,8 +12,8 @@ def bindingLandscape(report_data, distance_column='Relevant Distance 1',
     ==========
     report_data : pandas.DataFrame
         Pandas data frame returned by the readReportFiles() function.
-    distance_column : str
-        Column to use for relevant distance
+    metric_column : str
+        Column to use for relevant metric
     color_column : str
         Column to be mapped in a color dimmension
     dpi : int
@@ -21,7 +21,7 @@ def bindingLandscape(report_data, distance_column='Relevant Distance 1',
     """
     fig, ax = plt.subplots(dpi=dpi)
     sp = report_data.reset_index().plot(kind='scatter',
-                     x=distance_column,
+                     x=metric_column,
                      y='Binding Energy',
                      c=color_column,
                      colormap=colormap,
