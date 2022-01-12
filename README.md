@@ -15,3 +15,14 @@ Scripts for PELE:
     
   The final output file is found in folder 03_resp_charges (the only .mae file there).
 
+## Pending implementation
+
+- When visualising the trajectory
+	* Draw atomic distances
+	* Increase visualization windows size
+	* Showing water and ions
+- When plotting
+	* Add vertical line option
+- For analysis
+	* Probability of being at a catalytic relevant distance (i.e., residence time)
+	* Classify structures by local minima.
