@@ -26,3 +26,6 @@ Scripts for PELE:
 - For analysis
 	* Probability of being at a catalytic relevant distance (i.e., residence time)
 	* Classify structures by local minima.
+
+- For prepare_ligand.py script
+	* Add water solvent to Jaguar optimization
