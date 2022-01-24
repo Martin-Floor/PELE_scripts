@@ -1,5 +1,6 @@
 import mdtraj as md
 import nglview as nv
+import numpy as np
 
 def loadTrajectoryFrames(report_data, trajectory_files, topology_file):
     """
