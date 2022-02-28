@@ -52,7 +52,7 @@ def showTrajectory(trajectory, residues=[]):
     show.clear_representations()
     show.add_representation('licorice', selection='ligand')
     for r in residues:
-        show.add_representation('licorice', selection=str(r))
+        show.add_representation('licorice', selection=str(r), linewidth=0.1)
     show.add_representation('cartoon', selection='protein', color='w')
     show.center(selection='ligand')
 

@@ -1,3 +1,2 @@
-from . import pele_read
-from . import pele_plots
+from ._pele_analysis import peleAnalysis
 from . import pele_trajectory
