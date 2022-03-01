@@ -140,7 +140,7 @@ def getTopologyFile(pele_input_folder):
 
     return topology_file
 
-def readReportFiles(report_files, protein, ligand, equilibration=False, force_reading=False):
+def readReportFiles(report_files, protein, ligand, equilibration=False, force_reading=False, ebr_threshold=0.1):
     """
     Merge a list of report files data into a single data frame. It adds epoch and trajectory
     information based on the input dictionary structure: report_files[epoch][trajectory].
@@ -170,7 +170,8 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
         for epoch in sorted(report_files):
             for traj in sorted(report_files[epoch]):
                 rd = _readReportFile(report_files[epoch][traj],
-                                     equilibration=equilibration)
+                                     equilibration=equilibration,
+                                     ebr_threshold=ebr_threshold)
                 if equilibration:
                     step = 'Step'
                 else:

@@ -14,7 +14,7 @@ import warnings
 warnings.simplefilter('ignore', PDBConstructionWarning)
 import json
 
-from ipywidgets import interact, fixed, FloatSlider
+from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider
 import time
 
 class peleAnalysis:
@@ -57,6 +57,10 @@ class peleAnalysis:
 
         self.proteins = []
         self.ligands = []
+
+        # Create analysis folder
+        if not os.path.exists('.pele_analysis'):
+            os.mkdir('.pele_analysis')
 
         parser = PDB.PDBParser()
 
@@ -134,7 +138,8 @@ class peleAnalysis:
                 data = pele_read.readReportFiles(self.report_files[protein][ligand],
                                                  protein,
                                                  ligand,
-                                                 force_reading=force_reading)
+                                                 force_reading=force_reading,
+                                                 ebr_threshold=0)
 
                 if not energy_by_residue:
                     keep = [k for k in data.keys() if not k.startswith('L:1_')]
@@ -427,6 +432,7 @@ class peleAnalysis:
         plt.boxplot(X, labels=labels)
         plt.xlabel('Ligands')
         plt.ylabel(column)
+        plt.xticks(rotation=90)
         plt.show()
 
     def boxPlotLigandSimulation(self, ligand, column):
@@ -452,18 +458,19 @@ class peleAnalysis:
         plt.boxplot(X, labels=labels)
         plt.xlabel('Proteins')
         plt.ylabel(column)
+        plt.xticks(rotation=90)
         plt.show()
 
     def bindingEnergyLandscape(self):
         """
         Plot binding energy as interactive plot.
         """
-        def getLigands(Protein, by_metric=False):
+        def getLigands(Protein, by_metric=True):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
             interact(getDistance, Protein=fixed(Protein), Ligand=ligands, by_metric=fixed(by_metric))
 
-        def getDistance(Protein, Ligand, by_metric=False):
+        def getDistance(Protein, Ligand, by_metric=True):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
 
@@ -907,14 +914,21 @@ class peleAnalysis:
 
         interact(_bindingFreeEnergyMatrix, KT=KT_slider, **metrics)
 
-    def visualiseBestPoses(self):
+    def visualiseBestPoses(self, initial_threshold=4.5):
 
-        def _visualiseBestPoses(Protein, Ligand, Distance, n_smallest=10):
+        def _visualiseBestPoses(Protein, Ligand, n_smallest=10, **metrics):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
-            filtered_data = ligand_series.nsmallest(n_smallest, Distance)
 
-            traj = pele_trajectory.loadTrajectoryFrames(filtered_data,
+            # Filter by metric
+            # Calculate catalytic binding energy
+            catalytic_series = ligand_series
+            for metric in metrics:
+                catalytic_series = catalytic_series[catalytic_series[metric] <= metrics[metric]]
+
+            catalytic_series = ligand_series.nsmallest(n_smallest, 'Binding Energy')
+
+            traj = pele_trajectory.loadTrajectoryFrames(catalytic_series,
                                                         self.trajectory_files[Protein][Ligand],
                                                         self.topology_files[Protein][Ligand])
 
@@ -932,42 +946,18 @@ class peleAnalysis:
 
             return pele_trajectory.showTrajectory(traj, residues=residues)
 
-        def getLigands(Protein, by_metric=False):
+        def getLigands(Protein):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
-            interact(getDistance, Protein=fixed(Protein),
+            interact(_visualiseBestPoses, Protein=fixed(Protein),
                      Ligand=ligands,
-                     by_metric=fixed(by_metric))
+                     **metrics)
 
-        def getDistance(Protein, Ligand, by_metric=False):
-            protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
-            ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
+        metrics = [k for k in self.data.keys() if 'metric_' in k]
 
-            distances = []
-            if by_metric:
-                distances = []
-                for d in ligand_series:
-                    if d.startswith('metric_'):
-                        if not ligand_series[d].dropna().empty:
-                            distances.append(d)
+        metrics = {m:initial_threshold for m in metrics}
 
-            if distances == []:
-                by_metric = False
-
-            if not by_metric:
-                distances = []
-                for d in ligand_series:
-                    if 'distance' in d:
-                        if not ligand_series[d].dropna().empty:
-                            distances.append(d)
-
-            interact(_visualiseBestPoses,
-                             Protein=fixed(Protein),
-                             Ligand=fixed(Ligand),
-                             Distance=distances,
-                             n_smallest=10)
-
-        interact(getLigands, Protein=self.proteins, by_metric=False)
+        interact(getLigands, Protein=self.proteins)
 
     def combineDistancesIntoMetrics(self, catalytic_labels, overwrite=False):
         """
@@ -1010,14 +1000,105 @@ class peleAnalysis:
         if changed:
             self._saveDataState()
 
+    def plotEnergyByResidue(self, initial_threshold=4.5):
+
+        def getLigands(Protein):
+            protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
+            ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
+
+            style = {'description_width': 'initial'}
+
+            KT_slider = FloatSlider(
+                            value=0.593,
+                            min=0.593,
+                            max=20.0,
+                            step=0.1,
+                            style=style,
+                            description='KT:',
+                            disabled=False,
+                            continuous_update=False,
+                            orientation='horizontal',
+                            readout=True,
+                            readout_format='.1f',
+                        )
+
+            residue_slider = IntSlider(
+                                value=10,
+                                min=1,
+                                max=50,
+                                style=style,
+                                description='Number residues:',
+                                disabled=False,
+                                continuous_update=False,
+                                orientation='horizontal',
+                                readout=True,
+                                readout_format='.1f',
+                            )
+
+            widget_metrics = {}
+            for metric in metrics:
+                widget_metrics[metric] = FloatRangeSlider(
+                    value=[0, 5],
+                    min=0,
+                    max=20,
+                    style=style,
+                    step=0.05,
+                    description=metric+':',
+                    readout_format='.2f')
+
+            interact(_plotEnergyByResidue, Protein=fixed(Protein), Ligand=ligands, KT=KT_slider,
+                     n_residues=residue_slider,  **widget_metrics)
+
+        def _plotEnergyByResidue(Protein, Ligand, KT=0.593, n_residues=10, **metrics):
+            ebk = [x for x in self.data.keys() if x.startswith('L:1')]
+            series = self.getProteinAndLigandData(Protein, Ligand)
+            total_energy = series['Total Energy']
+            energy_minimum = total_energy.min()
+            relative_energy = total_energy-energy_minimum
+            Z = np.sum(np.exp(-relative_energy/KT))
+
+            filtered_series = series
+            for metric in metrics:
+                filtered_series = filtered_series[metrics[metric][0] <= filtered_series[metric]]
+                filtered_series = filtered_series[metrics[metric][1] >= filtered_series[metric]]
+
+            relative_energy = filtered_series['Total Energy'].to_numpy()-energy_minimum
+            probability = np.exp(-relative_energy/KT)/Z
+            probability = np.reshape(probability, (-1, 1))
+            ebr = np.sum(np.multiply(filtered_series[ebk], probability), axis=0)
+
+            labels = []
+            for x in ebk:
+                x = x.split(':')[-1]
+                try:
+                    resname = three_to_one(x.split('_')[-1])
+                except:
+                    resname = x.split('_')[-1]
+                resid = x.split('_')[0]
+                labels.append(resname+resid)
+
+            argsort = ebr.argsort()
+            best = ebr[argsort[:n_residues]]
+            best_labels = np.array(labels)[argsort[:n_residues]]
+            hist = plt.bar(range(len(best_labels)), best)
+            xt = plt.xticks(range(len(best_labels)), best_labels, rotation=90, fontsize=10)
+            plt.xlabel('Residue')
+            plt.ylabel('Energy contribution [kcal/mol]')
+
+        metrics = [k for k in self.data.keys() if 'metric_' in k]
+        metrics = {m:initial_threshold for m in metrics}
+
+        interact(getLigands, Protein=self.proteins)
+
+    def getProteinAndLigandData(self, protein, ligand):
+        protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+        ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
+        return ligand_series
+
     def _saveDataState(self):
-        if not os.path.exists('.pele_analysis'):
-            os.mkdir('.pele_analysis')
         self.data.to_csv('.pele_analysis/data.csv')
 
     def _saveEquilibrationDataState(self):
-        if not os.path.exists('.pele_analysis'):
-            os.mkdir('.pele_analysis')
         self.equilibration_data.to_csv('.pele_analysis/equilibration_data.csv')
 
     def _recoverDataState(self):
