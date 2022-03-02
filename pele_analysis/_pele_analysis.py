@@ -527,7 +527,6 @@ class peleAnalysis:
                 interact(_plotDistributionByLigand, Ligand=self.ligands, Column=columns)
 
         columns = [k for k in self.data.keys() if ':' not in k and 'distance' not in k]
-        del columns[columns.index('Index')]
         del columns[columns.index('Task')]
         del columns[columns.index('Step')]
 
@@ -897,7 +896,6 @@ class peleAnalysis:
             plt.yticks(range(len(self.proteins)), self.proteins)
 
         metrics = [k for k in self.data.keys() if 'metric_' in k]
-
         metrics = {m:initial_threshold for m in metrics}
 
         KT_slider = FloatSlider(
@@ -1060,7 +1058,7 @@ class peleAnalysis:
             widget_metrics1 = []
             for metric in metrics:
                 widget_metric = FloatRangeSlider(
-                                value=[0, 5],
+                                value=[0, initial_threshold],
                                 min=0,
                                 max=20,
                                 step=0.05,
@@ -1072,7 +1070,7 @@ class peleAnalysis:
             widget_metrics2 = []
             for metric in metrics:
                 widget_metric = FloatRangeSlider(
-                                value=[0, 5],
+                                value=[0, initial_threshold],
                                 min=0,
                                 max=20,
                                 step=0.05,
@@ -1202,7 +1200,7 @@ class peleAnalysis:
         HB = HBox([VB1, VB2], width='100%')
         VB = VBox([HB, plot_data], width='100%')
 
-        display(VB)
+        d = display(VB)
 
     def getProteinAndLigandData(self, protein, ligand):
         protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
