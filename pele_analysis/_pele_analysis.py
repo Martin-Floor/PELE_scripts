@@ -14,7 +14,7 @@ import warnings
 warnings.simplefilter('ignore', PDBConstructionWarning)
 import json
 
-from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider
+from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown
 import time
 
 class peleAnalysis:
@@ -527,6 +527,7 @@ class peleAnalysis:
                 interact(_plotDistributionByLigand, Ligand=self.ligands, Column=columns)
 
         columns = [k for k in self.data.keys() if ':' not in k and 'distance' not in k]
+        del columns[columns.index('Index')]
         del columns[columns.index('Task')]
         del columns[columns.index('Step')]
 
@@ -1001,55 +1002,98 @@ class peleAnalysis:
             self._saveDataState()
 
     def plotEnergyByResidue(self, initial_threshold=4.5):
+        """
+        Plot an energy by residue comparison between PELE runs. Two sets of selection
+        are displayed to be compared in the same plot. The catalytic metrics are displayed
+        to select the intervals of the two catalytic regions to be compared.
 
-        def getLigands(Protein):
-            protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
-            ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
+        Parameters
+        ==========
+        initial_threshold : float
+            Starting upper value for the definition of the catalytic region range.
+        """
+        def getLigands(Protein1, Protein2):
 
-            style = {'description_width': 'initial'}
+            ps1 = self.data[self.data.index.get_level_values('Protein') == Protein1]
+            ligands1 = list(set(ps1.index.get_level_values('Ligand').tolist()))
 
-            KT_slider = FloatSlider(
+            ps2 = self.data[self.data.index.get_level_values('Protein') == Protein2]
+            ligands2 = list(set(ps2.index.get_level_values('Ligand').tolist()))
+
+            ligand1 = Dropdown(options=ligands1)
+            ligand2 = Dropdown(options=ligands2)
+
+            KT_slider1 = FloatSlider(
                             value=0.593,
                             min=0.593,
                             max=20.0,
                             step=0.1,
-                            style=style,
                             description='KT:',
-                            disabled=False,
-                            continuous_update=False,
-                            orientation='horizontal',
                             readout=True,
-                            readout_format='.1f',
-                        )
+                            readout_format='.1f')
 
-            residue_slider = IntSlider(
+            KT_slider2 = FloatSlider(
+                            value=0.593,
+                            min=0.593,
+                            max=20.0,
+                            step=0.1,
+                            description='KT:',
+                            readout=True,
+                            readout_format='.1f')
+
+            n_residue_slider = IntSlider(
                                 value=10,
                                 min=1,
                                 max=50,
-                                style=style,
                                 description='Number residues:',
-                                disabled=False,
-                                continuous_update=False,
-                                orientation='horizontal',
                                 readout=True,
-                                readout_format='.1f',
-                            )
+                                readout_format='.1f')
 
-            widget_metrics = {}
+            parameters = {'Protein1' : fixed(Protein1),
+                          'Protein2' : fixed(Protein2),
+                          'Ligand1' : ligand1,
+                          'Ligand2' : ligand2,
+                          'KT_slider1' : KT_slider1,
+                          'KT_slider2' : KT_slider2,
+                          'n_residue_slider' : n_residue_slider,}
+
+            widget_metrics1 = []
             for metric in metrics:
-                widget_metrics[metric] = FloatRangeSlider(
-                    value=[0, 5],
-                    min=0,
-                    max=20,
-                    style=style,
-                    step=0.05,
-                    description=metric+':',
-                    readout_format='.2f')
+                widget_metric = FloatRangeSlider(
+                                value=[0, 5],
+                                min=0,
+                                max=20,
+                                step=0.05,
+                                description=metric+':',
+                                readout_format='.2f')
+                widget_metrics1.append(widget_metric)
+                parameters[metric+'_1'] = widget_metric
 
-            interact(_plotEnergyByResidue, Protein=fixed(Protein), Ligand=ligands, KT=KT_slider,
-                     n_residues=residue_slider,  **widget_metrics)
+            widget_metrics2 = []
+            for metric in metrics:
+                widget_metric = FloatRangeSlider(
+                                value=[0, 5],
+                                min=0,
+                                max=20,
+                                step=0.05,
+                                description=metric+':',
+                                readout_format='.2f')
+                widget_metrics2.append(widget_metric)
+                parameters[metric+'_2'] = widget_metric
 
-        def _plotEnergyByResidue(Protein, Ligand, KT=0.593, n_residues=10, **metrics):
+            plot = interactive_output(_plot, parameters)
+
+            mVB1 = VBox(widget_metrics1)
+            mVB2 = VBox(widget_metrics2)
+
+            VB1 = VBox([ligand1, KT_slider1, mVB1])
+            VB2 = VBox([ligand2, KT_slider2, mVB2])
+            HB = HBox([VB1, VB2], width='100%')
+            VB = VBox([HB, n_residue_slider, plot])
+            display(VB)
+
+        def _getPlotData(Protein, Ligand, KT=0.593, **metrics):
+
             ebk = [x for x in self.data.keys() if x.startswith('L:1')]
             series = self.getProteinAndLigandData(Protein, Ligand)
             total_energy = series['Total Energy']
@@ -1077,18 +1121,88 @@ class peleAnalysis:
                 resid = x.split('_')[0]
                 labels.append(resname+resid)
 
-            argsort = ebr.argsort()
-            best = ebr[argsort[:n_residues]]
-            best_labels = np.array(labels)[argsort[:n_residues]]
-            hist = plt.bar(range(len(best_labels)), best)
-            xt = plt.xticks(range(len(best_labels)), best_labels, rotation=90, fontsize=10)
+            argsort = np.abs(ebr).argsort()[::-1]
+            ebr = dict(zip(np.array(labels)[argsort], ebr[argsort].to_numpy()))
+            return ebr
+
+        def _plot(Protein1, Protein2, Ligand1, Ligand2, KT_slider1, KT_slider2, n_residue_slider, **metrics):
+
+            metrics1 = {}
+            metrics2 = {}
+            for metric in metrics:
+                if metric.endswith('_1'):
+                    metrics1[metric[:-2]] = metrics[metric]
+                elif metric.endswith('_2'):
+                    metrics2[metric[:-2]] = metrics[metric]
+
+            # Get all energy-by-residue metrics
+            ebr1 = _getPlotData(Protein1, Ligand1, KT=KT_slider1, **metrics1)
+            ebr2 = _getPlotData(Protein2, Ligand2, KT=KT_slider2, **metrics2)
+
+            # Get all residues to plot and sort them by ebr
+            residues = []
+            for r in ebr1:
+                residues.append((r+'_1', ebr1[r]))
+                if len(residues) == n_residue_slider:
+                    break
+            for r in ebr2:
+                residues.append((r+'_2', ebr2[r]))
+                if len(residues) == n_residue_slider*2:
+                    break
+
+            done = []
+            values1 = []
+            values2 = []
+            count = 0
+            pos1 = []
+            pos2 = []
+            labels = []
+            used = []
+            for r in sorted(residues, key=lambda x:abs(x[1]), reverse=True):
+                if r[0][:-2] in used:
+                    continue
+                g = int(r[0][-1:])
+                if g == 1:
+                    values1.append(r[1])
+                    values2.append(ebr2[r[0][:-2]])
+                if g == 2:
+                    values1.append(ebr1[r[0][:-2]])
+                    values2.append(r[1])
+                pos1.append(count-0.2)
+                pos2.append(count+0.2)
+                labels.append(r[0][:-2])
+                count += 1
+                used.append(r[0][:-2])
+                if count == n_residue_slider:
+                    break
+
+            if n_residue_slider >= 30:
+                fontsize = 8
+            else:
+                fontsize = 10
+
+            plt.figure(dpi=120)
+            hist = plt.bar(pos1, values1, 0.4)
+            hist = plt.bar(pos2, values2, 0.4)
+            xt = plt.xticks(range(len(labels)), labels, rotation=90, fontsize=fontsize)
             plt.xlabel('Residue')
             plt.ylabel('Energy contribution [kcal/mol]')
+            display(plt.show())
 
         metrics = [k for k in self.data.keys() if 'metric_' in k]
         metrics = {m:initial_threshold for m in metrics}
 
-        interact(getLigands, Protein=self.proteins)
+        protein1 = Dropdown(options=self.proteins)
+        protein2 = Dropdown(options=self.proteins)
+
+        plot_data = interactive_output(getLigands, {'Protein1': protein1, 'Protein2' :protein2})
+
+        VB1 = VBox([protein1])
+        VB2 = VBox([protein2])
+        HB = HBox([VB1, VB2], width='100%')
+        VB = VBox([HB, plot_data], width='100%')
+
+        display(VB)
 
     def getProteinAndLigandData(self, protein, ligand):
         protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
