@@ -28,7 +28,7 @@ class peleAnalysis:
     """
 
     def __init__(self, pele_folder, pele_output_folder='output', force_reading=False,
-                 verbose=False, energy_by_residue=False):
+                 verbose=False, energy_by_residue=False, ebr_threshold=0.1):
         """
         When initiliasing the class it read the paths to the output folder report,
         trajectory, and topology files.
@@ -124,6 +124,14 @@ class peleAnalysis:
             self._saveDictionaryAsJson(self.chain_ids, '.pele_analysis/chains_ids.json')
         else:
             self.chain_ids = self._loadDictionaryFromJson('.pele_analysis/chains_ids.json')
+            chain_ids = {}
+            for protein in self.chain_ids:
+                chain_ids[protein] = {}
+                for ligand in self.chain_ids[protein]:
+                    chain_ids[protein][ligand] = {}
+                    for chain in self.chain_ids[protein][ligand]:
+                        chain_ids[protein][ligand][int(chain)] = self.chain_ids[protein][ligand][chain]
+            self.chain_ids = chain_ids
 
         if verbose:
             print('Reading information from report files from:')
@@ -139,7 +147,7 @@ class peleAnalysis:
                                                  protein,
                                                  ligand,
                                                  force_reading=force_reading,
-                                                 ebr_threshold=0)
+                                                 ebr_threshold=0.1)
 
                 if not energy_by_residue:
                     keep = [k for k in data.keys() if not k.startswith('L:1_')]
@@ -845,7 +853,7 @@ class peleAnalysis:
 
     def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=4.5):
 
-        def _bindingFreeEnergyMatrix(KT=0.593, **metrics):
+        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, **metrics):
             # Create a matrix of length proteins times ligands
             M = np.zeros((len(self.proteins), len(self.ligands)))
 
@@ -888,12 +896,18 @@ class peleAnalysis:
                     else:
                         M[i][j] = np.nan
 
+            # Sort matrix by ligand or protein
+            ligand_index = self.ligands.index(sort_by_ligand)
+            sort_indexes = M[:, ligand_index].argsort()
+            M = M[sort_indexes]
+            protein_labels = [self.proteins[x] for x in sort_indexes]
+
             plt.matshow(M, cmap='autumn')
             plt.colorbar(label='${E_{B}^{C}}-{E_{B}^{NC}}$')
             plt.xlabel('Ligands', fontsize=12)
             plt.xticks(range(len(self.ligands)), self.ligands, rotation=50)
             plt.ylabel('Proteins', fontsize=12)
-            plt.yticks(range(len(self.proteins)), self.proteins)
+            plt.yticks(range(len(self.proteins)), protein_labels)
 
         metrics = [k for k in self.data.keys() if 'metric_' in k]
         metrics = {m:initial_threshold for m in metrics}
@@ -910,8 +924,9 @@ class peleAnalysis:
                         readout=True,
                         readout_format='.1f',
                     )
+        ligand_ddm = Dropdown(options=self.ligands)
 
-        interact(_bindingFreeEnergyMatrix, KT=KT_slider, **metrics)
+        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, **metrics)
 
     def visualiseBestPoses(self, initial_threshold=4.5):
 
@@ -925,24 +940,31 @@ class peleAnalysis:
             for metric in metrics:
                 catalytic_series = catalytic_series[catalytic_series[metric] <= metrics[metric]]
 
-            catalytic_series = ligand_series.nsmallest(n_smallest, 'Binding Energy')
+            catalytic_series = catalytic_series.nsmallest(n_smallest, 'Binding Energy')
+
+            if catalytic_series.empty:
+                raise ValueError('No frames were selected for the selected thresholds.')
 
             traj = pele_trajectory.loadTrajectoryFrames(catalytic_series,
                                                         self.trajectory_files[Protein][Ligand],
                                                         self.topology_files[Protein][Ligand])
 
             ligand_atoms = traj.topology.select('resname '+self.ligand_names[Ligand])
-            neighbors = md.compute_neighbors(traj, 0.4, ligand_atoms)
+            neighbors = md.compute_neighbors(traj, 0.5, ligand_atoms)
             chain_ids = self.chain_ids[Protein][Ligand]
+
+            # Get list of residues to depict
             residues = []
             for frame in neighbors:
                 for x in frame:
-                    chain = chain_ids[str(traj.topology.atom(x).residue.chain.index)]
-                    resid = traj.topology.atom(x).residue.resSeq
-                    residue = str(resid)+':'+chain
-                    if residue not in residues:
-                        residues.append(residue)
-
+                    residue = traj.topology.atom(x).residue
+                    if residue.name != self.ligand_names[Ligand]:
+                        chain = chain_ids[residue.chain.index]
+                        resid = residue.resSeq
+                        residue = str(resid)+':'+chain
+                        if residue not in residues:
+                            residues.append(residue)
+            # residues += [531]
             return pele_trajectory.showTrajectory(traj, residues=residues)
 
         def getLigands(Protein):
