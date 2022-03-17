@@ -14,8 +14,9 @@ import warnings
 warnings.simplefilter('ignore', PDBConstructionWarning)
 import json
 
-from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown
+from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown, Checkbox
 import time
+import random
 
 class peleAnalysis:
     """
@@ -28,7 +29,7 @@ class peleAnalysis:
     """
 
     def __init__(self, pele_folder, pele_output_folder='output', force_reading=False,
-                 verbose=False, energy_by_residue=False, ebr_threshold=0.1):
+                 verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all'):
         """
         When initiliasing the class it read the paths to the output folder report,
         trajectory, and topology files.
@@ -57,6 +58,11 @@ class peleAnalysis:
 
         self.proteins = []
         self.ligands = []
+
+        # Check energy by residue type
+        ebr_types = ['all', 'sgb', 'lennard_jones', 'electrostatic']
+        if energy_by_residue_type not in ebr_types:
+            raise ValueError('Energy by residue type not valid. valid options are: '+' '.join(energy_by_residue_type))
 
         # Create analysis folder
         if not os.path.exists('.pele_analysis'):
@@ -149,9 +155,10 @@ class peleAnalysis:
                                                  force_reading=force_reading,
                                                  ebr_threshold=0.1)
 
-                if not energy_by_residue:
-                    keep = [k for k in data.keys() if not k.startswith('L:1_')]
-                    data = data[keep]
+                keep = [k for k in data.keys() if not k.startswith('L:1_')]
+                if energy_by_residue:
+                    keep += [k for k in data.keys() if k.startswith('L:1_') and k.endswith(energy_by_residue_type)]
+                data = data[keep]
 
                 data = data.reset_index()
                 data['Protein'] = protein
@@ -613,6 +620,7 @@ class peleAnalysis:
                         labels.append(ligand)
 
                 plt.bar(labels, catalytic_count)
+                plt.xticks(rotation=45)
                 plt.xlabel('Ligands')
                 plt.ylabel('Catalytic Poses Fraction')
                 plt.ylim(0,1)
@@ -650,6 +658,7 @@ class peleAnalysis:
                     plt.bar(pos, counts, bar_width)
                     pos = pos + bar_width
 
+                plt.xticks(rotation=45)
                 plt.xlabel('Protein')
                 plt.ylabel('Catalytic Poses Fraction')
                 plt.ylim(0,1)
@@ -667,6 +676,7 @@ class peleAnalysis:
                         labels.append(protein)
 
                 plt.bar(labels, catalytic_count)
+                plt.xticks(rotation=45)
                 plt.xlabel('Proteins')
                 plt.ylabel('Catalytic Poses Fraction')
                 plt.ylim(0,1)
@@ -724,7 +734,7 @@ class peleAnalysis:
                 for metric in catalytic_dist:
                     plt.boxplot(catalytic_dist[metric], widths=bar_width*0.8, positions=pos)
                     pos = pos + bar_width
-                plt.xticks(x_pos, labels)
+                plt.xticks(x_pos, labels, rotation=45)
                 plt.xlabel('Ligands')
                 plt.ylabel('Binding Energy')
 
@@ -741,6 +751,7 @@ class peleAnalysis:
                         labels.append(ligand)
 
                 plt.boxplot(catalytic_dist, labels=labels)
+                plt.xticks(rotation=45)
                 plt.xlabel('Ligands')
                 plt.ylabel('Binding Energy')
 
@@ -775,7 +786,7 @@ class peleAnalysis:
                     plt.boxplot(catalytic_dist[metric], widths=bar_width*0.8, positions=pos)
                     pos = pos + bar_width
 
-                plt.xticks(x_pos, labels)
+                plt.xticks(x_pos, labels, rotation=45)
                 plt.xlabel('Proteins')
                 plt.ylabel('Binding Energy')
 
@@ -792,6 +803,7 @@ class peleAnalysis:
                         labels.append(protein)
 
                 plt.boxplot(catalytic_dist, labels=labels)
+                plt.xticks(rotation=45)
                 plt.xlabel('Proteins')
                 plt.ylabel('Binding Energy')
 
@@ -853,7 +865,8 @@ class peleAnalysis:
 
     def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=4.5):
 
-        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, **metrics):
+        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, dA=True, Ec=False, Enc=False, **metrics):
+
             # Create a matrix of length proteins times ligands
             M = np.zeros((len(self.proteins), len(self.ligands)))
 
@@ -891,7 +904,12 @@ class peleAnalysis:
                         probability = np.exp(-relative_energy/KT)/Z
                         Ebnc = np.sum(probability*noncatalytic_series['Binding Energy'])
 
-                        M[i][j] = Ebc-Ebnc
+                        if dA:
+                            M[i][j] = Ebc-Ebnc
+                        elif Ec:
+                            M[i][j] = Ebc
+                        elif Enc:
+                            M[i][j] = Ebnc
 
                     else:
                         M[i][j] = np.nan
@@ -903,7 +921,14 @@ class peleAnalysis:
             protein_labels = [self.proteins[x] for x in sort_indexes]
 
             plt.matshow(M, cmap='autumn')
-            plt.colorbar(label='${E_{B}^{C}}-{E_{B}^{NC}}$')
+            if dA:
+                plt.colorbar(label='${E_{B}^{C}}-{E_{B}^{NC}}$')
+            elif Ec:
+                plt.colorbar(label='$E_{B}^{C}$')
+            elif Enc:
+                plt.colorbar(label='$E_{B}^{NC}$')
+
+
             plt.xlabel('Ligands', fontsize=12)
             plt.xticks(range(len(self.ligands)), self.ligands, rotation=50)
             plt.ylabel('Proteins', fontsize=12)
@@ -924,9 +949,17 @@ class peleAnalysis:
                         readout=True,
                         readout_format='.1f',
                     )
+
+        dA = Checkbox(value=True,
+                     description='$\delta A$')
+        Ec = Checkbox(value=False,
+                     description='$E_{B}^{C}$')
+        Enc = Checkbox(value=False,
+                     description='$E_{B}^{NC}$')
+
         ligand_ddm = Dropdown(options=self.ligands)
 
-        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, **metrics)
+        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, dA=dA, Ec=Ec, Enc=Enc, **metrics)
 
     def visualiseBestPoses(self, initial_threshold=4.5):
 
@@ -961,7 +994,8 @@ class peleAnalysis:
                     if residue.name != self.ligand_names[Ligand]:
                         chain = chain_ids[residue.chain.index]
                         resid = residue.resSeq
-                        residue = str(resid)+':'+chain
+                        # The chain_ids dictiona must be done per residue
+                        residue = str(resid)#+':'+chain
                         if residue not in residues:
                             residues.append(residue)
             # residues += [531]
@@ -979,6 +1013,83 @@ class peleAnalysis:
         metrics = {m:initial_threshold for m in metrics}
 
         interact(getLigands, Protein=self.proteins)
+
+    def visualiseInVMD(self, protein, ligand, resnames=None, peptide=False, num_trajectories='all'):
+
+        if isinstance(resnames, str):
+            resnames = [resnames]
+
+        traj_files = self.trajectory_files[protein][ligand]
+        trajectories = [t for t in sorted(traj_files[0])]
+        if isinstance(num_trajectories, int):
+            trajectories = random.choices(trajectories, k=num_trajectories)
+
+        with open('.load_vmd.tcl', 'w') as vmdf:
+
+            topology = self.topology_files[protein][ligand]
+            vmdf.write('color Display background white\n')
+            vmdf.write('proc colorsel {selection color} {\n')
+            vmdf.write('set colorlist {blue red gray orange yellow tan silver green white pink cyan purple lime \\\n')
+            vmdf.write('               mauve ochre iceblue black yellow2 yellow3 green2 green3 cyan2 cyan3 blue2 \\\n')
+            vmdf.write('               blue3 violet violet2 magenta magenta2 red2 red3 orange2 orange3}\n')
+            vmdf.write('set num [lsearch $colorlist $color]\n')
+            vmdf.write('set charlist {A D G J M O Q R T U V W X Y 0 1 2 3 4 5 6 7 8 9 ! @ # $ % ^ & + -}\n')
+            vmdf.write('set char [lindex $charlist $num]\n')
+            vmdf.write('$selection set type $char\n')
+            vmdf.write('color Type $char $color}\n')
+
+            for i,traj in enumerate(sorted(trajectories)):
+                vindex = 0
+                vmdf.write('mol new '+topology+'\n')
+                for epoch in sorted(traj_files):
+                    vmdf.write('mol addfile '+traj_files[epoch][traj]+'\n')
+                vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "not chain L"\n')
+                vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' newcartoon\n')
+                vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' ColorID 3\n')
+                vmdf.write('mol addrep '+str(i)+'\n')
+                vindex += 1
+                if peptide:
+                    vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "chain L and not sidechain"\n')
+                    vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' newcartoon\n')
+                    vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' ColorID 11\n')
+                    vmdf.write('mol addrep '+str(i)+'\n')
+                    vindex += 1
+                    vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "chain L"\n')
+                    vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' Lines 0.1\n')
+                    vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' Type\n')
+                    vmdf.write('colorsel [atomselect top "chain L and carbon"] purple\n')
+                else:
+                    vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "chain L"\n')
+                    vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' Licorice 0.2\n')
+                    vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' Type\n')
+                    vmdf.write('colorsel [atomselect top "chain L and carbon"] purple\n')
+
+                vmdf.write('mol addrep '+str(i)+'\n')
+                vindex += 1
+                vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "not protein and not chain L and not ion"\n')
+                vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' Lines\n')
+                vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' Type\n')
+                vmdf.write('colorsel [atomselect top "(not protein and not chain L and not ion) and carbon"] purple\n')
+                vmdf.write('mol addrep '+str(i)+'\n')
+                vindex += 1
+                vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "ion"\n')
+                vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' CPK\n')
+                vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' Element\n')
+                vmdf.write('mol addrep '+str(i)+'\n')
+                vindex += 1
+                vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "(all and same residue as within 5 of chain L) and not chain L"\n')
+                vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' Lines 1.0\n')
+                vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' Type\n')
+                vmdf.write('colorsel [atomselect top "((all and same residue as within 5 of chain L) and not chain L) and carbon"] orange\n')
+                if resnames != None:
+                    vmdf.write('mol addrep '+str(i)+'\n')
+                    vindex += 1
+                    vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "resname '+' '.join(resnames)+'"\n')
+                    vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' Licorice 0.2\n')
+                    vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' Type\n')
+                    vmdf.write('colorsel [atomselect top "(not chain L and not ion) and carbon"] orange\n')
+
+        return 'vmd -e .load_vmd.tcl'
 
     def combineDistancesIntoMetrics(self, catalytic_labels, overwrite=False):
         """
@@ -1032,7 +1143,7 @@ class peleAnalysis:
         initial_threshold : float
             Starting upper value for the definition of the catalytic region range.
         """
-        def getLigands(Protein1, Protein2):
+        def getLigands(Protein1, Protein2, ebr_all=True, ebr_sgb=False, ebr_lj=False, ebr_ele=False):
 
             ps1 = self.data[self.data.index.get_level_values('Protein') == Protein1]
             ligands1 = list(set(ps1.index.get_level_values('Ligand').tolist()))
@@ -1069,13 +1180,24 @@ class peleAnalysis:
                                 readout=True,
                                 readout_format='.1f')
 
+            ebr_type = None
+            if ebr_all:
+                ebr_type = 'all'
+            elif ebr_sgb:
+                ebr_type = 'sgb'
+            elif ebr_lj:
+                ebr_type = 'lj'
+            elif ebr_ele:
+                ebr_type = 'ele'
+
             parameters = {'Protein1' : fixed(Protein1),
                           'Protein2' : fixed(Protein2),
                           'Ligand1' : ligand1,
                           'Ligand2' : ligand2,
                           'KT_slider1' : KT_slider1,
                           'KT_slider2' : KT_slider2,
-                          'n_residue_slider' : n_residue_slider,}
+                          'n_residue_slider' : n_residue_slider,
+                          'ebr_type' : fixed(ebr_type)}
 
             widget_metrics1 = []
             for metric in metrics:
@@ -1112,9 +1234,12 @@ class peleAnalysis:
             VB = VBox([HB, n_residue_slider, plot])
             display(VB)
 
-        def _getPlotData(Protein, Ligand, KT=0.593, **metrics):
+        def _getPlotData(Protein, Ligand, KT=0.593, ebr_type='all', **metrics):
 
-            ebk = [x for x in self.data.keys() if x.startswith('L:1')]
+            if ebr_type == None:
+                ebr_type = 'all'
+
+            ebk = [x for x in self.data.keys() if x.startswith('L:1') and x.endswith(ebr_type)]
             series = self.getProteinAndLigandData(Protein, Ligand)
             total_energy = series['Total Energy']
             energy_minimum = total_energy.min()
@@ -1135,9 +1260,9 @@ class peleAnalysis:
             for x in ebk:
                 x = x.split(':')[-1]
                 try:
-                    resname = three_to_one(x.split('_')[-1])
+                    resname = PDB.Polypeptide.three_to_one(x.split('_')[1])
                 except:
-                    resname = x.split('_')[-1]
+                    resname = x.split('_')[1]
                 resid = x.split('_')[0]
                 labels.append(resname+resid)
 
@@ -1145,7 +1270,8 @@ class peleAnalysis:
             ebr = dict(zip(np.array(labels)[argsort], ebr[argsort].to_numpy()))
             return ebr
 
-        def _plot(Protein1, Protein2, Ligand1, Ligand2, KT_slider1, KT_slider2, n_residue_slider, **metrics):
+        def _plot(Protein1, Protein2, Ligand1, Ligand2, KT_slider1, KT_slider2, n_residue_slider,
+                  ebr_type='all', **metrics):
 
             metrics1 = {}
             metrics2 = {}
@@ -1156,8 +1282,8 @@ class peleAnalysis:
                     metrics2[metric[:-2]] = metrics[metric]
 
             # Get all energy-by-residue metrics
-            ebr1 = _getPlotData(Protein1, Ligand1, KT=KT_slider1, **metrics1)
-            ebr2 = _getPlotData(Protein2, Ligand2, KT=KT_slider2, **metrics2)
+            ebr1 = _getPlotData(Protein1, Ligand1, KT=KT_slider1, ebr_type=ebr_type, **metrics1)
+            ebr2 = _getPlotData(Protein2, Ligand2, KT=KT_slider2, ebr_type=ebr_type, **metrics2)
 
             # Get all residues to plot and sort them by ebr
             residues = []
@@ -1201,12 +1327,21 @@ class peleAnalysis:
             else:
                 fontsize = 10
 
+            if ebr_type == 'all':
+                energy_label = 'all'
+            elif ebr_type == 'sgb':
+                energy_label = 'SGB'
+            elif ebr_type == 'lj':
+                energy_label = 'lennard_jones'
+            elif ebr_type == 'ele':
+                energy_label = 'electrostatic'
+
             plt.figure(dpi=120)
             hist = plt.bar(pos1, values1, 0.4)
             hist = plt.bar(pos2, values2, 0.4)
             xt = plt.xticks(range(len(labels)), labels, rotation=90, fontsize=fontsize)
             plt.xlabel('Residue')
-            plt.ylabel('Energy contribution [kcal/mol]')
+            plt.ylabel(energy_label+' Energy contribution [kcal/mol]')
             display(plt.show())
 
         metrics = [k for k in self.data.keys() if 'metric_' in k]
@@ -1215,12 +1350,25 @@ class peleAnalysis:
         protein1 = Dropdown(options=self.proteins)
         protein2 = Dropdown(options=self.proteins)
 
-        plot_data = interactive_output(getLigands, {'Protein1': protein1, 'Protein2' :protein2})
+        ebr_all = Checkbox(value=True,
+                           description='All')
+        ebr_sgb = Checkbox(value=False,
+                           description='SGB')
+        ebr_lj = Checkbox(value=False,
+                           description='Lennard-Jones')
+        ebr_ele = Checkbox(value=False,
+                           description='Electrostatics')
 
+        plot_data = interactive_output(getLigands, {'Protein1': protein1, 'Protein2' :protein2,
+                                                    'ebr_all' : ebr_all, 'ebr_sgb': ebr_sgb,
+                                                    'ebr_lj' : ebr_lj, 'ebr_ele': ebr_ele})
+
+        H0 = HBox([ebr_all, ebr_sgb, ebr_lj, ebr_ele])
         VB1 = VBox([protein1])
         VB2 = VBox([protein2])
         HB = HBox([VB1, VB2], width='100%')
-        VB = VBox([HB, plot_data], width='100%')
+        VB0 = VBox([H0, HB])
+        VB = VBox([VB0, plot_data], width='100%')
 
         d = display(VB)
 
