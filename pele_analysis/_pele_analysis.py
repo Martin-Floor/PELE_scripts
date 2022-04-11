@@ -28,7 +28,7 @@ class peleAnalysis:
     ==========
     """
 
-    def __init__(self, pele_folder, pele_output_folder='output', force_reading=False,
+    def __init__(self, pele_folder, pele_output_folder='output', force_reading=False, separator='_',
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all'):
         """
         When initiliasing the class it read the paths to the output folder report,
@@ -78,8 +78,8 @@ class peleAnalysis:
 
                 # Store paths to the pele folders
                 pele_dir = self.pele_folder+'/'+d
-                protein = d.split('_')[0]
-                ligand = d.split('_')[1]
+                protein = d.split(separator)[0]
+                ligand = d.split(separator)[1]
                 if protein not in self.pele_directories:
                     self.pele_directories[protein] = {}
                 if protein not in self.report_files:
