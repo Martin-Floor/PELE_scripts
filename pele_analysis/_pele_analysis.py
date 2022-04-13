@@ -73,45 +73,71 @@ class peleAnalysis:
         if verbose:
             print('Getting paths to trajectory files')
 
-        for d in os.listdir(self.pele_folder):
-            if os.path.isdir(self.pele_folder+'/'+d):
+        if os.path.exists('pele'):
 
-                # Store paths to the pele folders
-                pele_dir = self.pele_folder+'/'+d
-                protein = d.split(separator)[0]
-                ligand = d.split(separator)[1]
-                if protein not in self.pele_directories:
-                    self.pele_directories[protein] = {}
-                if protein not in self.report_files:
-                    self.report_files[protein] = {}
-                if protein not in self.report_files:
-                    self.report_files[protein] = {}
-                if protein not in self.trajectory_files:
-                    self.trajectory_files[protein] = {}
-                if protein not in self.topology_files:
-                    self.topology_files[protein] = {}
-                if protein not in self.equilibration['report']:
-                    self.equilibration['report'][protein] = {}
-                if protein not in self.equilibration['trajectory']:
-                    self.equilibration['trajectory'][protein] = {}
+            for d in os.listdir(self.pele_folder):
+                if os.path.isdir(self.pele_folder+'/'+d):
 
-                # Read ligand resname
-                if ligand not in self.ligand_names:
-                    ligand_structure = parser.get_structure(ligand, pele_dir+'/'+pele_output_folder+'/input/ligand.pdb')
-                    for residue in ligand_structure.get_residues():
-                        self.ligand_names[ligand] = residue.resname
+                    # Store paths to the pele folders
+                    pele_dir = self.pele_folder+'/'+d
+                    protein = d.split('_')[0]
+                    ligand = d.split('_')[1]
+                    if protein not in self.pele_directories:
+                        self.pele_directories[protein] = {}
+                    if protein not in self.report_files:
+                        self.report_files[protein] = {}
+                    if protein not in self.report_files:
+                        self.report_files[protein] = {}
+                    if protein not in self.trajectory_files:
+                        self.trajectory_files[protein] = {}
+                    if protein not in self.topology_files:
+                        self.topology_files[protein] = {}
+                    if protein not in self.equilibration['report']:
+                        self.equilibration['report'][protein] = {}
+                    if protein not in self.equilibration['trajectory']:
+                        self.equilibration['trajectory'][protein] = {}
 
-                self.pele_directories[protein][ligand] = pele_dir
-                self.report_files[protein][ligand] = pele_read.getReportFiles(pele_dir+'/'+pele_output_folder+'/output')
-                self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(pele_dir+'/'+pele_output_folder+'/output')
-                self.topology_files[protein][ligand] = pele_read.getTopologyFile(pele_dir+'/'+pele_output_folder+'/input')
-                self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(pele_dir+'/'+pele_output_folder+'/output')
-                self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(pele_dir+'/'+pele_output_folder+'/output')
+                    # Read ligand resname
+                    if ligand not in self.ligand_names:
+                        ligand_structure = parser.get_structure(ligand, pele_dir+'/'+pele_output_folder+'/input/ligand.pdb')
+                        for residue in ligand_structure.get_residues():
+                            self.ligand_names[ligand] = residue.resname
 
-                if protein not in self.proteins:
-                    self.proteins.append(protein)
-                if ligand not in self.ligands:
-                    self.ligands.append(ligand)
+                    self.pele_directories[protein][ligand] = pele_dir
+                    self.report_files[protein][ligand] = pele_read.getReportFiles(pele_dir+'/'+pele_output_folder+'/output')
+                    self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(pele_dir+'/'+pele_output_folder+'/output')
+                    self.topology_files[protein][ligand] = pele_read.getTopologyFile(pele_dir+'/'+pele_output_folder+'/input')
+                    self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(pele_dir+'/'+pele_output_folder+'/output')
+                    self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(pele_dir+'/'+pele_output_folder+'/output')
+
+                    self._saveDictionaryAsJson(self.pele_directories, '.pele_analysis/pele_directories.json')
+                    self._saveDictionaryAsJson(self.report_files, '.pele_analysis/report_files.json')
+                    self._saveDictionaryAsJson(self.trajectory_files, '.pele_analysis/trajectory_files.json')
+                    self._saveDictionaryAsJson(self.topology_files, '.pele_analysis/topology_files.json')
+                    self._saveDictionaryAsJson(self.equilibration, '.pele_analysis/equilibration.json')
+                    self._saveDictionaryAsJson(self.ligand_names, '.pele_analysis/ligand_names.json')
+
+                    if protein not in self.proteins:
+                        self.proteins.append(protein)
+                    if ligand not in self.ligands:
+                        self.ligands.append(ligand)
+
+            with open(".pele_analysis/ligands.pkl","wb") as fl:
+                pickle.dump(self.ligands, fl)
+            with open(".pele_analysis/proteins.pkl","wb") as fp:
+                pickle.dump(self.proteins, fp)
+
+        else:
+            self.pele_directories = self._loadDictionaryFromJson('.pele_analysis/pele_directories.json')
+            self.report_files = self._loadDictionaryFromJson('.pele_analysis/report_files.json')
+            self.trajectory_files = self._loadDictionaryFromJson('.pele_analysis/trajectory_files.json')
+            self.topology_files = self._loadDictionaryFromJson('.pele_analysis/topology_files.json')
+            self.equilibration = self._loadDictionaryFromJson('.pele_analysis/equilibration.json')   
+            self.ligand_names = self._loadDictionaryFromJson('.pele_analysis/ligand_names.json')
+            with open(".pele_analysis/ligands.pkl","rb") as fl:
+                self.ligands = pickle.load(fl)
+            with open(".pele_analysis/proteins.pkl","rb") as fp:
+                self.proteins = pickle.load(fp)     
 
         # Read complex chain ids
         if not os.path.exists('.pele_analysis/chains_ids.json') or force_reading:
