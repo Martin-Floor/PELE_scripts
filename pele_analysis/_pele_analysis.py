@@ -80,8 +80,8 @@ class peleAnalysis:
 
                     # Store paths to the pele folders
                     pele_dir = self.pele_folder+'/'+d
-                    protein = d.split('_')[0]
-                    ligand = d.split('_')[1]
+                    protein = d.split(separator)[0]
+                    ligand = d.split(separator)[1]
                     if protein not in self.pele_directories:
                         self.pele_directories[protein] = {}
                     if protein not in self.report_files:
