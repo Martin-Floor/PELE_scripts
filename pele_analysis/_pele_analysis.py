@@ -12,7 +12,7 @@ import gc
 from Bio.PDB.PDBExceptions import PDBConstructionWarning
 import warnings
 warnings.simplefilter('ignore', PDBConstructionWarning)
-import json
+import json, pickle
 
 from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown, Checkbox
 import time
