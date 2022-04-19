@@ -1,6 +1,7 @@
 import mdtraj as md
 import nglview as nv
 import numpy as np
+import os
 
 def loadTrajectoryFrames(report_data, trajectory_files, topology_file):
     """
@@ -58,11 +59,38 @@ def showTrajectory(trajectory, residues=[]):
 
     return show
 
+def calculateDistances(trajectory_files, topology_file, protein, ligand, atom_pairs, md_topology=None, equilibration=False,
+                       force_reading=False):
+    """
+    Calculate distances for a specified set of PELE trajectories and compile a
+    DataFrame with the data.
+    """
+
+    if isinstance(md_topology, type(None)):
+        md_topology = md.load(topology_file)
+
+    if equilibration:
+        csv_file_name = '.pele_analysis/equilibration_metrics_'+protein+'_'+ligand+'.csv'
+    else:
+        csv_file_name = '.pele_analysis/metrics_'+protein+'_'+ligand+'.csv'
+
+    if os.path.exists(csv_file_name) and not force_reading:
+        metric_data = pd.read_csv(csv_file_name)
+
+    else:
+        # Get atom pairs
+        metric_data = []
+        for epoch in sorted(trajectory_files):
+            for t in sorted(trajectory_files[epoch]):
+                traj = md.load(trajectory_files[epoch][t], top=topology_file)
+
+
 def addMetricFromFunction(metric_function, report_data, trajectory_files, topology_file, labels=None, inplace=False):
 
     metrics = []
     for e in trajectory_files:
         for t in trajectory_files[e]:
+            print(trajectory_files[e][t])
             traj = md.load(trajectory_files[e][t], top=topology_file)
             metrics.append(metric_function(traj))
 
@@ -76,9 +104,7 @@ def addMetricFromFunction(metric_function, report_data, trajectory_files, topolo
         print('Number of labels is different from number of metrics. Generic labels were given.')
         labels = new_labels
 
-    if inplace:
-        report_data = report_data
-    else:
+    if not inplace:
         report_data = report_data.copy()
 
     for i in range(n_metrics):
