@@ -181,7 +181,14 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
                 rd['Trajectory'] = traj
                 report_data.append(rd)
 
-        report_data = pd.concat(report_data)
+        try:
+            report_data = pd.concat(report_data)
+        except:
+            if equilibration:
+                print('Failed to read PELE equilibration data for %s + %s' % (protein, ligand))
+            else:
+                print('Failed to read PELE data for %s + %s' % (protein, ligand))
+            return
         report_data.set_index([step, 'Trajectory', 'Pele Step'], inplace=True)
 
         _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration)

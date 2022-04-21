@@ -117,11 +117,13 @@ class peleAnalysis:
 
         # Read complex chain ids
         self.structure = {}
+        self.ligand_structure = {}
         self.md_topology = {}
         if not os.path.exists('.pele_analysis/chains_ids.json') or not os.path.exists('.pele_analysis/atom_indexes.json') or force_reading:
             for protein in self.report_files:
                 if protein not in self.chain_ids:
                     self.structure[protein] = {}
+                    self.ligand_structure[protein] = {}
                     self.md_topology[protein] = {}
                     self.chain_ids[protein] = {}
                     self.atom_indexes[protein] = {}
@@ -135,6 +137,8 @@ class peleAnalysis:
                     # Load input PDB with Bio.PDB and mdtraj
                     input_pdb = self._getInputPDB(self.pele_directories[protein][ligand])
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
+                    input_ligand_pdb = self._getInputLigandPDB(self.pele_directories[protein][ligand])
+                    self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
                     self.md_topology[protein][ligand] = md.load(input_pdb)
 
                     # Match the MDTraj chain with the PDB chain id
@@ -177,15 +181,19 @@ class peleAnalysis:
             chain_ids = {}
             for protein in self.chain_ids:
                 self.structure[protein] = {}
+                self.ligand_structure[protein] = {}
                 self.md_topology[protein] = {}
                 chain_ids[protein] = {}
                 for ligand in self.chain_ids[protein]:
                     chain_ids[protein][ligand] = {}
                     input_pdb = self._getInputPDB(self.pele_directories[protein][ligand])
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
+                    input_ligand_pdb = self._getInputLigandPDB(self.pele_directories[protein][ligand])
+                    self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
                     self.md_topology[protein][ligand] = md.load(input_pdb)
                     for chain in self.chain_ids[protein][ligand]:
                         chain_ids[protein][ligand][int(chain)] = self.chain_ids[protein][ligand][chain]
+
             self.chain_ids = chain_ids
 
             self.atom_indexes = self._loadDictionaryFromJson('.pele_analysis/atom_indexes.json')
@@ -215,6 +223,8 @@ class peleAnalysis:
                                                  ligand,
                                                  force_reading=force_reading,
                                                  ebr_threshold=0.1)
+                if isinstance(data, type(None)):
+                    continue
 
                 keep = [k for k in data.keys() if not k.startswith('L:1_')]
                 if energy_by_residue:
@@ -250,6 +260,8 @@ class peleAnalysis:
                                                  ligand,
                                                  force_reading=force_reading,
                                                  equilibration=True)
+                if isinstance(data, type(None)):
+                    continue
                 data = data.reset_index()
                 data['Protein'] = protein
                 data['Ligand'] = ligand
@@ -264,7 +276,7 @@ class peleAnalysis:
         gc.collect()
         self._recoverEquilibrationDataState(remove=True)
 
-    def calculateDistances(self, atom_pairs, equilibration=False, verbose=False):
+    def calculateDistances(self, atom_pairs, equilibration=False, verbose=False, overwrite=False):
         """
         Calculate distances between pairs of atoms for each pele (protein+ligand)
         simulation. The atom pairs are given as a dictionary with the following format:
@@ -282,66 +294,129 @@ class peleAnalysis:
             Calculate distances for the equilibration steps also
         verbose : bool
             Print the analysis progression.
+        overwrite : bool
+            Force recalculation of distances.
         """
 
-        distances = {}
-        distances['Protein'] = []
-        distances['Ligand'] = []
-        distances['Epoch'] = []
-        distances['Trajectory'] = []
-        distances['Pele Step'] = []
+        # # Get all distance labels
+        # all_labels = set()
+        # for protein in atom_pairs:
+        #     for ligand in atom_pairs[protein]:
+        #         for pair in  atom_pairs[protein][ligand]:
+        #             label = 'distance_'+''.join([str(x) for x in pair[0]])+'_'+\
+        #                                 ''.join([str(x) for x in pair[1]])
+        #             all_labels.add(label)
+
+        if not os.path.exists('.pele_analysis/distances'):
+            os.mkdir('.pele_analysis/distances')
+
+        # # Check whether previous distance calculation exists.
+        # if os.path.exists('.pele_analysis/distances.csv') and not overwrite:
+        #     distances = pd.read_csv('.pele_analysis/distances.csv')
+        #     distances.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Pele Step'], inplace=True)
+
+        # Calculate distances for all trajectory files
+        # else:
+        #     # Define dicionary to store distance calculations
+        #     distances = {}
+        #     distances['Protein'] = []
+        #     distances['Ligand'] = []
+        #     distances['Epoch'] = []
+        #     distances['Trajectory'] = []
+        #     distances['Pele Step'] = []
+        #     for label in all_labels:
+        #         distances[label] = []
 
         # Iterate all PELE protein + ligand entries
-        index_count = 0
+        distances = {}
         for protein in sorted(self.trajectory_files):
+            distances[protein] = {}
             for ligand in sorted(self.trajectory_files[protein]):
-                if verbose:
-                    print('Calculating distances for %s + %s ' % (protein, ligand))
 
-                # Load one trajectory at the time to save memory
-                trajectory_files = self.trajectory_files[protein][ligand]
-                topology_file = self.topology_files[protein][ligand]
+                # Define a different distance output file for each pele run
+                distance_file = '.pele_analysis/distances/'+protein+'_'+ligand+'.csv'
 
-                # Get atom pairs indexes
-                topology = md.load(topology_file).topology
+                # Check if distance have been previously calculated
+                if os.path.exists(distance_file) and not overwrite:
+                    if verbose:
+                        print('Distance file for %s + %s was found. Reading distances from there...' % (protein, ligand))
+                    distances[protein][ligand] = pd.read_csv(distance_file, index_col=False)
+                    distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Pele Step'], inplace=True)
 
-                # Get atom pair indexes to compute distances
-                pairs = []
-                for pair in atom_pairs[protein][ligand]:
-                    i1 = self.atom_indexes[protein][ligand][pair[0]]
-                    i2 = self.atom_indexes[protein][ligand][pair[1]]
-                    pairs.append([i1, i2])
+                else:
+                    distances[protein][ligand] = {}
+                    distances[protein][ligand]['Protein'] = []
+                    distances[protein][ligand]['Ligand'] = []
+                    distances[protein][ligand]['Epoch'] = []
+                    distances[protein][ligand]['Trajectory'] = []
+                    distances[protein][ligand]['Pele Step'] = []
+                    if verbose:
+                        print('Calculating distances for %s + %s ' % (protein, ligand))
 
-                # Define labels
-                labels = ['distance_'+''.join([str(x) for x in p[0]])+'_'+''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
+                    # Load one trajectory at the time to save memory
+                    trajectory_files = self.trajectory_files[protein][ligand]
+                    topology_file = self.topology_files[protein][ligand]
 
-                for label in labels:
-                    if label not in distances:
-                        distances[label] = []
+                    # Get atom pairs indexes
+                    topology = md.load(topology_file).topology
 
-                for epoch in sorted(trajectory_files):
-                    for t in sorted(trajectory_files[epoch]):
-                        # Load trajectory
-                        traj = md.load(trajectory_files[epoch][t], top=topology_file)
-                        # Calculate distances
-                        d = md.compute_distances(traj, pairs)*10
-                        # Store data
-                        distances['Protein'] += [protein]*d.shape[0]
-                        distances['Ligand'] += [ligand]*d.shape[0]
-                        distances['Epoch'] += [epoch]*d.shape[0]
-                        distances['Trajectory'] += [t]*d.shape[0]
-                        distances['Pele Step'] += list(range(d.shape[0]))
-                        for i,l in enumerate(labels):
-                            distances[l] += list(d[:,i])
+                    # Get atom pair indexes to compute distances
+                    pairs = []
+                    for pair in atom_pairs[protein][ligand]:
+                        i1 = self.atom_indexes[protein][ligand][pair[0]]
+                        i2 = self.atom_indexes[protein][ligand][pair[1]]
+                        pairs.append([i1, i2])
 
-                        # Fill distances values with none to match the dictionary length
+                    # Define labels
+                    labels = ['distance_'+''.join([str(x) for x in p[0]])+'_'+\
+                                          ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
 
+                    # Create an entry for each distance
+                    for label in labels:
+                        distances[protein][ligand][label] = []
 
-        for l in distances:
-            print(l, len(distances[l]))
+                    # Compute distances and them to the dicionary
+                    for epoch in sorted(trajectory_files):
+                        for t in sorted(trajectory_files[epoch]):
+                            # Load trajectory
+                            traj = md.load(trajectory_files[epoch][t], top=topology_file)
+                            # Calculate distances
+                            d = md.compute_distances(traj, pairs)*10
+                            # Store data
+                            distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
+                            distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
+                            distances[protein][ligand]['Epoch'] += [epoch]*d.shape[0]
+                            distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
+                            distances[protein][ligand]['Pele Step'] += list(range(d.shape[0]))
+                            for i,l in enumerate(labels):
+                                distances[protein][ligand][l] += list(d[:,i])
 
-        distances = pd.DataFrame(distances)
-        distances.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Pele Step'], inplace=True)
+                    # # Fill distances values with none to match the dictionary length
+                    # for label in all_labels:
+                    #     delta = len(distances[protein][ligand]['Protein'])-len(distances[protein][ligand][label])
+                    #     for x in range(delta):
+                    #         distances[label].append(None)
+
+                    # Convert distances into dataframe
+                    distances[protein][ligand] = pd.DataFrame(distances[protein][ligand])
+
+                    # Save distances to CSV file
+                    distances[protein][ligand].to_csv(distance_file)
+
+                    # Set indexes for DataFrame
+                    distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Pele Step'], inplace=True)
+
+        # Merge individual distances into a single data frame
+        all_distances = None
+        for protein in distances:
+            for ligand in distances[protein]:
+                if isinstance(all_distances, type(None)):
+                    all_distances = distances[protein][ligand]
+                else:
+                    all_distances.merge(distances[protein][ligand], how='outer', left_index=True, right_index=True)
+
+        # Add distances to main dataframe
+        self.data = self.data.merge(all_distances, how='outer', left_index=True, right_index=True)
 
         return distances
 
@@ -1528,7 +1603,7 @@ class peleAnalysis:
     def _recoverDataState(self, remove=False):
         csv_file = '.pele_analysis/data.csv'
         if os.path.exists(csv_file):
-            self.data = pd.read_csv(csv_file)
+            self.data = pd.read_csv(csv_file, index_col=False)
             self.data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Pele Step'], inplace=True)
             if remove:
                 os.remove(csv_file)
@@ -1536,7 +1611,7 @@ class peleAnalysis:
     def _recoverEquilibrationDataState(self, remove=False):
         csv_file = '.pele_analysis/equilibration_data.csv'
         if os.path.exists(csv_file):
-            self.equilibration_data = pd.read_csv(csv_file)
+            self.equilibration_data = pd.read_csv(csv_file, index_col=False)
             self.equilibration_data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Pele Step'], inplace=True)
             if remove:
                 os.remove(csv_file)
@@ -1558,4 +1633,14 @@ class peleAnalysis:
         folder = pele_dir+'/'+self.pele_output_folder+'/input/'
         for d in os.listdir(folder):
             if d.endswith('processed.pdb'):
+                return folder+'/'+d
+
+    def _getInputLigandPDB(self, pele_dir):
+        """
+        Returns the input PDB for the PELE simulation.
+        """
+        # Load input PDB with Bio.PDB and mdtraj
+        folder = pele_dir+'/'+self.pele_output_folder+'/input/'
+        for d in os.listdir(folder):
+            if d.endswith('ligand.pdb'):
                 return folder+'/'+d
