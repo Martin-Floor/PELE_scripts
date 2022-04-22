@@ -1127,6 +1127,8 @@ class peleAnalysis:
             plt.ylabel('Proteins', fontsize=12)
             plt.yticks(range(len(self.proteins)), protein_labels)
 
+            display(plt.show())
+
         metrics = [k for k in self.data.keys() if 'metric_' in k]
         metrics = {m:initial_threshold for m in metrics}
 
