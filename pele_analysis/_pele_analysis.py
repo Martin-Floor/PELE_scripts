@@ -98,11 +98,20 @@ class peleAnalysis:
                     self.equilibration['trajectory'][protein] = {}
 
                 self.pele_directories[protein][ligand] = pele_dir
-                self.report_files[protein][ligand] = pele_read.getReportFiles(pele_dir+'/'+self.pele_output_folder+'/output')
-                self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
-                self.topology_files[protein][ligand] = pele_read.getTopologyFile(pele_dir+'/'+self.pele_output_folder+'/input')
-                self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(pele_dir+'/'+self.pele_output_folder+'/output')
-                self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
+
+                if not os.path.exists(pele_dir+'/'+self.pele_output_folder+'/output'):
+                    print('Output folder not found for %s-%s PELE calculation.' % (protein, ligand))
+                    continue
+                else:
+                    self.report_files[protein][ligand] = pele_read.getReportFiles(pele_dir+'/'+self.pele_output_folder+'/output')
+                    self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
+                    self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(pele_dir+'/'+self.pele_output_folder+'/output')
+                    self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
+                if not os.path.exists(pele_dir+'/'+self.pele_output_folder+'/input'):
+                    print('PELE input folder not found for %s-%s PELE calculation.' % (protein, ligand))
+                    continue
+                else:
+                    self.topology_files[protein][ligand] = pele_read.getTopologyFile(pele_dir+'/'+self.pele_output_folder+'/input')
 
                 if protein not in self.proteins:
                     self.proteins.append(protein)
@@ -242,7 +251,7 @@ class peleAnalysis:
                 data = data.reset_index()
                 data['Protein'] = protein
                 data['Ligand'] = ligand
-                data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Pele Step'], inplace=True)
+                data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
                 report_data.append(data)
                 if verbose:
                     print('\t in %.2f seconds.' % (time.time()-start))
@@ -277,7 +286,7 @@ class peleAnalysis:
                 data = data.reset_index()
                 data['Protein'] = protein
                 data['Ligand'] = ligand
-                data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Pele Step'], inplace=True)
+                data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
                 equilibration_data.append(data)
                 if verbose:
                     print('\t in %.2f seconds.' % (time.time()-start))
@@ -328,14 +337,14 @@ class peleAnalysis:
                         print('Distance file for %s + %s was found. Reading distances from there...' % (protein, ligand))
                     distances[protein][ligand] = pd.read_csv(distance_file, index_col=False)
                     distances[protein][ligand] = distances[protein][ligand].loc[:, ~distances[protein][ligand].columns.str.contains('^Unnamed')]
-                    distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Pele Step'], inplace=True)
+                    distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps'], inplace=True)
                 else:
                     distances[protein][ligand] = {}
                     distances[protein][ligand]['Protein'] = []
                     distances[protein][ligand]['Ligand'] = []
                     distances[protein][ligand]['Epoch'] = []
                     distances[protein][ligand]['Trajectory'] = []
-                    distances[protein][ligand]['Pele Step'] = []
+                    distances[protein][ligand]['Accepted Pele Steps'] = []
                     if verbose:
                         print('Calculating distances for %s + %s ' % (protein, ligand))
 
@@ -373,7 +382,7 @@ class peleAnalysis:
                             distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
                             distances[protein][ligand]['Epoch'] += [epoch]*d.shape[0]
                             distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
-                            distances[protein][ligand]['Pele Step'] += list(range(d.shape[0]))
+                            distances[protein][ligand]['Accepted Pele Steps'] += list(range(d.shape[0]))
                             for i,l in enumerate(labels):
                                 distances[protein][ligand][l] += list(d[:,i])
 
@@ -384,7 +393,7 @@ class peleAnalysis:
                     distances[protein][ligand].to_csv(distance_file)
 
                     # Set indexes for DataFrame
-                    distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Pele Step'], inplace=True)
+                    distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps'], inplace=True)
 
         # Concatenate individual distances into a single data frame
         all_distances = []
@@ -1582,7 +1591,7 @@ class peleAnalysis:
         csv_file = '.pele_analysis/data.csv'
         if os.path.exists(csv_file):
             self.data = pd.read_csv(csv_file, index_col=False)
-            self.data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Pele Step'], inplace=True)
+            self.data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
             if remove:
                 os.remove(csv_file)
 
@@ -1590,7 +1599,7 @@ class peleAnalysis:
         csv_file = '.pele_analysis/equilibration_data.csv'
         if os.path.exists(csv_file):
             self.equilibration_data = pd.read_csv(csv_file, index_col=False)
-            self.equilibration_data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Pele Step'], inplace=True)
+            self.equilibration_data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
             if remove:
                 os.remove(csv_file)
 

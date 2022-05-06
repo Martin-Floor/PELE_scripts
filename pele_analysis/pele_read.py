@@ -181,6 +181,7 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
                 rd['Trajectory'] = traj
                 report_data.append(rd)
 
+        # Check pele data can be read by the library
         try:
             report_data = pd.concat(report_data)
         except:
@@ -189,7 +190,12 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
             else:
                 print('Failed to read PELE data for %s + %s' % (protein, ligand))
             return
-        report_data.set_index([step, 'Trajectory', 'Pele Step'], inplace=True)
+
+        if report_data.empty:
+            print('Failed to read PELE data for %s + %s' % (protein, ligand))
+            return
+
+        report_data.set_index([step, 'Trajectory', 'Accepted Pele Steps'], inplace=True)
 
         _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration)
 
@@ -211,7 +217,7 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1):
     """
 
     report_values = {}
-    int_terms = ['Step', 'Task', 'Pele Step']
+    int_terms = ['Step', 'Task', 'Accepted Pele Steps']
 
     with open(report_file) as rf:
         for i,l in enumerate(rf):
@@ -219,7 +225,7 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1):
                 terms = [t for t in l[1:].strip().split('    ')]
                 for t in terms:
                     if t == 'numberOfAcceptedPeleSteps':
-                        t = 'Pele Step'
+                        t = 'Accepted Pele Steps'
                     if t == 'sasaLig':
                         t = 'Ligand SASA'
                     if t == 'currentEnergy':
