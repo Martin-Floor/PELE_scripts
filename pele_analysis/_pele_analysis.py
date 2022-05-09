@@ -1167,7 +1167,7 @@ class peleAnalysis:
 
     def visualiseBestPoses(self, pele_data=None, initial_threshold=4.5):
 
-        def _visualiseBestPoses(Protein, Ligand, n_smallest=10 **metrics):
+        def _visualiseBestPoses(Protein, Ligand, n_smallest=10, **metrics):
             protein_series = pele_data[pele_data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
 
