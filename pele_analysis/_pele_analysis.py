@@ -1165,10 +1165,10 @@ class peleAnalysis:
 
         interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, dA=dA, Ec=Ec, Enc=Enc, **metrics)
 
-    def visualiseBestPoses(self, initial_threshold=4.5):
+    def visualiseBestPoses(self, pele_data=None, initial_threshold=4.5):
 
-        def _visualiseBestPoses(Protein, Ligand, n_smallest=10, **metrics):
-            protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
+        def _visualiseBestPoses(Protein, Ligand, n_smallest=10 **metrics):
+            protein_series = pele_data[pele_data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
 
             # Filter by metric
@@ -1206,13 +1206,17 @@ class peleAnalysis:
             return pele_trajectory.showTrajectory(traj, residues=residues)
 
         def getLigands(Protein):
-            protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
+            protein_series = pele_data[pele_data.index.get_level_values('Protein') == Protein]
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
             interact(_visualiseBestPoses, Protein=fixed(Protein),
                      Ligand=ligands,
                      **metrics)
 
-        metrics = [k for k in self.data.keys() if 'metric_' in k]
+        # Define pele data as self.data if non given
+        if isinstance(pele_data, type(None)):
+            pele_data = self.data
+
+        metrics = [k for k in pele_data.keys() if 'metric_' in k]
 
         metrics = {m:initial_threshold for m in metrics}
 
