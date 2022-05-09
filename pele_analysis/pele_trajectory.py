@@ -27,7 +27,7 @@ def loadTrajectoryFrames(report_data, trajectory_files, topology_file):
     """
     e_values = report_data.index.get_level_values('Epoch')
     t_values = report_data.index.get_level_values('Trajectory')
-    p_steps = report_data.index.get_level_values('Pele Step')
+    p_steps = report_data.index.get_level_values('Accepted Pele Steps')
 
     values = list(zip(e_values, t_values, p_steps))
     trajs = []
