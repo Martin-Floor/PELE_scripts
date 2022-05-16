@@ -107,6 +107,7 @@ class peleAnalysis:
                     self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
                     self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(pele_dir+'/'+self.pele_output_folder+'/output')
                     self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
+                    
                 if not os.path.exists(pele_dir+'/'+self.pele_output_folder+'/input'):
                     print('PELE input folder not found for %s-%s PELE calculation.' % (protein, ligand))
                     continue
@@ -727,7 +728,7 @@ class peleAnalysis:
         def _bindingEnergyLandscape(Protein, Ligand, Distance, Color):
             self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', color_column=Color)
 
-        interact(getLigands, Protein=self.proteins, by_metric=False)
+        interact(getLigands, Protein=sorted(self.proteins), by_metric=False)
 
     def plotDistributions(self):
         """
@@ -1065,9 +1066,10 @@ class peleAnalysis:
 
         interact(_bindingFreeEnergyMatrix, KT=KT_slider)
 
-    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=4.5):
+    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=4.5, store_values=False,
+                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json'):
 
-        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, dA=True, Ec=False, Enc=False, **metrics):
+        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json', **metrics):
 
             # Create a matrix of length proteins times ligands
             M = np.zeros((len(self.proteins), len(self.ligands)))
@@ -1130,6 +1132,12 @@ class peleAnalysis:
             elif Enc:
                 plt.colorbar(label='$E_{B}^{NC}$')
 
+            if store_values:
+                np.save(matrix_file, M)
+                if not models_file.endswith('.json'):
+                    models_file = models_file+'.json'
+                with open(models_file, 'w') as of:
+                    json.dump(protein_labels, of)
 
             plt.xlabel('Ligands', fontsize=12)
             plt.xticks(range(len(self.ligands)), self.ligands, rotation=50)
@@ -1163,9 +1171,9 @@ class peleAnalysis:
 
         ligand_ddm = Dropdown(options=self.ligands)
 
-        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, dA=dA, Ec=Ec, Enc=Enc, **metrics)
+        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, dA=dA, Ec=Ec, Enc=Enc, models_file=models_file, **metrics)
 
-    def visualiseBestPoses(self, pele_data=None, initial_threshold=4.5):
+    def visualiseBestPoses(self, pele_data=None, initial_threshold=3.5):
 
         def _visualiseBestPoses(Protein, Ligand, n_smallest=10, **metrics):
             protein_series = pele_data[pele_data.index.get_level_values('Protein') == Protein]
@@ -1220,7 +1228,7 @@ class peleAnalysis:
 
         metrics = {m:initial_threshold for m in metrics}
 
-        interact(getLigands, Protein=self.proteins)
+        interact(getLigands, Protein=sorted(self.proteins))
 
     def visualiseInVMD(self, protein, ligand, resnames=None, peptide=False, num_trajectories='all'):
 
