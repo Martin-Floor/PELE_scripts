@@ -107,7 +107,7 @@ class peleAnalysis:
                     self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
                     self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(pele_dir+'/'+self.pele_output_folder+'/output')
                     self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
-                    
+
                 if not os.path.exists(pele_dir+'/'+self.pele_output_folder+'/input'):
                     print('PELE input folder not found for %s-%s PELE calculation.' % (protein, ligand))
                     continue
@@ -274,16 +274,24 @@ class peleAnalysis:
         equilibration_data = []
         for protein in sorted(self.equilibration['report']):
             for ligand in sorted(self.equilibration['report'][protein]):
+
+                if self.equilibration['report'][protein][ligand] == {}:
+                    print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
+                    continue
+
                 if verbose:
                     print('\t'+protein+'_'+ligand, end=' ')
                     start = time.time()
+
                 data = pele_read.readReportFiles(self.equilibration['report'][protein][ligand],
                                                  protein,
                                                  ligand,
                                                  force_reading=force_reading,
                                                  equilibration=True)
+
                 if isinstance(data, type(None)):
                     continue
+
                 data = data.reset_index()
                 data['Protein'] = protein
                 data['Ligand'] = ligand
@@ -292,11 +300,12 @@ class peleAnalysis:
                 if verbose:
                     print('\t in %.2f seconds.' % (time.time()-start))
 
-        self.equilibration_data = pd.concat(equilibration_data)
-        self._saveEquilibrationDataState()
-        self.equilibration_data = None
-        gc.collect()
-        self._recoverEquilibrationDataState(remove=True)
+        if equilibration_data != []:
+            self.equilibration_data = pd.concat(equilibration_data)
+            self._saveEquilibrationDataState()
+            self.equilibration_data = None
+            gc.collect()
+            self._recoverEquilibrationDataState(remove=True)
 
     def calculateDistances(self, atom_pairs, equilibration=False, verbose=False, overwrite=False):
         """
