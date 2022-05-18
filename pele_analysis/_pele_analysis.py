@@ -367,14 +367,34 @@ class peleAnalysis:
 
                     # Get atom pair indexes to compute distances
                     pairs = []
+                    dist_label = {}
+                    pair_lengths = []
                     for pair in atom_pairs[protein][ligand]:
-                        i1 = self.atom_indexes[protein][ligand][pair[0]]
-                        i2 = self.atom_indexes[protein][ligand][pair[1]]
-                        pairs.append([i1, i2])
+                        if len(pair) >= 2:
+                            i1 = self.atom_indexes[protein][ligand][pair[0]]
+                            i2 = self.atom_indexes[protein][ligand][pair[1]]
+                            if len(pair) == 2:
+                                pairs.append([i1, i2])
+                                dist_label[[i1, i2]] = 'distance_'
+                        if len(pair) >= 3:
+                            i3 = self.atom_indexes[protein][ligand][pair[2]]
+                            if len(pair) == 3:
+                                pairs.append([i1, i2, i3])
+                                dist_label[[i1, i2]] = 'angle_'
+                        if len(pair) == 4:
+                            i4 = self.atom_indexes[protein][ligand][pair[3]]
+                            pairs.append([i1, i2, i3, i4])
+                            dist_label[[i1, i2]] = 'torsion_'
+                        pair_lengths.append(len(pair))
+
+                    pair_lengths = set(pair_lengths)
+                    if len(pair_lengths) > 1:
+                        raise ValueError('Mixed number of atoms given!')
+                    pair_lengths = list(pair_lengths)[0]
 
                     # Define labels
-                    labels = ['distance_'+''.join([str(x) for x in p[0]])+'_'+\
-                                          ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
+                    labels = [dist_label[p]+''.join([str(x) for x in p[0]])+'_'+\
+                                            ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
 
                     # Create an entry for each distance
                     for label in labels:
@@ -386,7 +406,13 @@ class peleAnalysis:
                             # Load trajectory
                             traj = md.load(trajectory_files[epoch][t], top=topology_file)
                             # Calculate distances
-                            d = md.compute_distances(traj, pairs)*10
+                            if pair_lengths == 2:
+                                d = md.compute_distances(traj, pairs)*10
+                            elif pair_lengths == 3:
+                                d = md.compute_angles(traj, pairs)*10
+                            elif pair_lengths == 4:
+                                d = md.compute_dihedrals(traj, pairs)*10
+                                
                             # Store data
                             distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
                             distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
