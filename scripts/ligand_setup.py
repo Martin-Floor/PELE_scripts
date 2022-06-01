@@ -16,6 +16,7 @@ parser.add_argument('input_file', help='Input PDB file contatining ligand.')
 parser.add_argument('ligand_name', default="UNK", help='Three letter code of the PDB ligand name.')
 parser.add_argument('--max_min_steps', default=1000, help='Maximum ligand minimization steps.')
 parser.add_argument('--n_conformers', default=10, help='Number of conformers to generate.')
+parser.add_argument('--gas_phase', default=False, action='store_true', help='Use water solvent.')
 parser.add_argument('--functional', default='B3LYP-D3', help='DFT functional to use for conformer optimization (Jaguar).')
 parser.add_argument('--basis_set', default='CC-PVTZ', help='DFT basis set to use for conformer optimization (Jaguar).')
 parser.add_argument('--cpus', default=8, help='Number of CPUs to use in conformer optimization (Jaguar).')
@@ -32,6 +33,7 @@ args=parser.parse_args()
 
 input_file = args.input_file
 ligand_name = args.ligand_name
+gas_phase = args.gas_phase
 max_min_steps = int(args.max_min_steps)
 n_conformers = int(args.n_conformers)
 functional = args.functional
@@ -120,12 +122,9 @@ if run_conformers:
     command += '-jobname confgen_1 '
     command += '-max_num_conformers '+str(n_conformers)+' '
     command += ' -optimize -HOST localhost'
+    command += ' -WAIT'
 
-    p = subprocess.Popen(command, shell=True)
-    # Wait until conformers file is generated
-    while not os.path.exists('confgen_1-out.maegz'):
-        time.sleep(1)
-
+    p = subprocess.run(command, shell=True)
     print('Finished conformer generation.')
     os.chdir('..')
 
@@ -148,7 +147,8 @@ if run_optimization:
 
     command = '${SCHRODINGER}/jaguar run canonical.py '
     command += '-jobname=jag_batch_opt_'+functional+'_'+basis_set+' '
-    command += '-keyword=isolv=2 '
+    if not gas_phase:
+        command += '-keyword=isolv=7 '
     command += '-keyword=basis='+basis_set+' '
     command += '-keyword=ip172=2 '
     command += '-keyword=gcharge=-2 '
@@ -160,32 +160,38 @@ if run_optimization:
     command += '../'+conformer_folder+'/confgen_1-out.maegz '
     command += '-HOST localhost:'+str(simultaneous_jobs)+' '
     command += '-PARALLEL '+str(cpus)+' '
-    command += '-TMPLAUNCHDIR'
+    command += '-TMPLAUNCHDIR '
+    if generated_conformers == 1:
+        command += '-WAIT '
+        p = subprocess.run(command, shell=True)
+    else:
+        p = subprocess.Popen(command, shell=True)
+        # Check until all optimizations are finished
+        log_files = {}
+        while len(log_files) < generated_conformers:
+            log_files = {}
+            # Get log file paths
+            for f in os.listdir():
+                if 'isomer' in f and f.endswith('.log'):
+                    index = int(f.split('isomer')[-1].split('.')[0])
+                    log_files[index] = f
+            time.sleep(1)
 
-    p = subprocess.Popen(command, shell=True)
-
-    # Check until all optimizations are finished
-    log_files = {}
-    # Get log file paths
-    for f in os.listdir():
-        if 'isomer' in f and f.endswith('.log'):
-            index = int(f.split('isomer')[-1].split('.')[0])
-            log_files[index] = f
-
-    finished = []
-    while False in finished or len(finished) < generated_conformers:
         finished = []
-        for isomer in log_files:
-            ended = False
-            with open(log_files[isomer]) as isof:
-                for l in isof:
-                    if 'Finished' in l:
-                        ended = True
-            if ended:
-                finished.append(True)
-            else:
-                finished.append(False)
-        time.sleep(3)
+        while False in finished or len(finished) <= generated_conformers:
+            print(finished)
+            finished = []
+            for isomer in log_files:
+                ended = False
+                with open(log_files[isomer]) as isof:
+                    for l in isof:
+                        if 'Finished' in l:
+                            ended = True
+                if ended:
+                    finished.append(True)
+                else:
+                    finished.append(False)
+            time.sleep(3)
 
     print('Finished DFT optimization.')
     os.chdir('..')
@@ -195,9 +201,15 @@ if os.path.exists(optimization_folder):
     log_files = {}
     # Get log file paths
     for f in os.listdir(optimization_folder):
-        if 'isomer' in f and f.endswith('.log'):
-            index = int(f.split('isomer')[-1].split('.')[0])
-            log_files[index] = '../'+optimization_folder+'/'+f
+        if generated_conformers == 1:
+            if 'loner' in f and f.endswith('.log'):
+                log_files[1] = '../'+optimization_folder+'/'+f
+        else:
+            if 'isomer' in f and f.endswith('.log'):
+                index = int(f.split('isomer')[-1].split('.')[0])
+                log_files[index] = '../'+optimization_folder+'/'+f
+
+
     optimized_conformers = len(log_files)
 else:
     if run_resp:
@@ -282,7 +294,11 @@ def changeRespinParameters(respin_file, weights, system_charge, ligand_name='UNK
 
 if run_resp:
 
-    print('Calculating multi-configuration RESP charges')
+    if optimized_conformers == 1:
+        print('Calculating RESP charges fitting')
+    else:
+        print('Calculating multi-configuration RESP charges')
+
     if not os.path.exists(resp_folder):
         os.mkdir(resp_folder)
     os.chdir(resp_folder)
@@ -291,7 +307,7 @@ if run_resp:
     resp_files = {}
     with open('MC.resp', 'w') as iso:
         for f in os.listdir('../'+optimization_folder):
-            if 'isomer' in f and f.endswith('.resp'):
+            if ('isomer' in f and f.endswith('.resp')) or ('loner' in f and f.endswith('.resp')):
                 with open('../'+optimization_folder+'/'+f) as isoi:
                     for i,l in enumerate(isoi):
                         if i == 0:
@@ -302,7 +318,7 @@ if run_resp:
 
     # Create mol2 for fitting
     for f in os.listdir('../'+optimization_folder):
-        if f.endswith('.mae') and 'isomer1.01' in f:
+        if (f.endswith('.mae') and 'isomer1.01' in f) or (f.endswith('.mae') and 'loner1.01' in f):
             for st in structure.StructureReader('../'+optimization_folder+'/'+f):
                 st.write(ligand_name+'.mol2', format='mol2')
 
@@ -328,8 +344,9 @@ if run_resp:
     command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin1 -f resp1 -n '+str(optimized_conformers)+'\n'
     command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin2 -f resp2 -n '+str(optimized_conformers)
     subprocess.call(command, shell=True)
-    changeRespinParameters(ligand_name+'.respin1', probabilities, system_charge, ligand_name=ligand_name)
-    changeRespinParameters(ligand_name+'.respin2', probabilities, system_charge, ligand_name=ligand_name)
+    if optimized_conformers > 1:
+        changeRespinParameters(ligand_name+'.respin1', probabilities, system_charge, ligand_name=ligand_name)
+        changeRespinParameters(ligand_name+'.respin2', probabilities, system_charge, ligand_name=ligand_name)
     command = 'resp -O -i '+ligand_name+'.respin1 -o '+ligand_name+'.respout1 -e MC.resp -t '+ligand_name+'_qout_stage1\n'
     command += 'resp -O -i '+ligand_name+'.respin2 -o '+ligand_name+'.respout2 -e MC.resp -q '+ligand_name+'_qout_stage1 -t '+ligand_name+'_qout_stage2\n'
     command += 'antechamber -i '+ligand_name+'.mol2 -fi mol2 -o '+ligand_name+'_resp.mol2 -fo mol2 -c rc -cf '+ligand_name+'_qout_stage2\n'
