@@ -166,7 +166,7 @@ if run_optimization:
         p = subprocess.run(command, shell=True)
     else:
         p = subprocess.Popen(command, shell=True)
-        # Check until all optimizations are finished
+        # Check until all optimizations start
         log_files = {}
         while len(log_files) < generated_conformers:
             log_files = {}
@@ -177,8 +177,9 @@ if run_optimization:
                     log_files[index] = f
             time.sleep(1)
 
+        # Check until all optimizations are finished
         finished = []
-        while False in finished or len(finished) <= generated_conformers:
+        while False in finished or len(finished) < generated_conformers:
             print(finished)
             finished = []
             for isomer in log_files:
