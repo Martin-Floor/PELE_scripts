@@ -377,17 +377,17 @@ class peleAnalysis:
                             i1 = self.atom_indexes[protein][ligand][pair[0]]
                             i2 = self.atom_indexes[protein][ligand][pair[1]]
                             if len(pair) == 2:
-                                pairs.append([i1, i2])
-                                dist_label[[i1, i2]] = 'distance_'
+                                pairs.append((i1, i2))
+                                dist_label[(pair[0], pair[1])] = 'distance_'
                         if len(pair) >= 3:
                             i3 = self.atom_indexes[protein][ligand][pair[2]]
                             if len(pair) == 3:
-                                pairs.append([i1, i2, i3])
-                                dist_label[[i1, i2]] = 'angle_'
+                                pairs.append((pair[0], pair[1], pair[2]))
+                                dist_label[(i1, i2, i3)] = 'angle_'
                         if len(pair) == 4:
                             i4 = self.atom_indexes[protein][ligand][pair[3]]
-                            pairs.append([i1, i2, i3, i4])
-                            dist_label[[i1, i2]] = 'torsion_'
+                            pairs.append((i1, i2, i3, i4))
+                            dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'torsion_'
                         pair_lengths.append(len(pair))
 
                     pair_lengths = set(pair_lengths)
