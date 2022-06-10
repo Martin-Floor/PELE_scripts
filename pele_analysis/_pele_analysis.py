@@ -119,6 +119,9 @@ class peleAnalysis:
                 if ligand not in self.ligands:
                     self.ligands.append(ligand)
 
+        self.proteins = sorted(self.proteins)
+        self.ligands = sorted(self.ligands)
+
         # Read complex chain ids
         self.structure = {}
         self.ligand_structure = {}
@@ -412,7 +415,7 @@ class peleAnalysis:
                                 d = md.compute_angles(traj, pairs)*10
                             elif pair_lengths == 4:
                                 d = md.compute_dihedrals(traj, pairs)*10
-                                
+
                             # Store data
                             distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
                             distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
@@ -1101,10 +1104,10 @@ class peleAnalysis:
 
         interact(_bindingFreeEnergyMatrix, KT=KT_slider)
 
-    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=4.5, store_values=False,
-                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json'):
+    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=50,
+                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30):
 
-        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json', **metrics):
+        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json', lig_label_rot=50, **metrics):
 
             # Create a matrix of length proteins times ligands
             M = np.zeros((len(self.proteins), len(self.ligands)))
@@ -1154,10 +1157,13 @@ class peleAnalysis:
                         M[i][j] = np.nan
 
             # Sort matrix by ligand or protein
-            ligand_index = self.ligands.index(sort_by_ligand)
-            sort_indexes = M[:, ligand_index].argsort()
-            M = M[sort_indexes]
-            protein_labels = [self.proteins[x] for x in sort_indexes]
+            if sort_by_ligand == 'by_protein':
+                protein_labels = self.proteins
+            else:
+                ligand_index = self.ligands.index(sort_by_ligand)
+                sort_indexes = M[:, ligand_index].argsort()
+                M = M[sort_indexes]
+                protein_labels = [self.proteins[x] for x in sort_indexes]
 
             plt.matshow(M, cmap='autumn')
             if dA:
@@ -1175,13 +1181,30 @@ class peleAnalysis:
                     json.dump(protein_labels, of)
 
             plt.xlabel('Ligands', fontsize=12)
-            plt.xticks(range(len(self.ligands)), self.ligands, rotation=50)
+            plt.xticks(range(len(self.ligands)), self.ligands, rotation=lig_label_rot)
             plt.ylabel('Proteins', fontsize=12)
             plt.yticks(range(len(self.proteins)), protein_labels)
 
             display(plt.show())
 
         metrics = [k for k in self.data.keys() if 'metric_' in k]
+
+        metrics_sliders = {}
+        for m in metrics:
+            m_slider = FloatSlider(
+                            value=initial_threshold,
+                            min=0,
+                            max=max_metric_threshold,
+                            step=0.1,
+                            description=m+':',
+                            disabled=False,
+                            continuous_update=False,
+                            orientation='horizontal',
+                            readout=True,
+                            readout_format='.2f',
+                        )
+            metrics_sliders[m] = m_slider
+
         metrics = {m:initial_threshold for m in metrics}
 
         KT_slider = FloatSlider(
@@ -1204,9 +1227,10 @@ class peleAnalysis:
         Enc = Checkbox(value=False,
                      description='$E_{B}^{NC}$')
 
-        ligand_ddm = Dropdown(options=self.ligands)
+        ligand_ddm = Dropdown(options=self.ligands+['by_protein'])
 
-        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, dA=dA, Ec=Ec, Enc=Enc, models_file=models_file, **metrics)
+        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm,
+                 dA=dA, Ec=Ec, Enc=Enc, models_file=fixed(models_file), lig_label_rot=fixed(lig_label_rot), **metrics_sliders)
 
     def visualiseBestPoses(self, pele_data=None, initial_threshold=3.5):
 
@@ -1265,10 +1289,13 @@ class peleAnalysis:
 
         interact(getLigands, Protein=sorted(self.proteins))
 
-    def visualiseInVMD(self, protein, ligand, resnames=None, peptide=False, num_trajectories='all'):
+    def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False, num_trajectories='all'):
 
         if isinstance(resnames, str):
             resnames = [resnames]
+
+        if isinstance(resids, int):
+            resids = [resids]
 
         traj_files = self.trajectory_files[protein][ligand]
         trajectories = [t for t in sorted(traj_files[0])]
@@ -1336,6 +1363,13 @@ class peleAnalysis:
                     vmdf.write('mol addrep '+str(i)+'\n')
                     vindex += 1
                     vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "resname '+' '.join(resnames)+'"\n')
+                    vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' Licorice 0.2\n')
+                    vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' Type\n')
+                    vmdf.write('colorsel [atomselect top "(not chain L and not ion) and carbon"] orange\n')
+                if resids != None:
+                    vmdf.write('mol addrep '+str(i)+'\n')
+                    vindex += 1
+                    vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "resid '+' '.join([str(x) for x in resnames])+'"\n')
                     vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' Licorice 0.2\n')
                     vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' Type\n')
                     vmdf.write('colorsel [atomselect top "(not chain L and not ion) and carbon"] orange\n')
