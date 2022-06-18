@@ -1,6 +1,7 @@
 import os
 from . import pele_read
 from . import pele_trajectory
+from . import clustering
 
 import pandas as pd
 import matplotlib as mpl
@@ -126,6 +127,7 @@ class peleAnalysis:
         self.structure = {}
         self.ligand_structure = {}
         self.md_topology = {}
+
         if not os.path.exists('.pele_analysis/chains_ids.json') or not os.path.exists('.pele_analysis/atom_indexes.json') or force_reading:
             for protein in self.report_files:
                 if protein not in self.chain_ids:
@@ -606,7 +608,7 @@ class peleAnalysis:
                                   equilibration=equilibration,
                                   productive=productive)
 
-    def scatterPlotIndividualSimulation(self, protein, ligand, x, y, color_column=None):
+    def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns.
@@ -619,7 +621,7 @@ class peleAnalysis:
         if ligand_series.empty:
             raise ValueError('Ligand name %s not found in protein %s data!' % (ligand, protein))
 
-        plt.figure()
+        plt.figure(figsize=(10, 8))
         if color_column != None:
 
             ascending = False
@@ -660,6 +662,9 @@ class peleAnalysis:
             sc = plt.scatter(ligand_series[x],
                 ligand_series[y],
                 label=protein+'_'+ligand)
+
+        if not isinstance(vertical_line, type(None)):
+            plt.axvline(vertical_line, ls='--', lw=0.5)
 
         plt.xlabel(x)
         plt.ylabel(y)
@@ -717,16 +722,16 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def bindingEnergyLandscape(self):
+    def bindingEnergyLandscape(self, vertical_line=None):
         """
         Plot binding energy as interactive plot.
         """
-        def getLigands(Protein, by_metric=True):
+        def getLigands(Protein, by_metric=True, vertical_line=None):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
-            interact(getDistance, Protein=fixed(Protein), Ligand=ligands, by_metric=fixed(by_metric))
+            interact(getDistance, Protein=fixed(Protein), Ligand=ligands, vertical_line=fixed(vertical_line), by_metric=fixed(by_metric))
 
-        def getDistance(Protein, Ligand, by_metric=True):
+        def getDistance(Protein, Ligand, vertical_line=None, by_metric=True):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
 
@@ -761,12 +766,14 @@ class peleAnalysis:
                      Protein=fixed(Protein),
                      Ligand=fixed(Ligand),
                      Distance=distances,
-                     Color=color_columns)
+                     Color=color_columns,
+                     vertical_line=fixed(vertical_line))
 
-        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color):
-            self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', color_column=Color)
+        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None):
+            self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy',
+                                                 vertical_line=vertical_line, color_column=Color)
 
-        interact(getLigands, Protein=sorted(self.proteins), by_metric=False)
+        interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line), by_metric=False)
 
     def plotDistributions(self):
         """
@@ -1105,16 +1112,20 @@ class peleAnalysis:
         interact(_bindingFreeEnergyMatrix, KT=KT_slider)
 
     def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=50,
-                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30):
+                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30, pele_data=None):
 
-        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json', lig_label_rot=50, **metrics):
+        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json',
+                                     lig_label_rot=50, pele_data=None, **metrics):
+
+            if isinstance(pele_data, type(None)):
+                pele_data = self.data
 
             # Create a matrix of length proteins times ligands
             M = np.zeros((len(self.proteins), len(self.ligands)))
 
             # Calculate the probaility of each state
             for i,protein in enumerate(self.proteins):
-                protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+                protein_series = pele_data[pele_data.index.get_level_values('Protein') == protein]
 
                 for j, ligand in enumerate(self.ligands):
                     ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
@@ -1152,7 +1163,6 @@ class peleAnalysis:
                             M[i][j] = Ebc
                         elif Enc:
                             M[i][j] = Ebnc
-
                     else:
                         M[i][j] = np.nan
 
@@ -1187,7 +1197,11 @@ class peleAnalysis:
 
             display(plt.show())
 
-        metrics = [k for k in self.data.keys() if 'metric_' in k]
+        if isinstance(pele_data, type(None)):
+            pele_data = self.data
+
+        # Add checks for the given pele data pandas df
+        metrics = [k for k in pele_data.keys() if 'metric_' in k]
 
         metrics_sliders = {}
         for m in metrics:
@@ -1210,7 +1224,7 @@ class peleAnalysis:
         KT_slider = FloatSlider(
                         value=0.593,
                         min=0.593,
-                        max=20.0,
+                        max=60.0,
                         step=0.1,
                         description='KT:',
                         disabled=False,
@@ -1229,7 +1243,7 @@ class peleAnalysis:
 
         ligand_ddm = Dropdown(options=self.ligands+['by_protein'])
 
-        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm,
+        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, pele_data=pele_data,
                  dA=dA, Ec=Ec, Enc=Enc, models_file=fixed(models_file), lig_label_rot=fixed(lig_label_rot), **metrics_sliders)
 
     def visualiseBestPoses(self, pele_data=None, initial_threshold=3.5):
@@ -1275,8 +1289,17 @@ class peleAnalysis:
         def getLigands(Protein):
             protein_series = pele_data[pele_data.index.get_level_values('Protein') == Protein]
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
+
+            n_poses_slider = IntSlider(
+                            value=10,
+                            min=1,
+                            max=50,
+                            description='Poses:',
+                            readout=True,
+                            readout_format='.0f')
+
             interact(_visualiseBestPoses, Protein=fixed(Protein),
-                     Ligand=ligands,
+                     Ligand=ligands, n_smallest=n_poses_slider,
                      **metrics)
 
         # Define pele data as self.data if non given
@@ -1285,11 +1308,23 @@ class peleAnalysis:
 
         metrics = [k for k in pele_data.keys() if 'metric_' in k]
 
-        metrics = {m:initial_threshold for m in metrics}
+        widget_metrics = {}
+        for metric in metrics:
+            widget_metrics[metric] = FloatSlider(
+                                    value=initial_threshold,
+                                    min=0,
+                                    max=30,
+                                    step=0.05,
+                                    description=metric+':',
+                                    readout_format='.2f')
+        metrics = widget_metrics
+
+        # interactive_output(getLigands, {'Protein': protein})
 
         interact(getLigands, Protein=sorted(self.proteins))
 
-    def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False, num_trajectories='all'):
+    def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False,
+                      num_trajectories='all', epochs=None, trajectories=None):
 
         if isinstance(resnames, str):
             resnames = [resnames]
@@ -1298,9 +1333,24 @@ class peleAnalysis:
             resids = [resids]
 
         traj_files = self.trajectory_files[protein][ligand]
-        trajectories = [t for t in sorted(traj_files[0])]
-        if isinstance(num_trajectories, int):
-            trajectories = random.choices(trajectories, k=num_trajectories)
+        trajs = [t for t in sorted(traj_files[0])]
+
+        if num_trajectories == 'all' and isinstance(trajectories, type(None)):
+            num_trajectories = len(trajs)
+
+        if not isinstance(trajectories, type(None)):
+            if isinstance(trajectories, list):
+                trajectories = [trajs[i-1] for i in trajectories]
+            else:
+                raise ValueError('trajectories must be given as a list')
+
+        elif isinstance(num_trajectories, int):
+            trajectories = random.choices(trajs, k=num_trajectories)
+
+
+        if not isinstance(epochs, type(None)):
+            if not isinstance(epochs, list):
+                raise ValueError('epochs must be given as a list')
 
         with open('.load_vmd.tcl', 'w') as vmdf:
 
@@ -1320,7 +1370,11 @@ class peleAnalysis:
                 vindex = 0
                 vmdf.write('mol new '+topology+'\n')
                 for epoch in sorted(traj_files):
-                    vmdf.write('mol addfile '+traj_files[epoch][traj]+'\n')
+                    if isinstance(epochs, list):
+                        if epoch in epochs:
+                            vmdf.write('mol addfile '+traj_files[epoch][traj]+'\n')
+                    else:
+                        vmdf.write('mol addfile '+traj_files[epoch][traj]+'\n')
                 vmdf.write('mol modselect '+str(vindex)+' '+str(i)+' "not chain L"\n')
                 vmdf.write('mol modstyle '+str(vindex)+' '+str(i)+' newcartoon\n')
                 vmdf.write('mol modcolor '+str(vindex)+' '+str(i)+' ColorID 3\n')
@@ -1661,6 +1715,48 @@ class peleAnalysis:
         protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         return ligand_series
+
+
+    ### Clustering methods
+    def computeLigandRMSDClusters(self, rmsd_threshold=3):
+
+        # Iterate by protein
+        for protein in sorted(self.trajectory_files):
+
+            # Iterate by ligand
+            for ligand in sorted(self.trajectory_files[protein]):
+
+                # Get trajectory and topology files
+                trajectory_files = self.trajectory_files[protein][ligand]
+                topology_file = self.topology_files[protein][ligand]
+
+                # Get trajectory and topology files
+                ligand_traj = None
+
+                # Define reference frame using the topology
+                reference = md.load(topology_file)
+
+                for epoch in sorted(trajectory_files):
+                    for t in sorted(trajectory_files[epoch]):
+
+                        # Load trajectory
+                        traj = md.load(trajectory_files[epoch][t], top=topology_file)
+
+                        # Align trajectory to protein atoms only
+                        protein_atoms = traj.topology.select('protein')
+                        traj.superpose(reference, atom_indices=protein_atoms)
+
+                        # Append to ligand-only trajectory
+                        ligand_atoms = traj.topology.select('resname '+self.ligand_names[ligand])
+
+                        if isinstance(ligand_traj, type(None)):
+                            ligand_traj = traj.atom_slice(ligand_atoms)
+                        else:
+                            ligand_traj = md.join([ligand_traj, traj.atom_slice(ligand_atoms)])
+
+                # Start RMSD clustering
+                clusters = clustering.clusterByRMSD(ligand_traj, threshold=rmsd_threshold/10.0)
+                return ligand_traj, clusters
 
     def _saveDataState(self):
         self.data.to_csv('.pele_analysis/data.csv')
