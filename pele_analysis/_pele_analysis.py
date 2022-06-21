@@ -46,6 +46,7 @@ class peleAnalysis:
         # Check if dataframe exists
         self.pele_folder = pele_folder
         self.pele_output_folder = pele_output_folder
+        self.separator = separator
 
         # Get all PELE folders' paths
         self.pele_directories = {}
@@ -59,6 +60,7 @@ class peleAnalysis:
         self.equilibration['report'] = {}
         self.equilibration['trajectory'] = {}
 
+        # Clustering Attributes
         self.proteins = []
         self.ligands = []
 
@@ -81,8 +83,8 @@ class peleAnalysis:
 
                 # Store paths to the pele folders
                 pele_dir = self.pele_folder+'/'+d
-                protein = d.split(separator)[0]
-                ligand = d.split(separator)[1]
+                protein = d.split(self.separator)[0]
+                ligand = d.split(self.separator)[1]
                 if protein not in self.pele_directories:
                     self.pele_directories[protein] = {}
                 if protein not in self.report_files:
@@ -239,7 +241,7 @@ class peleAnalysis:
         for protein in sorted(self.report_files):
             for ligand in sorted(self.report_files[protein]):
                 if verbose:
-                    print('\t'+protein+'_'+ligand, end=' ')
+                    print('\t'+protein+self.separator+ligand, end=' ')
                     start = time.time()
                 data = pele_read.readReportFiles(self.report_files[protein][ligand],
                                                  protein,
@@ -285,7 +287,7 @@ class peleAnalysis:
                     continue
 
                 if verbose:
-                    print('\t'+protein+'_'+ligand, end=' ')
+                    print('\t'+protein+self.separator+ligand, end=' ')
                     start = time.time()
 
                 data = pele_read.readReportFiles(self.equilibration['report'][protein][ligand],
@@ -344,7 +346,7 @@ class peleAnalysis:
             for ligand in sorted(self.trajectory_files[protein]):
 
                 # Define a different distance output file for each pele run
-                distance_file = '.pele_analysis/distances/'+protein+'_'+ligand+'.csv'
+                distance_file = '.pele_analysis/distances/'+protein+self.separator+ligand+'.csv'
 
                 # Check if distance have been previously calculated
                 if os.path.exists(distance_file) and not overwrite:
@@ -648,7 +650,7 @@ class peleAnalysis:
                     c=color_values,
                     cmap=colormap,
                     norm=norm,
-                    label=protein+'_'+ligand)
+                    label=protein+self.separator+ligand)
             else:
                 ligand_series = ligand_series.sort_values(color_column, ascending=ascending)
                 color_values = ligand_series[color_column]
@@ -656,12 +658,12 @@ class peleAnalysis:
                     ligand_series[y],
                     c=color_values,
                     cmap=colormap,
-                    label=protein+'_'+ligand)
+                    label=protein+self.separator+ligand)
             cbar = plt.colorbar(sc, label=color_column)
         else:
             sc = plt.scatter(ligand_series[x],
                 ligand_series[y],
-                label=protein+'_'+ligand)
+                label=protein+self.separator+ligand)
 
         if not isinstance(vertical_line, type(None)):
             plt.axvline(vertical_line, ls='--', lw=0.5)
@@ -1716,9 +1718,244 @@ class peleAnalysis:
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         return ligand_series
 
+    def getLigandTrajectory(self, protein, ligand, overwrite=False, return_dictionary=False,):
+        """
+        Generate a single trajectory containing only the ligand coordinates aligned to
+        the protein framework for all epochs and trajectories. Useful for clustering purposes.
+        A dictionary mapping the trajectory indexes to the pele data DataFrame will also be stored.
+
+        Parameters
+        ==========
+        protein : str
+            Name of the protein system
+        ligand : str
+            Name of the ligand
+        overwrite : bool
+            Recalculate the ligand trajectory from the PELE output?
+        return_dictionary : bool
+            Return the trajectory indexes to PELE data mapping dicionary? Will return
+            a tuple: (ligand_traj, traj_dict).
+        """
+
+        ligand_traj_dir = '.pele_analysis/ligand_traj'
+        if not os.path.exists(ligand_traj_dir):
+            os.mkdir(ligand_traj_dir)
+
+        ligand_path = ligand_traj_dir+'/'+protein+self.separator+ligand
+        ligand_top_path = ligand_path+'.pdb'
+        ligand_traj_path = ligand_path+'.dcd'
+        ligand_traj_dict_path = ligand_path+'.json'
+
+        # Create ligand trajectory if it does not exists
+        if not os.path.exists(ligand_traj_path) or overwrite:
+
+            # Get trajectory and topology files
+            trajectory_files = self.trajectory_files[protein][ligand]
+            topology_file = self.topology_files[protein][ligand]
+
+            # Get trajectory and topology files
+            ligand_traj = None
+            traj_dict = {}
+
+            # Define reference frame using the topology
+            reference = md.load(topology_file)
+
+            # Append to ligand-only trajectory
+            ligand_atoms = reference.topology.select('resname '+self.ligand_names[ligand])
+
+            i = 0
+            for epoch in sorted(trajectory_files):
+                for t in sorted(trajectory_files[epoch]):
+                    # Load trajectory
+                    traj = md.load(trajectory_files[epoch][t], top=topology_file)
+
+                    # Align trajectory to protein atoms only
+                    protein_atoms = traj.topology.select('protein')
+                    traj.superpose(reference, atom_indices=protein_atoms)
+
+                    if isinstance(ligand_traj, type(None)):
+                        ligand_traj = traj.atom_slice(ligand_atoms)
+                    else:
+                        ligand_traj = md.join([ligand_traj, traj.atom_slice(ligand_atoms)])
+
+                    # Store PELE data into mapping dictionary
+                    for x in range(i, ligand_traj.n_frames):
+                        traj_dict[x] = (epoch, t, x-i)
+                    i = ligand_traj.n_frames
+
+            reference.atom_slice(ligand_atoms).save(ligand_top_path)
+            ligand_traj.save(ligand_traj_path)
+            self._saveDictionaryAsJson(traj_dict, ligand_traj_dict_path)
+
+        # Read ligand trajectory if found
+        else:
+            if not os.path.exists(ligand_traj_dict_path):
+                print('Warining: Dictionary mapping ligand trajectory indexes to pele data is missing!')
+
+            print('Ligand trajectory for %s and %s found. Reading it from file.' % (protein, ligand))
+            ligand_traj = md.load(ligand_traj_path, top=ligand_top_path)
+            traj_dict = self._loadDictionaryFromJson(ligand_traj_dict_path)
+
+        if return_dictionary:
+            return ligand_traj, return_dictionary
+        else:
+            return ligand_traj
+
+    ### Extract poses methods
+
+    def getBestPELEPoses(self, filter_values, column='Binding Energy', n_models=1, return_failed=False):
+        """
+        Get best models based on the best column score and a set of metrics with specified thresholds.
+        The filter thresholds must be provided with a dictionary using the metric names as keys
+        and the thresholds as the values.
+
+        Parameters
+        ==========
+        n_models : int
+            The number of poses to select for each protein + ligand pele simulation.
+        filter_values : dict
+            Thresholds for the filter.
+        return_failed : bool
+            Whether to return a list of the pele without any poses fulfilling
+            the selection criteria. It is returned as a tuple (index 0) alongside
+            the filtered data frame (index 1).
+        """
+
+        best_poses = pd.DataFrame()
+        bp = []
+        failed = []
+        for model in self.proteins:
+            protein_series = self.data[self.data.index.get_level_values('Protein') == model]
+            for ligand in self.ligands:
+                ligand_data = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
+                for metric in filter_values:
+                    ligand_data = ligand_data[ligand_data['metric_'+metric] < filter_values[metric]]
+                if ligand_data.empty:
+                    failed.append((model, ligand))
+                    continue
+                if ligand_data.shape[0] < n_models:
+                    print('WARNING: less than %s models available for pele %s + %s simulation' % (n_models, model, ligand))
+                for i in ligand_data[column].nsmallest(n_models).index:
+                    bp.append(i)
+
+        if return_failed:
+
+            return failed, self.data[self.docking_data.index.isin(bp)]
+
+        return self.data[self.data.index.isin(bp)]
+
+    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None,
+                                    min_threshold=3.5, max_threshold=5.0, step_size=0.1):
+        """
+        """
+        extracted = []
+        selected_indexes = []
+
+        for t in np.arange(min_threshold, max_threshold+(step_size/10), step_size):
+            filter_values = {m:t for m in metrics}
+            best_poses = self.getBestPELEPoses(filter_values, column=column, n_models=1)
+            mask = []
+            if not isinstance(ligands, type(None)):
+                for level in best_poses.index.get_level_values('Ligand'):
+                    if level in ligands:
+                        mask.append(True)
+                    else:
+                        mask.append(False)
+                pele_data = best_poses[mask]
+            else:
+                pele_data = best_poses
+
+            for row in pele_data.index:
+                if row[:2] not in extracted:
+                    selected_indexes.append(row)
+                if row[:2] not in extracted:
+                    extracted.append(row[:2])
+
+        final_mask = []
+        for row in self.data.index:
+            if row in selected_indexes:
+                final_mask.append(True)
+            else:
+                final_mask.append(False)
+        pele_data = self.data[final_mask]
+
+        return pele_data
+
+    def extractPELEPoses(self, pele_data, output_folder, separator='-'):
+        """
+        Extract pele poses present in a pele dataframe. The PELE DataFrame
+        contains the same structure as the self.data dataframe, attribute of
+        this class.
+
+        Parameters
+        ==========
+        pele_data : pandas.DataFrame
+            Datframe containing the entries for the poses to be extracted
+        output_folder : str
+            Path to the folder where the pele poses structures will be saved.
+        separator : str
+            Symbol used to separate protein, ligand, epoch, trajectory and pele step for each pose filename.
+        """
+
+        # Create output folder
+        if not os.path.exists(output_folder):
+            os.mkdir(output_folder)
+
+        # Crea Bio PDB parser and io
+        parser = PDB.PDBParser()
+        io = PDB.PDBIO()
+
+        # Extract pele poses with mdtraj
+
+        # Check the separator is not in protein or ligand names
+        for protein in self.proteins:
+            if separator in protein:
+                raise ValueError('The separator %s was found in protein name %s. Please use a different separator symbol.' % (separator, model))
+
+            protein_data = pele_data[pele_data.index.get_level_values('Protein') == protein]
+
+            for ligand in self.ligands:
+
+                if separator in ligand:
+                    raise ValueError('The separator %s was found in ligand name %s. Please use a different separator symbol.' % (separator, ligand))
+
+                ligand_data = protein_data[protein_data.index.get_level_values('Ligand') == ligand]
+
+                if not ligand_data.empty:
+                    traj = pele_trajectory.loadTrajectoryFrames(ligand_data,
+                                                                self.trajectory_files[protein][ligand],
+                                                                self.topology_files[protein][ligand])
+
+                    # Create a topology file with Bio.PDB
+                    pdb_topology = parser.get_structure(protein, self.topology_files[protein][ligand])
+                    atoms = [a for a in pdb_topology.get_atoms()]
+
+                    # Pass mdtraj coordinates to Bio.PDB structure to preserve correct chains
+                    for i, entry in enumerate(ligand_data.index):
+                        filename = separator.join([str(x) for x in entry])+'.pdb'
+                        xyz = traj[i].xyz[0]
+                        for j in range(traj.n_atoms):
+                            atoms[j].coord = xyz[j]
+
+                    # Save structure
+                    io.set_structure(pdb_topology)
+                    io.save(output_folder+'/'+filename)
 
     ### Clustering methods
-    def computeLigandRMSDClusters(self, rmsd_threshold=3):
+    def computeLigandRMSDClusters(self, rmsd_threshold=3, overwrite=False):
+        """
+        Cluster ligand conformations by RMSD from a ligand-only trajectory aligned
+        to the protein framework. Clustering belonging is added to the pele data
+        DataFrame (self.data) as a column 'rmsd_cluster_i', where i is the
+        rmsd_threshold employed.
+
+        Parameters
+        ==========
+        rmsd_threshold : float
+            RMSD threshold empoyed to separate clusters.
+        overwrite : bool
+            Whether to recalculate the ligand trajectory (see getLigandTrajectory()).
+        """
 
         # Iterate by protein
         for protein in sorted(self.trajectory_files):
@@ -1726,33 +1963,9 @@ class peleAnalysis:
             # Iterate by ligand
             for ligand in sorted(self.trajectory_files[protein]):
 
-                # Get trajectory and topology files
-                trajectory_files = self.trajectory_files[protein][ligand]
-                topology_file = self.topology_files[protein][ligand]
-
-                # Get trajectory and topology files
-                ligand_traj = None
-
-                # Define reference frame using the topology
-                reference = md.load(topology_file)
-
-                for epoch in sorted(trajectory_files):
-                    for t in sorted(trajectory_files[epoch]):
-
-                        # Load trajectory
-                        traj = md.load(trajectory_files[epoch][t], top=topology_file)
-
-                        # Align trajectory to protein atoms only
-                        protein_atoms = traj.topology.select('protein')
-                        traj.superpose(reference, atom_indices=protein_atoms)
-
-                        # Append to ligand-only trajectory
-                        ligand_atoms = traj.topology.select('resname '+self.ligand_names[ligand])
-
-                        if isinstance(ligand_traj, type(None)):
-                            ligand_traj = traj.atom_slice(ligand_atoms)
-                        else:
-                            ligand_traj = md.join([ligand_traj, traj.atom_slice(ligand_atoms)])
+                # Create or read ligand trajectory
+                ligand_traj, ligand_traj_dict = self.getLigandTrajectory(protein, ligand, overwrite=overwrite,
+                                                                         return_dictionary=True)
 
                 # Start RMSD clustering
                 clusters = clustering.clusterByRMSD(ligand_traj, threshold=rmsd_threshold/10.0)

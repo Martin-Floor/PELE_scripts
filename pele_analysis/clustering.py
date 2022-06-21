@@ -122,6 +122,18 @@ def clusterByRMSD(trajectory, threshold=None, n_clusters=None, energies=None, ce
 
     return clusters
 
+def calculateRMSDMatrix(self, trajectory, output_file='rmsd_matrix.npy', overwrite=False,
+                        verbose=True):
+    """
+    Calculate an RMSD matrix for the given trajectory.
+
+    Parameters
+    ==========
+    trajectory : mdtraj.Trajectory
+        
+    """
+
+
 def clusterMatrix(distance_matrix, threshold):
     """
     The function generate clusters from a distance matrix by using a specfied threshold
