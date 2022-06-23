@@ -15,6 +15,8 @@ Scripts for PELE:
     
   The final output file is found in folder 03_resp_charges (the only .mae file there).
 
+# PELE analysis
+
 ## Pending implementation
 
 - When visualising the trajectory
