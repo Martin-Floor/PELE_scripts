@@ -268,7 +268,7 @@ def changeRespinParameters(respin_file, weights, system_charge, ligand_name='UNK
     with open(respin_file+'.tmp', 'w') as trif:
         with open(respin_file) as rif:
             nmol = False
-            chrg = False
+            probability = False
             count = 0
             for l in rif:
                 if 'nmol' in l:
@@ -284,12 +284,12 @@ def changeRespinParameters(respin_file, weights, system_charge, ligand_name='UNK
                     count += 1
                     continue
                 if 'Resp charges for organic molecule' in l:
-                    chrg = True
+                    probability = True
                     trif.write(l.replace('organic molecule', ligand_name))
                     continue
-                if chrg and l!= '\n':
+                if probability and l!= '\n' and '    1.0' in l:
                     trif.write(l.replace(l.split()[0], str(system_charge)))
-                    chrg = False
+                    probability = False
                     continue
                 trif.write(l)
     shutil.move(respin_file+'.tmp', respin_file)
@@ -339,11 +339,25 @@ if run_resp:
                             else:
                                 iso.write(l)
 
+    # Select lowest energy conformer
+    lowest_energy_isomer = 0
+    for isomer in optimization_energies:
+        if isomer not in failed_optimizations:
+            final_energy = optimization_energies[isomer][-1]
+            if lowest_energy_isomer == 0:
+                lowest_energy_isomer = isomer
+                lowest_energy = final_energy
+            elif final_energy < lowest_energy:
+                lowest_energy_isomer = isomer
+                lowest_energy = final_energy
+
     # Create mol2 for fitting # move
-    for f in os.listdir('../'+optimization_folder):
-        if (f.endswith('.mae') and 'isomer1.01' in f) or (f.endswith('.mae') and 'loner1.01' in f):
-            for st in structure.StructureReader('../'+optimization_folder+'/'+f):
-                st.write(ligand_name+'.mol2', format='mol2')
+    for f in sorted(os.listdir('../'+optimization_folder)):
+        if (f.endswith('01.mae') and 'isomer' in f) or (f.endswith('01.mae') and 'loner' in f):
+            isomer = int(f.split('isomer')[-1].split('.')[0])
+            if isomer == lowest_energy_isomer:
+                for st in structure.StructureReader('../'+optimization_folder+'/'+f):
+                    st.write(ligand_name+'.mol2', format='mol2')
 
     # Calcualte Boltzmann probabilities
     KT = 0.593 # kcal/mol
@@ -354,7 +368,7 @@ if run_resp:
     partition_coefficient = np.sum(np.exp(-relative_energies/KT))
     probabilities = np.exp(-relative_energies/KT)/partition_coefficient
 
-    command = 'antechamber -fi mol2 -fo ac -i '+ligand_name+'.mol2'+' -o '+ligand_name+'.ac\n'
+    command = 'antechamber -fi mol2 -fo ac -i '+ligand_name+'.mol2'+' -o '+ligand_name+'.ac -nc '+str(system_charge)+'\n'
     command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin1 -f resp1 -n '+str(optimized_conformers)+'\n'
     command += 'respgen -i '+ligand_name+'.ac -o '+ligand_name+'.respin2 -f resp2 -n '+str(optimized_conformers)
     subprocess.call(command, shell=True)
