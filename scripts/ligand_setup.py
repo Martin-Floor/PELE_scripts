@@ -168,19 +168,21 @@ if run_optimization:
         p = subprocess.Popen(command, shell=True)
         # Check until all optimizations start
         log_files = {}
-        while len(log_files) < generated_conformers:
+        previous= len(log_files)
+        current= len(log_files)
+        while current < generated_conformers:
             log_files = {}
             # Get log file paths
             for f in os.listdir():
                 if 'isomer' in f and f.endswith('.log'):
                     index = int(f.split('isomer')[-1].split('.')[0])
                     log_files[index] = f
+            current = len(log_files)
             time.sleep(1)
 
         # Check until all optimizations are finished
         finished = []
         while False in finished or len(finished) < generated_conformers:
-            print(finished)
             finished = []
             for isomer in log_files:
                 ended = False
@@ -209,7 +211,6 @@ if os.path.exists(optimization_folder):
             if 'isomer' in f and f.endswith('.log'):
                 index = int(f.split('isomer')[-1].split('.')[0])
                 log_files[index] = '../'+optimization_folder+'/'+f
-
 
     optimized_conformers = len(log_files)
 else:
@@ -304,33 +305,45 @@ if run_resp:
         os.mkdir(resp_folder)
     os.chdir(resp_folder)
 
-    # Create MultiConfiguration resp file for antechamber
-    resp_files = {}
-    with open('MC.resp', 'w') as iso:
-        for f in os.listdir('../'+optimization_folder):
-            if ('isomer' in f and f.endswith('.resp')) or ('loner' in f and f.endswith('.resp')):
-                with open('../'+optimization_folder+'/'+f) as isoi:
-                    for i,l in enumerate(isoi):
-                        if i == 0:
-                            ls = l.split()
-                            iso.write('%4s %-8s\n' % (ls[0], ls[1]))
-                        else:
-                            iso.write(l)
-
-    # Create mol2 for fitting
-    for f in os.listdir('../'+optimization_folder):
-        if (f.endswith('.mae') and 'isomer1.01' in f) or (f.endswith('.mae') and 'loner1.01' in f):
-            for st in structure.StructureReader('../'+optimization_folder+'/'+f):
-                st.write(ligand_name+'.mol2', format='mol2')
-
     ## Read optimization energies
     optimization_energies = {}
+    failed_optimizations = []
     for isomer in sorted(log_files):
         optimization_energies[isomer] = []
         with open(log_files[isomer]) as isof:
             for l in isof:
                 if 'Total energy' in l:
                     optimization_energies[isomer].append(float(l.split()[2]))
+                elif 'Error' in l:
+                    if isomer not in failed_optimizations:
+                        print('Optimization for isomer %s failed with:' % isomer)
+                        failed_optimizations.append(isomer)
+                    print(l) # Print error lines
+
+    # Remove from log files failed conformers
+    for isomer in failed_optimizations:
+        optimized_conformers -= 1 # Update the number of optimized conformers
+        del log_files[isomer]
+
+    # Create MultiConfiguration resp file for antechamber
+    with open('MC.resp', 'w') as iso:
+        for f in os.listdir('../'+optimization_folder):
+            if ('isomer' in f and f.endswith('.resp')) or ('loner' in f and f.endswith('.resp')):
+                isomer = int(f.split('isomer')[-1].split('.')[0])
+                if isomer not in failed_optimizations: # Remove resp files from failed optimzations
+                    with open('../'+optimization_folder+'/'+f) as isoi:
+                        for i,l in enumerate(isoi):
+                            if i == 0:
+                                ls = l.split()
+                                iso.write('%4s %-8s\n' % (ls[0], ls[1]))
+                            else:
+                                iso.write(l)
+
+    # Create mol2 for fitting # move
+    for f in os.listdir('../'+optimization_folder):
+        if (f.endswith('.mae') and 'isomer1.01' in f) or (f.endswith('.mae') and 'loner1.01' in f):
+            for st in structure.StructureReader('../'+optimization_folder+'/'+f):
+                st.write(ligand_name+'.mol2', format='mol2')
 
     # Calcualte Boltzmann probabilities
     KT = 0.593 # kcal/mol
