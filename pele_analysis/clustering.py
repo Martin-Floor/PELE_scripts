@@ -1,8 +1,9 @@
 import mdtraj as md
 import numpy as np
+import time
 
 def clusterByRMSD(trajectory, threshold=None, n_clusters=None, energies=None, centroids=False,
-                  max_iter=20):
+                  max_iter=20, rmsd_matrix_file='rmsd_matrix.npy'):
     """
     Cluster trajectories by RMSD. A target number of clusters can be set and the method will
     find a threshold RMSD distance that generates an approximate number of clusters as possible.
@@ -32,22 +33,8 @@ def clusterByRMSD(trajectory, threshold=None, n_clusters=None, energies=None, ce
     # Define clusters Dictionary
     clusters = {}
 
-    print('Calculating RMSD matrix')
-    n_frames = trajectory.n_frames
-    rmsd = np.zeros((n_frames, n_frames))
-    for i in range(n_frames):
-        rmsd[i] = md.rmsd(trajectory, trajectory, frame=i)
-
-    # Summary statistics for RMSD matrix
-    mask = np.ones(rmsd.shape, dtype=bool)
-    np.fill_diagonal(mask, 0)
-    average_value = np.average(rmsd[mask])
-    max_value = rmsd[mask].max()
-    min_value = rmsd[mask].min()
-    print()
-    print('Average RMSD value: %.4f nm' % average_value)
-    print('Maximum RMSD value: %.4f nm' % max_value)
-    print('Minimum RMSD value: %.4f nm' % min_value)
+    # Compute or read RMSD matrix
+    rmsd = calculateRMSDMatrix(trajectory, output_file=rmsd_matrix_file)
 
     if n_clusters != None:
 
@@ -122,7 +109,7 @@ def clusterByRMSD(trajectory, threshold=None, n_clusters=None, energies=None, ce
 
     return clusters
 
-def calculateRMSDMatrix(self, trajectory, output_file='rmsd_matrix.npy', overwrite=False,
+def calculateRMSDMatrix(trajectory, output_file='rmsd_matrix.npy', overwrite=False,
                         verbose=True):
     """
     Calculate an RMSD matrix for the given trajectory.
@@ -130,8 +117,31 @@ def calculateRMSDMatrix(self, trajectory, output_file='rmsd_matrix.npy', overwri
     Parameters
     ==========
     trajectory : mdtraj.Trajectory
-        
+
     """
+    n_frames = trajectory.n_frames
+    rmsd = np.zeros((n_frames, n_frames))
+
+    if verbose:
+        print('Calculating RMSD matrix')
+    #Calculate RMSD matrix
+    for i in range(n_frames):
+        if verbose:
+            print('\tCompleted %.2f%%' % (i/n_frames), end='\r')
+        rmsd[i] = md.rmsd(trajectory, trajectory, frame=i)
+
+    # Summary statistics for RMSD matrix
+    mask = np.ones(rmsd.shape, dtype=bool)
+    np.fill_diagonal(mask, 0)
+    average_value = np.average(rmsd[mask])
+    max_value = rmsd[mask].max()
+    min_value = rmsd[mask].min()
+    print()
+    print('Average RMSD value: %.4f nm' % average_value)
+    print('Maximum RMSD value: %.4f nm' % max_value)
+    print('Minimum RMSD value: %.4f nm' % min_value)
+
+    return rmsd
 
 
 def clusterMatrix(distance_matrix, threshold):
