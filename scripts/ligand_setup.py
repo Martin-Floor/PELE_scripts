@@ -350,6 +350,7 @@ if run_resp:
             elif final_energy < lowest_energy:
                 lowest_energy_isomer = isomer
                 lowest_energy = final_energy
+    print('Lowest energy isomer is %s' % lowest_energy_isomer)
 
     # Create mol2 for fitting # move
     for f in sorted(os.listdir('../'+optimization_folder)):
