@@ -1859,7 +1859,110 @@ class peleAnalysis:
                     io.save(output_folder+'/'+filename)
 
     ### Clustering methods
-    def getLigandTrajectory(self, protein, ligand, overwrite=False, return_dictionary=False,):
+
+    def getLigandTrajectoryPerTrajectory(self, protein, ligand,  overwrite=False,
+                                         return_dictionary=False, return_paths=False):
+        """
+        Generate a full-ligand (only ligand coordinates) trajectories per every PELE trajectory aligned to
+        the protein framework for all epochs. Useful for clustering purposes. A dictionary mapping the trajectory
+        indexes to the pele data DataFrame will also be stored.
+
+        Parameters
+        ==========
+        protein : str
+            Name of the protein system
+        ligand : str
+            Name of the ligand
+        overwrite : bool
+            Recalculate the ligand trajectory from the PELE output?
+        return_dictionary : bool
+            Return the trajectory indexes to PELE data mapping dicionary? Will return
+            a tuple: (ligand_traj, traj_dict).
+        return_paths : bool
+            Return a list containing the path to the ligand trajectory files.
+
+        Returns
+        =======
+        Default: ligand_traj : dict
+            Dictionary by trajectory index with the mdtraj.Trajectory objects as values.
+        """
+
+        ligand_traj_dir = '.pele_analysis/ligand_traj'
+        if not os.path.exists(ligand_traj_dir):
+            os.mkdir(ligand_traj_dir)
+
+        ligand_path = ligand_traj_dir+'/'+protein+self.separator+ligand
+        ligand_top_path = ligand_path+'.pdb'
+        ligand_traj_dict_path = ligand_path+'.json'
+
+        # Get trajectory and topology files
+        trajectory_files = self.trajectory_files[protein][ligand]
+        topology_file = self.topology_files[protein][ligand]
+
+        # Get trajectory and topology files
+        ligand_traj = None
+        traj_dict = {}
+        ligand_traj_paths = []
+
+        # Define reference frame using the topology
+        reference = md.load(topology_file)
+
+        # Append to ligand-only trajectory
+        ligand_atoms = reference.topology.select('resname '+self.ligand_names[ligand])
+
+        # Store topology as PDB
+        reference.atom_slice(ligand_atoms).save(ligand_top_path)
+
+        # Read or save ligand trajectories by PELE trajectory
+        ligand_traj = {}
+
+        for t in sorted(trajectory_files[0]):
+            i = 0
+            ligand_traj[t] = None
+            traj_dict[t] = {}
+            ligand_traj_path = ligand_path+'_'+str(t)+'.dcd'
+
+            if not os.path.exists(ligand_traj_path) or overwrite:
+                for epoch in sorted(trajectory_files):
+                    # Load trajectory
+                    traj = md.load(trajectory_files[epoch][t], top=topology_file)
+
+                    # Align trajectory to protein atoms only
+                    protein_atoms = traj.topology.select('protein')
+                    traj.superpose(reference, atom_indices=protein_atoms)
+
+                    if isinstance(ligand_traj[t], type(None)):
+                        ligand_traj[t] = traj.atom_slice(ligand_atoms)
+                    else:
+                        ligand_traj[t] = md.join([ligand_traj[t], traj.atom_slice(ligand_atoms)])
+
+                    # Store PELE data into mapping dictionary
+                    for x in range(i, ligand_traj[t].n_frames):
+                        traj_dict[t][x] = (epoch, t, x-i)
+                    i = ligand_traj[t].n_frames
+
+                ligand_traj[t].save(ligand_traj_path)
+                ligand_traj_paths.append(ligand_traj_path)
+            else:
+                ligand_traj[t] = md.load(ligand_traj_path, top=ligand_top_path)
+                ligand_traj_paths.append(ligand_traj_path)
+
+        if os.path.exists(ligand_traj_dict_path) and not overwrite:
+            traj_dict = self._loadDictionaryFromJson(ligand_traj_dict_path)
+        else:
+            self._saveDictionaryAsJson(traj_dict, ligand_traj_dict_path)
+
+        if return_dictionary:
+            if return_paths:
+                return ligand_traj_paths, traj_dict
+            else:
+                return ligand_traj, traj_dict
+        elif return_paths:
+                return ligand_traj_paths
+        else:
+            return ligand_traj
+
+    def getLigandTrajectoryAsOneBundle(self, protein, ligand, overwrite=False, return_dictionary=False):
         """
         Generate a single trajectory containing only the ligand coordinates aligned to
         the protein framework for all epochs and trajectories. Useful for clustering purposes.
@@ -1903,7 +2006,6 @@ class peleAnalysis:
 
             # Append to ligand-only trajectory
             ligand_atoms = reference.topology.select('resname '+self.ligand_names[ligand])
-
             i = 0
             for epoch in sorted(trajectory_files):
                 for t in sorted(trajectory_files[epoch]):
@@ -1938,7 +2040,7 @@ class peleAnalysis:
             traj_dict = self._loadDictionaryFromJson(ligand_traj_dict_path)
 
         if return_dictionary:
-            return ligand_traj, return_dictionary
+            return ligand_traj, traj_dict
         else:
             return ligand_traj
 
