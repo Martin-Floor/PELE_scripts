@@ -12,13 +12,18 @@ import matplotlib.pyplot as plt
 
 # ## Define input variables
 parser = argparse.ArgumentParser()
-parser.add_argument('input_file', help='Input optimized structure file')
+parser.add_argument('input_file', help='Input optimized structure file.')
 parser.add_argument('atom_1_index', help='Index of atom 1 in scanned bond.')
 parser.add_argument('atom_2_index', help='Index of atom 2 in scanned bond.')
 parser.add_argument('--cpus', default=8, help='Number of CPUs to run the job.')
-parser.add_argument('--simultaneous_jobs', default=5, help='Simultaneous jobs')
+parser.add_argument('--simultaneous_jobs', default=5, help='Simultaneous jobs.')
 parser.add_argument('--skip_optimization', default=False, action='store_true', help='Debug option: skip optimization step')
 parser.add_argument('--get_atom_indexes', default=False, action='store_true', help='Debug option: helps you check the atom index selection')
+parser.add_argument('--functional', default='B3LYP-D3', help='DFT functional.')
+parser.add_argument('--basis_set', default='CC-PVTZ', help='DFT basis set.')
+parser.add_argument('--gas_phase', default=False, action='store_true', help='Use water solvent.')
+parser.add_argument('--system_charge', default=0, help='Charge of the full QM system.')
+parser.add_argument('--multiplicity', default=1, help='Multiplicity of the system (default singlet)')
 
 args=parser.parse_args()
 
@@ -31,6 +36,11 @@ except:
 cpus = args.cpus
 simultaneous_jobs = args.simultaneous_jobs
 get_atom_indexes = args.get_atom_indexes
+functional = args.functional
+basis_set = args.basis_set
+gas_phase = args.gas_phase
+system_charge = int(args.system_charge)
+multiplicity = int(args.multiplicity)
 
 match_attractive = True # Match better the attractive region of the potential.
 
@@ -48,6 +58,7 @@ if get_atom_indexes:
 
 # Read file as a Schordinger structure object
 for st in structure.StructureReader(input_file):
+    input_struct = st
     if get_atom_indexes:
         print('Index Name PDB_Name')
         for a in st.atom:
@@ -142,8 +153,14 @@ if run_optimization:
 
     # Create Jaguar input file
     jaguar_input = input.read('../'+input_file)
-    qm_values = {'basis':'CC-PVTZ',
-                 'dftname':'B3LYP-D3'}
+    jaguar_input.resetStructure(input_struct, molchg=system_charge, multip=multiplicity)
+    qm_values = {}
+    qm_values['basis'] = basis_set
+    qm_values['dftname'] = functional
+    if not gas_phase:
+        qm_values['isolv'] = '7'
+    # qm_values['molchg'] = system_charge
+    qm_values['nogas'] = '0'
 
     jaguar_input.setValues(qm_values)
     jaguar_input.saveAs(job_name+'.in')
