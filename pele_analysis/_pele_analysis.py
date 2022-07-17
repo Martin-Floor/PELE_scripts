@@ -1839,9 +1839,19 @@ class peleAnalysis:
                 ligand_data = protein_data[protein_data.index.get_level_values('Ligand') == ligand]
 
                 if not ligand_data.empty:
+
+                    # Load trajectory frames for poses in pele_data
                     traj = pele_trajectory.loadTrajectoryFrames(ligand_data,
                                                                 self.trajectory_files[protein][ligand],
                                                                 self.topology_files[protein][ligand])
+
+                    # Create atom names to traj indexes dictionary
+                    atom_traj_index = {}
+                    for residue in traj.topology.residues:
+                        residue_label = residue.name+str(residue.resSeq)
+                        atom_traj_index[residue_label] = {}
+                        for atom in residue.atoms:
+                            atom_traj_index[residue_label][atom.name] = atom.index
 
                     # Create a topology file with Bio.PDB
                     pdb_topology = parser.get_structure(protein, self.topology_files[protein][ligand])
@@ -1852,7 +1862,18 @@ class peleAnalysis:
                         filename = separator.join([str(x) for x in entry])+'.pdb'
                         xyz = traj[i].xyz[0]
                         for j in range(traj.n_atoms):
-                            atoms[j].coord = xyz[j]
+
+                            # Get residue label
+                            residue = atoms[j].get_parent()
+                            if residue.resname in ['HID', 'HIE', 'HIP']:
+                                resname = 'HIS'
+                            else:
+                                resname = residue.resname
+                            residue_label = resname+str(residue.id[1])
+
+                            # Give
+                            traj_index = atom_traj_index[residue_label][atoms[j].name]
+                            atoms[j].coord = xyz[traj_index]*10
 
                     # Save structure
                     io.set_structure(pdb_topology)
