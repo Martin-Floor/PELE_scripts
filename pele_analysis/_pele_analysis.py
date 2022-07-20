@@ -1873,7 +1873,7 @@ class peleAnalysis:
                                 resname = residue.resname
                             residue_label = resname+str(residue.id[1])
 
-                            # Give
+                            # Give atom coordinates to Bio.PDB object
                             traj_index = atom_traj_index[residue_label][atoms[j].name]
                             atoms[j].coord = xyz[traj_index]*10
 
