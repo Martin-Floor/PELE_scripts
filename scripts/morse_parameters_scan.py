@@ -9,6 +9,7 @@ import time
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
+import pandas as pd
 
 # ## Define input variables
 parser = argparse.ArgumentParser()
@@ -224,36 +225,77 @@ for index in sorted(scan_files):
         structures[index] = st
         break
 
+# Create dictionary to store property values
+qm_data = {}
+
+qm_data['Optimization step'] = []
+distance_label = atom1.name+'_'+atom2.name+' distance [$\AA$]'
+qm_data[distance_label] = []
+final_energy_label = 'Final Energy'
+qm_data[final_energy_label] = []
+gas_phase_energy_label = 'Gas Phase Energy'
+qm_data[gas_phase_energy_label] = []
+solution_phase_energy_label = 'Solution Phase Energy'
+qm_data[solution_phase_energy_label] = []
+solvent_energy_label = 'Solvent Energy'
+qm_data[solvent_energy_label] = []
+
 # Get gas phase energy
-energies = []
 for index in structures:
-    energies.append(structures[index].property['r_j_Gas_Phase_Energy'])
+    optimization_step = structures[index].property['s_j_Jaguar_input_file'].split('_')[-1].split('.')[0]
+    if 'isomer' not in optimization_step:
+        qm_data['Optimization step'].append(int(optimization_step))
+        final_energy = structures[index].property['r_j_Final_Energy']
+        qm_data[final_energy_label].append(final_energy)
+        gas_phase_energy = structures[index].property['r_j_Gas_Phase_Energy']
+        qm_data[gas_phase_energy_label].append(gas_phase_energy)
+        solution_phase_energy = structures[index].property['r_j_Solution_Phase_Energy']
+        qm_data[solution_phase_energy_label].append(solution_phase_energy)
 
 # Get relative energies in kcal/mol
 hartree_to_kcal_mol = 627.503
-energies = np.array(energies)
-energies = np.array(energies)*hartree_to_kcal_mol
-energies = energies - np.min(energies)
+qm_data[final_energy_label] = np.array(qm_data[final_energy_label])
+qm_data[final_energy_label] = np.array(qm_data[final_energy_label])*hartree_to_kcal_mol
+qm_data[final_energy_label] = qm_data[final_energy_label] - np.min(qm_data[final_energy_label])
+
+qm_data[gas_phase_energy_label] = np.array(qm_data[gas_phase_energy_label])
+qm_data[gas_phase_energy_label] = np.array(qm_data[gas_phase_energy_label])*hartree_to_kcal_mol
+qm_data[gas_phase_energy_label] = qm_data[gas_phase_energy_label] - np.min(qm_data[gas_phase_energy_label])
+
+qm_data[solution_phase_energy_label] = np.array(qm_data[solution_phase_energy_label])
+qm_data[solution_phase_energy_label] = np.array(qm_data[solution_phase_energy_label])*hartree_to_kcal_mol
+qm_data[solution_phase_energy_label] = qm_data[solution_phase_energy_label] - np.min(qm_data[solution_phase_energy_label])
+
+qm_data[solvent_energy_label] = qm_data[solution_phase_energy_label] - qm_data[gas_phase_energy_label]
+
+energies = qm_data[final_energy_label]
 
 # Calculate scanned bond distance
-distances = []
 for index in sorted(structures):
-    coord1 = None
-    coord2 = None
-    for a in structures[index].atom:
-        if atom_1_index == a.index:
-            coord1 = np.array([a.property['r_m_'+x+'_coord'] for x in ['x', 'y', 'z']])
-        if atom_2_index == a.index:
-            coord2 = np.array([a.property['r_m_'+x+'_coord'] for x in ['x', 'y', 'z']])
-    if isinstance(coord1, type(None)):
-        raise ValueError('Atom index %s not found in structure.' % atom_1_index)
-    if isinstance(coord2, type(None)):
-        raise ValueError('Atom index %s not found in structure.' % atom_2_index)
-    distances.append(np.linalg.norm(coord1-coord2))
-distances = np.array(distances)
+    optimization_step = structures[index].property['s_j_Jaguar_input_file'].split('_')[-1].split('.')[0]
+    if 'isomer' not in optimization_step:
+        coord1 = None
+        coord2 = None
+        for a in structures[index].atom:
+            if atom_1_index == a.index:
+                coord1 = np.array([a.property['r_m_'+x+'_coord'] for x in ['x', 'y', 'z']])
+            if atom_2_index == a.index:
+                coord2 = np.array([a.property['r_m_'+x+'_coord'] for x in ['x', 'y', 'z']])
+        if isinstance(coord1, type(None)):
+            raise ValueError('Atom index %s not found in structure.' % atom_1_index)
+        if isinstance(coord2, type(None)):
+            raise ValueError('Atom index %s not found in structure.' % atom_2_index)
+        qm_data[distance_label].append(np.linalg.norm(coord1-coord2))
+
+qm_data[distance_label] = np.array(qm_data[distance_label])
+distances = qm_data[distance_label]
 
 # Get minimum energy distance
 re = distances[np.argmin(energies)]
+
+# Store distance and energy values
+qm_data = pd.DataFrame(qm_data)
+qm_data.to_csv('scan_qm_data.csv')
 
 # Define Morse Potential function
 def morse(x, De, a):
