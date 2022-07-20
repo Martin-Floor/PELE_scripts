@@ -1798,7 +1798,7 @@ class peleAnalysis:
 
         return pele_data
 
-    def extractPELEPoses(self, pele_data, output_folder, separator='-'):
+    def extractPELEPoses(self, pele_data, output_folder, separator='-', keep_chain_names=True):
         """
         Extract pele poses present in a pele dataframe. The PELE DataFrame
         contains the same structure as the self.data dataframe, attribute of
@@ -1839,6 +1839,10 @@ class peleAnalysis:
                 ligand_data = protein_data[protein_data.index.get_level_values('Ligand') == ligand]
 
                 if not ligand_data.empty:
+
+                    if not os.path.exists(output_folder+'/'+protein):
+                        os.mkdir(output_folder+'/'+protein)
+
                     traj = pele_trajectory.loadTrajectoryFrames(ligand_data,
                                                                 self.trajectory_files[protein][ligand],
                                                                 self.topology_files[protein][ligand])
@@ -1856,7 +1860,7 @@ class peleAnalysis:
 
                     # Save structure
                     io.set_structure(pdb_topology)
-                    io.save(output_folder+'/'+filename)
+                    io.save(output_folder+'/'+protein+'/'+filename)
 
     ### Clustering methods
 
@@ -2079,6 +2083,217 @@ class peleAnalysis:
                                                     rmsd_matrix_file=rmsd_matrix_file)
                 return ligand_traj, clusters
 
+    def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
+                             box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100,
+                             separator='-', use_peleffy=True, usesrun=True, energy_by_residue=False, ninety_degrees_version=False,
+                             analysis=False, energy_by_residue_type='all', peptide=False, equilibration_mode='equilibrationLastSnapshot'):
+        """
+        Generates a PELE calculation for extracted poses. The function reads all the
+        protein ligand poses and creates input for a PELE platform set up run.
+
+        Parameters
+        ==========
+        pele_folder : str
+            Path to the folder where PELE calcualtions will be located
+        models_folder : str
+            Path to input docking poses folder.
+        input_yaml : str
+            Path to the input YAML file to be used as template for all the runs.
+        Missing!
+        """
+
+        # Create PELE job folder
+        if not os.path.exists(pele_folder):
+            os.mkdir(pele_folder)
+
+        # Read docking poses information from models_folder and create pele input folders.
+        jobs = []
+        for d in os.listdir(models_folder):
+            if os.path.isdir(models_folder+'/'+d):
+                models = {}
+                ligand_pdb_name = {}
+                for f in os.listdir(models_folder+'/'+d):
+                    fs = f.split(separator)
+                    protein = fs[0]
+                    ligand = fs[1]
+                    pose = fs[2].replace('.pdb','')
+
+                    # Create PELE job folder for each docking
+                    if not os.path.exists(pele_folder+'/'+protein+'_'+ligand):
+                        os.mkdir(pele_folder+'/'+protein+'_'+ligand)
+
+                    structure = _readPDB(protein+'_'+ligand, models_folder+'/'+d+'/'+f)
+
+                    # Change water names if any
+                    for residue in structure.get_residues():
+                        if residue.id[0] == 'W':
+                            residue.resname = 'HOH'
+
+                        if residue.get_parent().id == 'L':
+                            ligand_pdb_name[ligand] = residue.resname
+
+                    ## Add dummy atom if peptide docking ### Strange fix =)
+                    if peptide:
+                        for chain in structure.get_chains():
+                            if chain.id == 'L':
+                                # Create new residue
+                                new_resid = max([r.id[1] for r in chain.get_residues()])+1
+                                residue = PDB.Residue.Residue(('H', new_resid, ' '), 'XXX', ' ')
+                                serial_number = max([a.serial_number for a in chain.get_atoms()])+1
+                                atom = PDB.Atom.Atom('X', [0,0,0], 0, 1.0, ' ',
+                                                     '%-4s' % 'X', serial_number+1, 'H')
+                                residue.add(atom)
+                                chain.add(residue)
+
+                    _saveStructureToPDB(structure, pele_folder+'/'+protein+'_'+ligand+'/'+f)
+
+                    if (protein, ligand) not in models:
+                        models[(protein,ligand)] = []
+                    models[(protein,ligand)].append(f)
+
+                # Create YAML file
+                for model in models:
+                    protein, ligand = model
+                    keywords = ['system', 'chain', 'resname', 'steps', 'iterations', 'atom_dist', 'analyse',
+                                    'cpus', 'equilibration', 'equilibration_steps', 'traj', 'working_folder',
+                                    'usesrun', 'use_peleffy', 'debug', 'box_radius', 'equilibration_mode']
+
+                    # Get distances from PELE data
+                    if distances == None:
+                        distances = {}
+                    if protein not in distances:
+                        distances[protein] = {}
+                    if ligand not in distances[protein]:
+                        distances[protein][ligand] = []
+
+                    pele_distances = [(x.split('_')[1:3][0], x.split('_')[1:3][1]) for x in self.getDistances(protein, ligand)]
+                    pele_distances = list(set(pele_distances))
+
+                    for d in pele_distances:
+                        at1 = _atomStringToTuple(d[0])
+                        at2 = _atomStringToTuple(d[1])
+                        distances[protein][ligand].append((at1, at2))
+
+                    with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml', 'w') as iyf:
+                        if energy_by_residue:
+                            # Use new PELE version with implemented energy_by_residue
+                            iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/bin/PELE-1.7.2_mpi"\n')
+                            iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Data"\n')
+                            iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Documents/"\n')
+                        elif ninety_degrees_version:
+                            # Use new PELE version with implemented energy_by_residue
+                            iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/bin/PELE-1.8_mpi"\n')
+                            iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/Data"\n')
+                            iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/Documents/"\n')
+                        iyf.write("system: '"+" ".join(models[model])+"'\n")
+                        iyf.write("chain: 'L'\n")
+                        if peptide:
+                            iyf.write("resname: 'XXX'\n")
+                            iyf.write("skip_ligand_prep:\n")
+                            iyf.write(" - 'XXX'\n")
+                        else:
+                            iyf.write("resname: '"+ligand_pdb_name[ligand]+"'\n")
+                        iyf.write("steps: "+str(steps)+"\n")
+                        iyf.write("iterations: "+str(iterations)+"\n")
+                        iyf.write("cpus: "+str(cpus)+"\n")
+                        iyf.write("equilibration: true\n")
+                        iyf.write("equilibration_mode: '"+equilibration_mode+"'\n")
+                        iyf.write("equilibration_steps: "+str(equilibration_steps)+"\n")
+                        iyf.write("traj: trajectory.xtc\n")
+                        iyf.write("working_folder: 'output'\n")
+                        if usesrun:
+                            iyf.write("usesrun: true\n")
+                        else:
+                            iyf.write("usesrun: false\n")
+                        if use_peleffy:
+                            iyf.write("use_peleffy: true\n")
+                        else:
+                            iyf.write("use_peleffy: false\n")
+                        if analysis:
+                            iyf.write("analyse: true\n")
+                        else:
+                            iyf.write("analyse: false\n")
+
+                        iyf.write("box_radius: "+str(box_radius)+"\n")
+                        if isinstance(box_centers, type(None)) and peptide:
+                            raise ValuError('You must give per-protein box_centers when docking peptides!')
+                        if not isinstance(box_centers, type(None)):
+                            box_center = ':'.join([str(x) for x in box_centers[protein]])
+                            iyf.write("box_center: '"+box_center+"'\n")
+
+                        # energy by residue is not implemented in PELE platform, therefore
+                        # a scond script will modify the PELE.conf file to set up the energy
+                        # by residue calculation.
+                        if debug or energy_by_residue or peptide:
+                            iyf.write("debug: true\n")
+
+                        if distances != None:
+                            iyf.write("atom_dist:\n")
+                            for d in distances[protein][ligand]:
+                                if isinstance(d[0], str):
+                                    d1 = "- 'L:"+str(ligand_index)+":"+d[0]+"'\n"
+                                else:
+                                    d1 = "- '"+d[0][0]+":"+str(d[0][1])+":"+d[0][2]+"'\n"
+                                if isinstance(d[1], str):
+                                    d2 = "- 'L:"+str(ligand_index)+":"+d[1]+"'\n"
+                                else:
+                                    d2 = "- '"+d[1][0]+":"+str(d[1][1])+":"+d[1][2]+"'\n"
+                                iyf.write(d1)
+                                iyf.write(d2)
+
+                        iyf.write('\n')
+                        iyf.write("#Options gathered from "+input_yaml+'\n')
+
+                        with open(input_yaml) as tyf:
+                            for l in tyf:
+                                if l.startswith('#'):
+                                    continue
+                                elif l.startswith('-'):
+                                    continue
+                                elif l.strip() == '':
+                                    continue
+                                if l.split()[0].replace(':', '') not in keywords:
+                                    iyf.write(l)
+
+                    if energy_by_residue:
+                        _copyScriptFile(pele_folder, 'addEnergyByResidueToPELEconf.py')
+                        ebr_script_name = '._addEnergyByResidueToPELEconf.py'
+
+                    if peptide:
+                        _copyScriptFile(pele_folder, 'modifyPelePlatformForPeptide.py')
+                        peptide_script_name = '._modifyPelePlatformForPeptide.py'
+
+                    # Create command
+                    command = 'cd '+pele_folder+'/'+protein+'_'+ligand+'\n'
+                    command += 'python -m pele_platform.main input.yaml\n'
+                    if energy_by_residue:
+                        command += 'python ../'+ebr_script_name+' output --energy_type '+energy_by_residue_type
+                        if peptide:
+                            command += ' --peptide \n'
+                            command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
+                        else:
+                            command += '\n'
+                        with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input_restart.yaml', 'w') as oyml:
+                            with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml') as iyml:
+                                for l in iyml:
+                                    if 'debug: true' in l:
+                                        l = 'restart: true\n'
+                                    oyml.write(l)
+                        command += 'python -m pele_platform.main input_restart.yaml\n'
+                    elif peptide:
+                        command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
+                        with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input_restart.yaml', 'w') as oyml:
+                            with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml') as iyml:
+                                for l in iyml:
+                                    if 'debug: true' in l:
+                                        l = 'restart: true\n'
+                                    oyml.write(l)
+                        command += 'python -m pele_platform.main input_restart.yaml\n'
+                    command += 'cd ../..'
+                    jobs.append(command)
+
+        return jobs
+
     def _saveDataState(self):
         self.data.to_csv('.pele_analysis/data.csv')
 
@@ -2110,6 +2325,48 @@ class peleAnalysis:
             dictionary = json.load(jf)
         return dictionary
 
+    def _readPDB(name, pdb_file):
+        """
+        Read PDB file to a structure object
+        """
+        parser = PDB.PDBParser()
+        structure = parser.get_structure(name, pdb_file)
+        return structure
+
+    def _saveStructureToPDB(structure, output_file, remove_hydrogens=False,
+                            remove_water=False, only_protein=False, keep_residues=[]):
+        """
+        Saves a structure into a PDB file
+
+        Parameters
+        ----------
+        structure : list or Bio.PDB.Structure
+            Structure to save
+        remove_hydrogens : bool
+            Remove hydrogen atoms from model?
+        remove_water : bool
+            Remove water residues from model?
+        only_protein : bool
+            Remove everything but the protein atoms?
+        keep_residues : list
+            List of residue indexes to keep when using the only_protein selector.
+        """
+
+        io = PDB.PDBIO()
+        io.set_structure(structure)
+
+        selector = None
+        if remove_hydrogens:
+            selector = _atom_selectors.notHydrogen()
+        elif remove_water:
+            selector = _atom_selectors.notWater()
+        elif only_protein:
+            selector = _atom_selectors.onlyProtein(keep_residues=keep_residues)
+        if selector != None:
+            io.save(output_file, selector)
+        else:
+            io.save(output_file)
+
     def _getInputPDB(self, pele_dir):
         """
         Returns the input PDB for the PELE simulation.
@@ -2129,3 +2386,19 @@ class peleAnalysis:
         for d in os.listdir(folder):
             if d.endswith('ligand.pdb'):
                 return folder+'/'+d
+
+    def _atomStringToTuple(atom_string):
+        """
+        Reads a PELE platform atom string and outputs a 3-element tuple version.
+        """
+        index = ''
+        for s in atom_string:
+            if s.isdigit():
+                index += s
+            if not s.isdigit() and index != '':
+                break
+
+        chain = atom_string.split(index)[0]
+        name = atom_string.split(index)[1]
+
+        return (chain, index, name)
