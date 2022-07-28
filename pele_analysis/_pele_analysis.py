@@ -2153,7 +2153,7 @@ class peleAnalysis:
                     if not os.path.exists(pele_folder+'/'+protein+'_'+ligand):
                         os.mkdir(pele_folder+'/'+protein+'_'+ligand)
 
-                    structure = _readPDB(protein+'_'+ligand, models_folder+'/'+d+'/'+f)
+                    structure = self._readPDB(protein+'_'+ligand, models_folder+'/'+d+'/'+f)
 
                     # Change water names if any
                     for residue in structure.get_residues():
@@ -2176,7 +2176,7 @@ class peleAnalysis:
                                 residue.add(atom)
                                 chain.add(residue)
 
-                    _saveStructureToPDB(structure, pele_folder+'/'+protein+'_'+ligand+'/'+f)
+                    self._saveStructureToPDB(structure, pele_folder+'/'+protein+'_'+ligand+'/'+f)
 
                     if (protein, ligand) not in models:
                         models[(protein,ligand)] = []
@@ -2201,8 +2201,8 @@ class peleAnalysis:
                     pele_distances = list(set(pele_distances))
 
                     for d in pele_distances:
-                        at1 = _atomStringToTuple(d[0])
-                        at2 = _atomStringToTuple(d[1])
+                        at1 = self._atomStringToTuple(d[0])
+                        at2 = self._atomStringToTuple(d[1])
                         distances[protein][ligand].append((at1, at2))
 
                     with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml', 'w') as iyf:
@@ -2356,7 +2356,7 @@ class peleAnalysis:
             dictionary = json.load(jf)
         return dictionary
 
-    def _readPDB(name, pdb_file):
+    def _readPDB(self, name, pdb_file):
         """
         Read PDB file to a structure object
         """
@@ -2364,7 +2364,7 @@ class peleAnalysis:
         structure = parser.get_structure(name, pdb_file)
         return structure
 
-    def _saveStructureToPDB(structure, output_file, remove_hydrogens=False,
+    def _saveStructureToPDB(self, structure, output_file, remove_hydrogens=False,
                             remove_water=False, only_protein=False, keep_residues=[]):
         """
         Saves a structure into a PDB file
@@ -2418,18 +2418,22 @@ class peleAnalysis:
             if d.endswith('ligand.pdb'):
                 return folder+'/'+d
 
-    def _atomStringToTuple(atom_string):
+    def _atomStringToTuple(self, atom_string):
         """
         Reads a PELE platform atom string and outputs a 3-element tuple version.
         """
         index = ''
-        for s in atom_string:
-            if s.isdigit():
+        name = ''
+        index_done = False
+        for i,s in enumerate(atom_string):
+            if i == 0:
+                chain = s
+            elif s.isdigit() and not index_done:
                 index += s
-            if not s.isdigit() and index != '':
-                break
-
-        chain = atom_string.split(index)[0]
-        name = atom_string.split(index)[1]
+            elif not s.isdigit():
+                index_done = True
+                name += s
+            elif index_done:
+                name += s
 
         return (chain, index, name)
