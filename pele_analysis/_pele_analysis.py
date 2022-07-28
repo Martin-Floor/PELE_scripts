@@ -1226,7 +1226,7 @@ class peleAnalysis:
         KT_slider = FloatSlider(
                         value=0.593,
                         min=0.593,
-                        max=60.0,
+                        max=1000.0,
                         step=0.1,
                         description='KT:',
                         disabled=False,
