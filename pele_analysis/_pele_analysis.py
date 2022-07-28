@@ -1773,8 +1773,8 @@ class peleAnalysis:
 
         return self.data[self.data.index.isin(bp)]
 
-    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None,
-                                    min_threshold=3.5, max_threshold=5.0, step_size=0.1):
+    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None.
+                                    ligands=None, min_threshold=3.5, max_threshold=5.0, step_size=0.1):
         """
         """
         extracted = []
@@ -1782,7 +1782,8 @@ class peleAnalysis:
 
         for t in np.arange(min_threshold, max_threshold+(step_size/10), step_size):
             filter_values = {m:t for m in metrics}
-            best_poses = self.getBestPELEPoses(filter_values, column=column, n_models=1)
+            best_poses = self.getBestPELEPoses(filter_values, column=column, n_models=1,
+                                               proteins=proteins, ligands=ligands)
             mask = []
             if not isinstance(ligands, type(None)):
                 for level in best_poses.index.get_level_values('Ligand'):
