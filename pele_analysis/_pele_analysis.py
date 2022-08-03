@@ -1720,7 +1720,7 @@ class peleAnalysis:
 
     ### Extract poses methods
 
-    def getBestPELEPoses(self, filter_values, column='Binding Energy', n_models=1, return_failed=False):
+    def getBestPELEPoses(self, filter_values, proteins=None, ligand=None, column='Binding Energy', n_models=1, return_failed=False):
         """
         Get best models based on the best column score and a set of metrics with specified thresholds.
         The filter thresholds must be provided with a dictionary using the metric names as keys
@@ -1742,8 +1742,20 @@ class peleAnalysis:
         bp = []
         failed = []
         for model in self.proteins:
+
+            # If a list of proteins is given skip proteins not in the list
+            if proteins != None:
+                if protein not in proteins:
+                    continue
+
             protein_series = self.data[self.data.index.get_level_values('Protein') == model]
             for ligand in self.ligands:
+
+                # If a list of ligands is given skip ligands not in the list
+                if ligands != None:
+                    if ligand not in ligands:
+                        continue
+
                 ligand_data = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
                 for metric in filter_values:
                     ligand_data = ligand_data[ligand_data['metric_'+metric] < filter_values[metric]]
@@ -1761,8 +1773,8 @@ class peleAnalysis:
 
         return self.data[self.data.index.isin(bp)]
 
-    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None,
-                                    min_threshold=3.5, max_threshold=5.0, step_size=0.1):
+    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None.
+                                    ligands=None, min_threshold=3.5, max_threshold=5.0, step_size=0.1):
         """
         """
         extracted = []
@@ -1770,7 +1782,8 @@ class peleAnalysis:
 
         for t in np.arange(min_threshold, max_threshold+(step_size/10), step_size):
             filter_values = {m:t for m in metrics}
-            best_poses = self.getBestPELEPoses(filter_values, column=column, n_models=1)
+            best_poses = self.getBestPELEPoses(filter_values, column=column, n_models=1,
+                                               proteins=proteins, ligands=ligands)
             mask = []
             if not isinstance(ligands, type(None)):
                 for level in best_poses.index.get_level_values('Ligand'):
