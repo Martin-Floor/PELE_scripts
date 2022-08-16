@@ -610,7 +610,8 @@ class peleAnalysis:
                                   equilibration=equilibration,
                                   productive=productive)
 
-    def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None):
+    def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None,
+                                        ylim=None):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns.
@@ -670,6 +671,8 @@ class peleAnalysis:
 
         plt.xlabel(x)
         plt.ylabel(y)
+        if ylim != None:
+            plt.ylim(ylim)
         plt.show()
 
     def boxPlotProteinSimulation(self, protein, column):
@@ -724,7 +727,7 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def bindingEnergyLandscape(self, vertical_line=None):
+    def bindingEnergyLandscape(self, vertical_line=None, ylim=None):
         """
         Plot binding energy as interactive plot.
         """
@@ -772,7 +775,7 @@ class peleAnalysis:
                      vertical_line=fixed(vertical_line))
 
         def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None):
-            self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy',
+            self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', ylim=ylim,
                                                  vertical_line=vertical_line, color_column=Color)
 
         interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line), by_metric=False)
@@ -1720,7 +1723,7 @@ class peleAnalysis:
 
     ### Extract poses methods
 
-    def getBestPELEPoses(self, filter_values, proteins=None, ligand=None, column='Binding Energy', n_models=1, return_failed=False):
+    def getBestPELEPoses(self, filter_values, proteins=None, ligands=None, column='Binding Energy', n_models=1, return_failed=False):
         """
         Get best models based on the best column score and a set of metrics with specified thresholds.
         The filter thresholds must be provided with a dictionary using the metric names as keys
@@ -1773,9 +1776,10 @@ class peleAnalysis:
 
         return self.data[self.data.index.isin(bp)]
 
-    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None.
-                                    ligands=None, min_threshold=3.5, max_threshold=5.0, step_size=0.1):
+    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None,
+                                    min_threshold=3.5, max_threshold=5.0, step_size=0.1):
         """
+        Extract best poses iteratively using all given metrics simoultaneously.
         """
         extracted = []
         selected_indexes = []
