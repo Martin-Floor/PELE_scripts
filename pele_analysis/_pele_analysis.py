@@ -1773,7 +1773,7 @@ class peleAnalysis:
 
         return self.data[self.data.index.isin(bp)]
 
-    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None.
+    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None,
                                     ligands=None, min_threshold=3.5, max_threshold=5.0, step_size=0.1):
         """
         """
