@@ -1777,11 +1777,7 @@ class peleAnalysis:
         return self.data[self.data.index.isin(bp)]
 
     def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None,
-<<<<<<< HEAD
                                     min_threshold=3.5, max_threshold=5.0, step_size=0.1):
-=======
-                                    ligands=None, min_threshold=3.5, max_threshold=5.0, step_size=0.1):
->>>>>>> b9e25ed9ea2f62983f588262a7227d622a41ec66
         """
         Extract best poses iteratively using all given metrics simoultaneously.
         """
