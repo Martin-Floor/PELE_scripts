@@ -1870,7 +1870,11 @@ class peleAnalysis:
                         residue_label = residue.name+str(residue.resSeq)
                         atom_traj_index[residue_label] = {}
                         for atom in residue.atoms:
-                            atom_traj_index[residue_label][atom.name] = atom.index
+                            if 'HOH' in residue_label and atom.name == 'O':
+                                atom_name = 'OW'
+                            else:
+                                atom_name = atom.name
+                            atom_traj_index[residue_label][atom_name] = atom.index
 
                     # Create a topology file with Bio.PDB
                     pdb_topology = parser.get_structure(protein, self.topology_files[protein][ligand])
