@@ -2205,7 +2205,7 @@ class peleAnalysis:
                     protein, ligand = model
                     keywords = ['system', 'chain', 'resname', 'steps', 'iterations', 'atom_dist', 'analyse',
                                 'cpus', 'equilibration', 'equilibration_steps', 'traj', 'working_folder',
-                                'usesrun', 'use_peleffy', 'debug', 'box_radius', 'equilibration_mode']
+                                'usesrun', 'use_peleffy', 'debug', 'box_radius', 'box_center', 'equilibration_mode']
 
                     # Skip given protein models
                     if skip_models != None:
@@ -2283,13 +2283,14 @@ class peleAnalysis:
                         if not isinstance(box_centers, type(None)):
                             if not all(isinstance(x, float) for x in box_centers[model]):
                                 # get coordinates from tuple
-                                for chain in self.structures[model[0]].get_chains():
-                                    if chain.id == box_centers[model][0]:
-                                        for r in chain:
-                                            if r.id[1] == box_centers[model][1]:
-                                                for atom in r:
-                                                    if atom.name == box_centers[model][2]:
-                                                        coordinates = atom.coord
+                                raise ValueError('This is not yet implemented!')
+                                # for chain in self.structures[model[0]].get_chains():
+                                #     if chain.id == box_centers[model][0]:
+                                #         for r in chain:
+                                #             if r.id[1] == box_centers[model][1]:
+                                #                 for atom in r:
+                                #                     if atom.name == box_centers[model][2]:
+                                #                         coordinates = atom.coord
                             else:
                                 coordinates = box_centers[model]
 
