@@ -2124,9 +2124,10 @@ class peleAnalysis:
                 return ligand_traj, clusters
 
     def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
-                             box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100,
+                             box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
                              separator='-', use_peleffy=True, usesrun=True, energy_by_residue=False, ninety_degrees_version=False,
-                             analysis=False, energy_by_residue_type='all', peptide=False, equilibration_mode='equilibrationLastSnapshot'):
+                             analysis=False, energy_by_residue_type='all', peptide=False, equilibration_mode='equilibrationLastSnapshot',
+                             spawning='independent', continuation=False, equilibration=True, skip_models=None):
         """
         Generates a PELE calculation for extracted poses. The function reads all the
         protein ligand poses and creates input for a PELE platform set up run.
@@ -2139,6 +2140,8 @@ class peleAnalysis:
             Path to input docking poses folder.
         input_yaml : str
             Path to the input YAML file to be used as template for all the runs.
+        ligand_energy_groups : dict
+            Additional groups to consider when doing energy by residue reports.
         Missing!
         """
 
@@ -2146,7 +2149,8 @@ class peleAnalysis:
         if not os.path.exists(pele_folder):
             os.mkdir(pele_folder)
 
-        # Read docking poses information from models_folder and create pele input folders.
+        # Read docking poses information from models_folder and create pele input
+        # folders.
         jobs = []
         for d in os.listdir(models_folder):
             if os.path.isdir(models_folder+'/'+d):
@@ -2157,6 +2161,11 @@ class peleAnalysis:
                     protein = fs[0]
                     ligand = fs[1]
                     pose = fs[2].replace('.pdb','')
+
+                    # Skip given protein models
+                    if skip_models != None:
+                        if protein in skip_models:
+                            continue
 
                     # Create PELE job folder for each docking
                     if not os.path.exists(pele_folder+'/'+protein+'_'+ligand):
@@ -2195,8 +2204,13 @@ class peleAnalysis:
                 for model in models:
                     protein, ligand = model
                     keywords = ['system', 'chain', 'resname', 'steps', 'iterations', 'atom_dist', 'analyse',
-                                    'cpus', 'equilibration', 'equilibration_steps', 'traj', 'working_folder',
-                                    'usesrun', 'use_peleffy', 'debug', 'box_radius', 'equilibration_mode']
+                                'cpus', 'equilibration', 'equilibration_steps', 'traj', 'working_folder',
+                                'usesrun', 'use_peleffy', 'debug', 'box_radius', 'equilibration_mode']
+
+                    # Skip given protein models
+                    if skip_models != None:
+                        if model in skip_models:
+                            continue
 
                     # Get distances from PELE data
                     if distances == None:
@@ -2221,11 +2235,15 @@ class peleAnalysis:
                             iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Data"\n')
                             iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Documents/"\n')
                         elif ninety_degrees_version:
-                            # Use new PELE version with implemented energy_by_residue
+                            # Use new PELE version with implemented 90 degrees fix
                             iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/bin/PELE-1.8_mpi"\n')
                             iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/Data"\n')
                             iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/Documents/"\n')
-                        iyf.write("system: '"+" ".join(models[model])+"'\n")
+                        if len(models[model]) > 1:
+                            equilibration_mode = 'equilibrationCluster'
+                            iyf.write("system: '*.pdb'\n")
+                        else:
+                            iyf.write("system: '"+" ".join(models[model])+"'\n")
                         iyf.write("chain: 'L'\n")
                         if peptide:
                             iyf.write("resname: 'XXX'\n")
@@ -2236,9 +2254,14 @@ class peleAnalysis:
                         iyf.write("steps: "+str(steps)+"\n")
                         iyf.write("iterations: "+str(iterations)+"\n")
                         iyf.write("cpus: "+str(cpus)+"\n")
-                        iyf.write("equilibration: true\n")
-                        iyf.write("equilibration_mode: '"+equilibration_mode+"'\n")
-                        iyf.write("equilibration_steps: "+str(equilibration_steps)+"\n")
+                        if equilibration:
+                            iyf.write("equilibration: true\n")
+                            iyf.write("equilibration_mode: '"+equilibration_mode+"'\n")
+                            iyf.write("equilibration_steps: "+str(equilibration_steps)+"\n")
+                        else:
+                            iyf.write("equilibration: false\n")
+                        if spawning != None:
+                            iyf.write("spawning: '"+str(spawning)+"'\n")
                         iyf.write("traj: trajectory.xtc\n")
                         iyf.write("working_folder: 'output'\n")
                         if usesrun:
@@ -2258,8 +2281,24 @@ class peleAnalysis:
                         if isinstance(box_centers, type(None)) and peptide:
                             raise ValuError('You must give per-protein box_centers when docking peptides!')
                         if not isinstance(box_centers, type(None)):
-                            box_center = ':'.join([str(x) for x in box_centers[protein]])
-                            iyf.write("box_center: '"+box_center+"'\n")
+                            if not all(isinstance(x, float) for x in box_centers[model]):
+                                # get coordinates from tuple
+                                for chain in self.structures[model[0]].get_chains():
+                                    if chain.id == box_centers[model][0]:
+                                        for r in chain:
+                                            if r.id[1] == box_centers[model][1]:
+                                                for atom in r:
+                                                    if atom.name == box_centers[model][2]:
+                                                        coordinates = atom.coord
+                            else:
+                                coordinates = box_centers[model]
+
+                            box_center = ''
+                            for coord in coordinates:
+                                #if not isinstance(coord, float):
+                                #    raise ValueError('Box centers must be given as a (x,y,z) tuple or list of floats.')
+                                box_center += '  - '+str(coord)+'\n'
+                            iyf.write("box_center: \n"+box_center)
 
                         # energy by residue is not implemented in PELE platform, therefore
                         # a scond script will modify the PELE.conf file to set up the energy
@@ -2298,6 +2337,11 @@ class peleAnalysis:
                     if energy_by_residue:
                         _copyScriptFile(pele_folder, 'addEnergyByResidueToPELEconf.py')
                         ebr_script_name = '._addEnergyByResidueToPELEconf.py'
+                        if not isinstance(ligand_energy_groups, type(None)):
+                            if not isinstance(ligand_energy_groups, dict):
+                                raise ValuError('ligand_energy_groups, must be given as a dictionary')
+                            with open(pele_folder+'/'+protein+'_'+ligand+'/ligand_energy_groups.json', 'w') as jf:
+                                json.dump(ligand_energy_groups[ligand], jf)
 
                     if peptide:
                         _copyScriptFile(pele_folder, 'modifyPelePlatformForPeptide.py')
@@ -2305,9 +2349,31 @@ class peleAnalysis:
 
                     # Create command
                     command = 'cd '+pele_folder+'/'+protein+'_'+ligand+'\n'
-                    command += 'python -m pele_platform.main input.yaml\n'
-                    if energy_by_residue:
+                    if not continuation:
+                        command += 'python -m pele_platform.main input.yaml\n'
+                    if continuation:
+                        debug_line = False
+                        restart_line = False
+                        with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input_restart.yaml', 'w') as oyml:
+                            with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml') as iyml:
+                                for l in iyml:
+                                    if 'debug: true' in l:
+                                        debug_line = True
+                                        oyml.write('restart: true\n')
+                                        oyml.write('adaptive_restart: true\n')
+                                    elif 'restart: true' in l:
+                                        continue
+                                    oyml.write(l)
+                                if not debug_line:
+                                    oyml.write('restart: true\n')
+                                    oyml.write('adaptive_restart: true\n')
+
+                        command += 'python -m pele_platform.main input_restart.yaml\n'
+                    elif energy_by_residue:
                         command += 'python ../'+ebr_script_name+' output --energy_type '+energy_by_residue_type
+                        if isinstance(ligand_energy_groups, dict):
+                            command += ' --ligand_energy_groups ligand_energy_groups.json'
+                            command += ' --ligand_index '+str(ligand_index)
                         if peptide:
                             command += ' --peptide \n'
                             command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
