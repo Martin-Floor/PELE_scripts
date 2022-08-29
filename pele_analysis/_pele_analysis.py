@@ -611,7 +611,7 @@ class peleAnalysis:
                                   productive=productive)
 
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None,
-                                        ylim=None, filter_by_metric=False, metrics=None):
+                                        ylim=None, metrics=None):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns.
@@ -624,7 +624,7 @@ class peleAnalysis:
         if ligand_series.empty:
             raise ValueError('Ligand name %s not found in protein %s data!' % (ligand, protein))
 
-        if filter_by_metric:
+        if not isinstance(metrics, type(None)):
             for metric in metrics:
                 ligand_series = ligand_series[ligand_series[metric] <= metrics[metric]]
 
@@ -745,25 +745,6 @@ class peleAnalysis:
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
 
-            metrics_sliders = {}
-            if filter_by_metric:# Add checks for the given pele data pandas df
-                metrics = [k for k in ligand_series.keys() if 'metric_' in k]
-
-                for m in metrics:
-                    m_slider = FloatSlider(
-                                    value=4.0,
-                                    min=0,
-                                    max=30,
-                                    step=0.1,
-                                    description=m+':',
-                                    disabled=False,
-                                    continuous_update=False,
-                                    orientation='horizontal',
-                                    readout=True,
-                                    readout_format='.2f',
-                                )
-                    metrics_sliders[m] = m_slider
-
             distances = []
             if by_metric:
                 distances = []
@@ -791,26 +772,52 @@ class peleAnalysis:
             del color_columns[color_columns.index('Task')]
             del color_columns[color_columns.index('Binding Energy')]
 
-            interact(_bindingEnergyLandscape,
-                     Protein=fixed(Protein),
-                     Ligand=fixed(Ligand),
-                     Distance=distances,
-                     Color=color_columns,
-                     vertical_line=fixed(vertical_line),
-                     filter_by_metric=fixed(filter_by_metric),
-                     **metrics_sliders)
+            if filter_by_metric:# Add checks for the given pele data pandas df
+                metrics = [k for k in ligand_series.keys() if 'metric_' in k]
+                metrics_sliders = {}
 
-        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None,
-                                    filter_by_metric=False, **metrics_sliders):
+                for m in metrics:
+                    m_slider = FloatSlider(
+                                    value=4.0,
+                                    min=0,
+                                    max=30,
+                                    step=0.1,
+                                    description=m+':',
+                                    disabled=False,
+                                    continuous_update=False,
+                                    orientation='horizontal',
+                                    readout=True,
+                                    readout_format='.2f',
+                                )
+                    metrics_sliders[m] = m_slider
+
+                interact(_bindingEnergyLandscape,
+                         Protein=fixed(Protein),
+                         Ligand=fixed(Ligand),
+                         Distance=distances,
+                         Color=color_columns,
+                         vertical_line=fixed(vertical_line),
+                         **metrics_sliders)
+            else:
+                interact(_bindingEnergyLandscape,
+                         Protein=fixed(Protein),
+                         Ligand=fixed(Ligand),
+                         Distance=distances,
+                         Color=color_columns,
+                         vertical_line=fixed(vertical_line))
+
+        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, **metrics_sliders):
+
+            print(type(metrics_sliders))
+            print(metrics_sliders)
 
             if isinstance(metrics_sliders, type(None)):
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', ylim=ylim,
-                                                     vertical_line=vertical_line, color_column=Color,
-                                                     filter_by_metric=filter_by_metric)
+                                                     vertical_line=vertical_line, color_column=Color)
             else:
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', ylim=ylim,
                                                      vertical_line=vertical_line, color_column=Color,
-                                                     filter_by_metric=filter_by_metric, metrics=metrics_sliders)
+                                                     metrics=metrics_sliders)
 
 
         interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line),
