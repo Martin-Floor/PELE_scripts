@@ -745,6 +745,7 @@ class peleAnalysis:
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
 
+            metrics_sliders = None
             if filter_by_metric:# Add checks for the given pele data pandas df
                 metrics = [k for k in ligand_series.keys() if 'metric_' in k]
 
