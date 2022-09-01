@@ -808,9 +808,6 @@ class peleAnalysis:
 
         def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, **metrics_sliders):
 
-            print(type(metrics_sliders))
-            print(metrics_sliders)
-
             if isinstance(metrics_sliders, type(None)):
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', ylim=ylim,
                                                      vertical_line=vertical_line, color_column=Color)
