@@ -30,7 +30,7 @@ class peleAnalysis:
     """
 
     def __init__(self, pele_folder, pele_output_folder='output', force_reading=False, separator='_',
-                 verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all'):
+                 verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',data_folder_name='pele_analysis'):
         """
         When initiliasing the class it read the paths to the output folder report,
         trajectory, and topology files.
@@ -49,6 +49,7 @@ class peleAnalysis:
         self.separator = separator
 
         # Get all PELE folders' paths
+        self.data_folder  = '.'+data_folder_name
         self.pele_directories = {}
         self.report_files = {}
         self.trajectory_files = {}
@@ -70,8 +71,8 @@ class peleAnalysis:
             raise ValueError('Energy by residue type not valid. valid options are: '+' '.join(energy_by_residue_type))
 
         # Create analysis folder
-        if not os.path.exists('.pele_analysis'):
-            os.mkdir('.pele_analysis')
+        if not os.path.exists(self.data_folder):
+            os.mkdir(self.data_folder)
 
         parser = PDB.PDBParser()
 
@@ -130,7 +131,7 @@ class peleAnalysis:
         self.ligand_structure = {}
         self.md_topology = {}
 
-        if not os.path.exists('.pele_analysis/chains_ids.json') or not os.path.exists('.pele_analysis/atom_indexes.json') or force_reading:
+        if not os.path.exists(self.data_folder+'/chains_ids.json') or not os.path.exists(self.data_folder+'/atom_indexes.json') or force_reading:
             for protein in self.report_files:
                 if protein not in self.chain_ids:
                     self.structure[protein] = {}
@@ -180,8 +181,8 @@ class peleAnalysis:
                             atom_map = '-'.join([r_pdb.get_parent().id, str(r_pdb.id[1]), atom_name])
                             self.atom_indexes[protein][ligand][atom_map] = a_md.index
 
-            self._saveDictionaryAsJson(self.chain_ids, '.pele_analysis/chains_ids.json')
-            self._saveDictionaryAsJson(self.atom_indexes, '.pele_analysis/atom_indexes.json')
+            self._saveDictionaryAsJson(self.chain_ids, self.data_folder+'/chains_ids.json')
+            self._saveDictionaryAsJson(self.atom_indexes, self.data_folder+'/atom_indexes.json')
 
             # Recover atom_indexes tuple status
             atom_indexes = {}
@@ -194,7 +195,7 @@ class peleAnalysis:
                         atom_indexes[protein][ligand][(ams[0], int(ams[1]), ams[2])] = self.atom_indexes[protein][ligand][am]
             self.atom_indexes = atom_indexes
         else:
-            self.chain_ids = self._loadDictionaryFromJson('.pele_analysis/chains_ids.json')
+            self.chain_ids = self._loadDictionaryFromJson(self.data_folder+'/chains_ids.json')
             # Recover chain as integer in the dictionary
             chain_ids = {}
             for protein in self.chain_ids:
@@ -221,7 +222,7 @@ class peleAnalysis:
 
             self.chain_ids = chain_ids
 
-            self.atom_indexes = self._loadDictionaryFromJson('.pele_analysis/atom_indexes.json')
+            self.atom_indexes = self._loadDictionaryFromJson(self.data_folder+'/atom_indexes.json')
             # Recover atom_indexes tuple status
             atom_indexes = {}
             for protein in self.atom_indexes:
@@ -336,8 +337,8 @@ class peleAnalysis:
             Force recalculation of distances.
         """
 
-        if not os.path.exists('.pele_analysis/distances'):
-            os.mkdir('.pele_analysis/distances')
+        if not os.path.exists(self.data_folder+'/distances'):
+            os.mkdir(self.data_folder+'/distances')
 
         # Iterate all PELE protein + ligand entries
         distances = {}
@@ -346,7 +347,7 @@ class peleAnalysis:
             for ligand in sorted(self.trajectory_files[protein]):
 
                 # Define a different distance output file for each pele run
-                distance_file = '.pele_analysis/distances/'+protein+self.separator+ligand+'.csv'
+                distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
 
                 # Check if distance have been previously calculated
                 if os.path.exists(distance_file) and not overwrite:
@@ -1969,7 +1970,7 @@ class peleAnalysis:
             Dictionary by trajectory index with the mdtraj.Trajectory objects as values.
         """
 
-        ligand_traj_dir = '.pele_analysis/ligand_traj'
+        ligand_traj_dir = self.data_folder+'/ligand_traj'
         if not os.path.exists(ligand_traj_dir):
             os.mkdir(ligand_traj_dir)
 
@@ -2063,7 +2064,7 @@ class peleAnalysis:
             a tuple: (ligand_traj, traj_dict).
         """
 
-        ligand_traj_dir = '.pele_analysis/ligand_traj'
+        ligand_traj_dir = self.data_folder+'/ligand_traj'
         if not os.path.exists(ligand_traj_dir):
             os.mkdir(ligand_traj_dir)
 
@@ -2141,7 +2142,7 @@ class peleAnalysis:
             Whether to recalculate the ligand trajectory (see getLigandTrajectory()).
         """
 
-        clustering_dir = '.pele_analysis/clustering'
+        clustering_dir = self.data_folder+'/clustering'
         if not os.path.exists(clustering_dir):
             os.mkdir(clustering_dir)
 
@@ -2440,13 +2441,13 @@ class peleAnalysis:
         return jobs
 
     def _saveDataState(self):
-        self.data.to_csv('.pele_analysis/data.csv')
+        self.data.to_csv(self.data_folder+'/data.csv')
 
     def _saveEquilibrationDataState(self):
-        self.equilibration_data.to_csv('.pele_analysis/equilibration_data.csv')
+        self.equilibration_data.to_csv(self.data_folder+'/equilibration_data.csv')
 
     def _recoverDataState(self, remove=False):
-        csv_file = '.pele_analysis/data.csv'
+        csv_file = self.data_folder+'/data.csv'
         if os.path.exists(csv_file):
             self.data = pd.read_csv(csv_file, index_col=False)
             self.data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
@@ -2454,7 +2455,7 @@ class peleAnalysis:
                 os.remove(csv_file)
 
     def _recoverEquilibrationDataState(self, remove=False):
-        csv_file = '.pele_analysis/equilibration_data.csv'
+        csv_file = self.data_folder+'/equilibration_data.csv'
         if os.path.exists(csv_file):
             self.equilibration_data = pd.read_csv(csv_file, index_col=False)
             self.equilibration_data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
