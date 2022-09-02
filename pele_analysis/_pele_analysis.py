@@ -248,7 +248,8 @@ class peleAnalysis:
                                                  protein,
                                                  ligand,
                                                  force_reading=force_reading,
-                                                 ebr_threshold=0.1)
+                                                 ebr_threshold=0.1,
+                                                 data_folder_name=self.data_folder)
                 if isinstance(data, type(None)):
                     continue
 
@@ -295,7 +296,8 @@ class peleAnalysis:
                                                  protein,
                                                  ligand,
                                                  force_reading=force_reading,
-                                                 equilibration=True)
+                                                 equilibration=True,
+                                                 data_folder_name=self.data_folder)
 
                 if isinstance(data, type(None)):
                     continue
