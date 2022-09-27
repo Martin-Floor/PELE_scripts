@@ -99,6 +99,9 @@ class peleAnalysis:
                 if (protein, ligand) not in pele_combinations:
                     pele_combinations.append((protein, ligand))
 
+        if pele_combinations == []:
+            raise ValueError('No PELE data was found.')
+
         if verbose:
             print('Reading PELE information for:')
 
@@ -162,7 +165,7 @@ class peleAnalysis:
         for protein, ligand in pele_combinations:
 
             # Check if equilibration files are present
-            if protein not in self.equilibration or ligand not in self.equilibration[protein]:
+            if protein not in self.equilibration['report'] or ligand not in self.equilibration['report'][protein]:
                 equilibration = None
             else:
                 equilibration = self.equilibration['report'][protein][ligand]
@@ -2364,6 +2367,26 @@ class peleAnalysis:
 
         return jobs
 
+    def removeTrajectoryFiles(self):
+        """
+        Remove all trajectory files from PELE calculation.
+        """
+
+        for protein in self.trajectory_files:
+            for ligand in self.trajectory_files[protein]:
+                for epoch in self.trajectory_files[protein][ligand]:
+                    if epoch == 'equilibration':
+                        for epoch in self.trajectory_files[protein][ligand]['equilibration']:
+                            for trajectory in self.trajectory_files[protein][ligand]['equilibration'][epoch]:
+                                f = self.trajectory_files[protein][ligand]['equilibration'][epoch][trajectory]
+                                if f != {} and os.path.exists(f):
+                                    os.remove(self.trajectory_files[protein][ligand]['equilibration'][epoch][trajectory])
+                    else:
+                        for trajectory in self.trajectory_files[protein][ligand][epoch]:
+                            f = self.trajectory_files[protein][ligand][epoch][trajectory]
+                            if f != {} and os.path.exists(f):
+                                os.remove(self.trajectory_files[protein][ligand][epoch][trajectory])
+
     def _saveDataState(self):
         self.data.to_csv(self.data_folder+'/data.csv')
 
@@ -2441,9 +2464,8 @@ class peleAnalysis:
         """
         Returns the input PDB for the PELE simulation.
         """
-
         # If PELE input folder is not found return None
-        if protein not in self.pele_directories or ligand not in self.pele_directories:
+        if protein not in self.pele_directories or ligand not in self.pele_directories[protein]:
             return
 
         # Load input PDB with Bio.PDB and mdtraj
@@ -2546,7 +2568,7 @@ class peleAnalysis:
             if verbose:
                 print('Getting paths to PELE files')
         else:
-            print('Pele directory not found. Checking data folder...')
+            print('Pele directory not found. Checking %s folder...' % self.data_folder)
             return
 
         # Check pele_folder for PELE runs.
