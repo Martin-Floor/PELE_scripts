@@ -99,6 +99,9 @@ class peleAnalysis:
                 if (protein, ligand) not in pele_combinations:
                     pele_combinations.append((protein, ligand))
 
+        if pele_combinations == []:
+            raise ValueError('No PELE data was found.')
+
         if verbose:
             print('Reading PELE information for:')
 
@@ -2420,6 +2423,26 @@ class peleAnalysis:
 
         return jobs
 
+    def removeTrajectoryFiles(self):
+        """
+        Remove all trajectory files from PELE calculation.
+        """
+
+        for protein in self.trajectory_files:
+            for ligand in self.trajectory_files[protein]:
+                for epoch in self.trajectory_files[protein][ligand]:
+                    if epoch == 'equilibration':
+                        for epoch in self.trajectory_files[protein][ligand]['equilibration']:
+                            for trajectory in self.trajectory_files[protein][ligand]['equilibration'][epoch]:
+                                f = self.trajectory_files[protein][ligand]['equilibration'][epoch][trajectory]
+                                if f != {} and os.path.exists(f):
+                                    os.remove(self.trajectory_files[protein][ligand]['equilibration'][epoch][trajectory])
+                    else:
+                        for trajectory in self.trajectory_files[protein][ligand][epoch]:
+                            f = self.trajectory_files[protein][ligand][epoch][trajectory]
+                            if f != {} and os.path.exists(f):
+                                os.remove(self.trajectory_files[protein][ligand][epoch][trajectory])
+
     def _saveDataState(self):
         self.data.to_csv(self.data_folder+'/data.csv')
 
@@ -2601,7 +2624,7 @@ class peleAnalysis:
             if verbose:
                 print('Getting paths to PELE files')
         else:
-            print('Pele directory not found. Checking data folder...')
+            print('Pele directory not found. Checking %s folder...' % self.data_folder)
             return
 
         # Check pele_folder for PELE runs.
