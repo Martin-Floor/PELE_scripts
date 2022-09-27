@@ -2521,8 +2521,8 @@ class peleAnalysis:
             # Iterate over CSV files and get protein and ligand names
             for d in os.listdir(self.data_folder):
                 if d.endswith('.csv') and d.startswith('data_'):
-                    protein = d.split(self.separator)[0].replace('data_','')
-                    ligand = d.split(self.separator)[1].replace('.csv','')
+                    protein = d.split(self.separator)[1].replace('data_','')
+                    ligand = d.split(self.separator)[2].replace('.csv','')
                     if protein not in self.csv_files:
                         self.csv_files[protein] = {}
                     if ligand not in self.csv_files[protein]:
