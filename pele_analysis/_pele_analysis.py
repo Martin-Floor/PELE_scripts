@@ -162,7 +162,7 @@ class peleAnalysis:
         for protein, ligand in pele_combinations:
 
             # Check if equilibration files are present
-            if protein not in self.equilibration or ligand not in self.equilibration[protein]:
+            if protein not in self.equilibration['report'] or ligand not in self.equilibration['report'][protein]:
                 equilibration = None
             else:
                 equilibration = self.equilibration['report'][protein][ligand]
@@ -2441,9 +2441,8 @@ class peleAnalysis:
         """
         Returns the input PDB for the PELE simulation.
         """
-
         # If PELE input folder is not found return None
-        if protein not in self.pele_directories or ligand not in self.pele_directories:
+        if protein not in self.pele_directories or ligand not in self.pele_directories[protein]:
             return
 
         # Load input PDB with Bio.PDB and mdtraj
@@ -2499,8 +2498,8 @@ class peleAnalysis:
             # Iterate over CSV files and get protein and ligand names
             for d in os.listdir(self.data_folder):
                 if d.endswith('.csv') and d.startswith('data_'):
-                    protein = d.split(self.separator)[0].replace('data_','')
-                    ligand = d.split(self.separator)[1].replace('.csv','')
+                    protein = d.split(self.separator)[1].replace('data_','')
+                    ligand = d.split(self.separator)[2].replace('.csv','')
                     if protein not in self.csv_files:
                         self.csv_files[protein] = {}
                     if ligand not in self.csv_files[protein]:
