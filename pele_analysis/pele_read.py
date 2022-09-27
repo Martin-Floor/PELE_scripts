@@ -141,7 +141,7 @@ def getTopologyFile(pele_input_folder):
     return topology_file
 
 def readReportFiles(report_files, protein, ligand, equilibration=False, force_reading=False,
-                    ebr_threshold=0.1,data_folder_name='.pele_analysis'):
+                    ebr_threshold=0.1, data_folder_name='.pele_analysis', separator='-'):
     """
     Merge a list of report files data into a single data frame. It adds epoch and trajectory
     information based on the input dictionary structure: report_files[epoch][trajectory].
@@ -160,9 +160,9 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
     """
 
     if equilibration:
-        csv_file_name = data_folder_name+'/equilibration_data_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/equilibration_data_'+protein+separator+ligand+'.csv'
     else:
-        csv_file_name = data_folder_name+'/data_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/data_'+protein+separator+ligand+'.csv'
 
     if os.path.exists(csv_file_name) and not force_reading:
         report_data = pd.read_csv(csv_file_name)
@@ -197,7 +197,8 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
 
         report_data.set_index([step, 'Trajectory', 'Accepted Pele Steps'], inplace=True)
 
-        _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration,data_folder_name=data_folder_name)
+        _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration,
+                       separator=separator, data_folder_name=data_folder_name)
 
     return report_data
 
@@ -260,11 +261,11 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1):
 
     return report_values
 
-def _saveDataToCSV(dataframe, protein, ligand, equilibration=False,data_folder_name='.pele_analysis'):
+def _saveDataToCSV(dataframe, protein, ligand, equilibration=False, separator='-', data_folder_name='.pele_analysis'):
     if not os.path.exists(data_folder_name):
         os.mkdir(data_folder_name)
     if equilibration:
-        csv_file_name = data_folder_name+'/equilibration_data_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/equilibration_data_'+protein+separator+ligand+'.csv'
     else:
-        csv_file_name = data_folder_name+'/data_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/data_'+protein+separator+ligand+'.csv'
     dataframe.to_csv(csv_file_name)
