@@ -2234,12 +2234,8 @@ class peleAnalysis:
                     protein, ligand = model
                     keywords = ['system', 'chain', 'resname', 'steps', 'iterations', 'atom_dist', 'analyse',
                                 'cpus', 'equilibration', 'equilibration_steps', 'traj', 'working_folder',
-<<<<<<< HEAD
-                                'usesrun', 'use_peleffy', 'debug', 'box_radius', 'equilibration_mode',
+                                'usesrun', 'use_peleffy', 'debug', 'box_radius', 'box_center', 'equilibration_mode',
                                 'seed']
-=======
-                                'usesrun', 'use_peleffy', 'debug', 'box_radius', 'box_center', 'equilibration_mode']
->>>>>>> acc636c9d89dc999aa7e7651488d83eb8e9443ad
 
                     # Skip given protein models
                     if skip_models != None:
