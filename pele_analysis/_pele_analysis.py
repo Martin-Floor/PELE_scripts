@@ -272,6 +272,9 @@ class peleAnalysis:
             Force recalculation of distances.
         """
 
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Distances cannot be calculated without pele folder')
+
         if not os.path.exists(self.data_folder+'/distances'):
             os.mkdir(self.data_folder+'/distances')
 
@@ -388,6 +391,10 @@ class peleAnalysis:
         """
         Load trajectory file for the selected protein, ligand, step, and trajectory number.
         """
+
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot get trajectory without pele folder')
+
         if equilibration:
             traj = md.load(self.equilibration['trajectory'][protein][ligand][step][trajectory],
                             top=self.topology_files[protein][ligand])
@@ -400,6 +407,9 @@ class peleAnalysis:
         """
         Calculate the RMSD of all steps regarding the input (topology) structure.
         """
+
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. RMSD cannot be calculated without pele folder')
 
         if equilibration:
             if 'RMSD' in self.equilibration_data.keys() and not recalculate:
@@ -470,6 +480,7 @@ class peleAnalysis:
         plt.figure()
 
         if equilibration:
+
             last_step = {}
             for protein in self.proteins:
                 last_step[protein] = {}
@@ -670,6 +681,14 @@ class peleAnalysis:
         """
         Plot binding energy as interactive plot.
         """
+
+        if not any(column.startswith('distance') for column in self.data.columns):
+            if os.path.isdir(self.pele_folder):
+                raise ValueError('There are no distances in pele data. Use calculateDistances to show plot.')
+            else:
+                raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
+
+
         def getLigands(Protein, by_metric=True, vertical_line=None, filter_by_metric=False):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
@@ -779,6 +798,13 @@ class peleAnalysis:
         """
         Returns the distance associated to a specific protein and ligand simulation
         """
+
+        if not any(column.startswith('distance') for column in self.data.columns):
+            if os.path.isdir(self.pele_folder):
+                raise ValueError('There are no distances in pele data. Use calculateDistances to obtain them.')
+            else:
+                raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
+
         protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         if not ligand_series.empty:
@@ -797,6 +823,9 @@ class peleAnalysis:
         of the different catalytic metrics. The plot can be done by protein or by ligand.
         """
         metrics = [k for k in self.data.keys() if 'metric_' in k]
+
+        if len(metrics)==0:
+            raise ValuError('No calatytic metrics have been computed.')
 
         def _plotCatalyticPosesFractionByProtein(Protein, Separate_by_metric=True, **metrics):
 
@@ -931,6 +960,9 @@ class peleAnalysis:
         of the different catalytic metrics. The plot can be done by protein or by ligand.
         """
         metrics = [k for k in self.data.keys() if 'metric_' in k]
+
+        if len(metrics)==0:
+            raise ValuError('No calatytic metrics have been computed.')
 
         def _plotBindingEnergyByProtein(Protein, Separate_by_metric=True, **metrics):
 
@@ -1226,6 +1258,10 @@ class peleAnalysis:
 
     def visualiseBestPoses(self, pele_data=None, initial_threshold=3.5):
 
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. There are no trajectories.')
+
+
         def _visualiseBestPoses(Protein, Ligand, n_smallest=10, **metrics):
             protein_series = pele_data[pele_data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
@@ -1303,6 +1339,9 @@ class peleAnalysis:
 
     def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False,
                       num_trajectories='all', epochs=None, trajectories=None):
+
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. There are no trajectories.')
 
         if isinstance(resnames, str):
             resnames = [resnames]
@@ -1804,6 +1843,9 @@ class peleAnalysis:
             Symbol used to separate protein, ligand, epoch, trajectory and pele step for each pose filename.
         """
 
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot extract poses')
+
         # Create output folder
         if not os.path.exists(output_folder):
             os.mkdir(output_folder)
@@ -1904,6 +1946,10 @@ class peleAnalysis:
             Dictionary by trajectory index with the mdtraj.Trajectory objects as values.
         """
 
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot acces trajectories.')
+
+
         ligand_traj_dir = self.data_folder+'/ligand_traj'
         if not os.path.exists(ligand_traj_dir):
             os.mkdir(ligand_traj_dir)
@@ -1998,6 +2044,11 @@ class peleAnalysis:
             a tuple: (ligand_traj, traj_dict).
         """
 
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot acces trajectories.')
+
+
+
         ligand_traj_dir = self.data_folder+'/ligand_traj'
         if not os.path.exists(ligand_traj_dir):
             os.mkdir(ligand_traj_dir)
@@ -2075,6 +2126,11 @@ class peleAnalysis:
         overwrite : bool
             Whether to recalculate the ligand trajectory (see getLigandTrajectory()).
         """
+
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot acces trajectories.')
+
+
 
         clustering_dir = self.data_folder+'/clustering'
         if not os.path.exists(clustering_dir):
