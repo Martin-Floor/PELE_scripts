@@ -1,7 +1,9 @@
-import os
 from . import pele_read
 from . import pele_trajectory
 from . import clustering
+
+import os
+import shutil
 
 import pandas as pd
 import matplotlib as mpl
@@ -29,11 +31,12 @@ class peleAnalysis:
     ==========
     """
 
-    def __init__(self, pele_folder, pele_output_folder='output', force_reading=False, separator='_',
-                 verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all'):
+    def __init__(self, pele_folder, pele_output_folder='output', force_reading=False, separator='-',
+                 verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
+                 data_folder_name=None, trajectories=True):
         """
-        When initiliasing the class it read the paths to the output folder report,
-        trajectory, and topology files.
+        When initiliasing the class it read the paths to the output report, trajectory,
+        and topology files.
 
         Parameters
         ==========
@@ -41,16 +44,19 @@ class peleAnalysis:
             Path to the pele folder containing one or several PELE calculations folders
         """
 
-        # start = time.time()
-
-        # Check if dataframe exists
+        # Set pele folder variables
         self.pele_folder = pele_folder
         self.pele_output_folder = pele_output_folder
         self.separator = separator
 
-        # Get all PELE folders' paths
+        # Set attributes for all PELE folders' paths
+        if data_folder_name == None:
+            self.data_folder  = '.pele_analysis' # Hidden if not given
+        else:
+            self.data_folder  = data_folder_name
         self.pele_directories = {}
         self.report_files = {}
+        self.csv_files = {}
         self.trajectory_files = {}
         self.topology_files = {}
         self.equilibration = {}
@@ -60,215 +66,99 @@ class peleAnalysis:
         self.equilibration['report'] = {}
         self.equilibration['trajectory'] = {}
 
-        # Clustering Attributes
+        # System name attributes
         self.proteins = []
         self.ligands = []
 
-        # Check energy by residue type
+        # Check given energy by residue type
         ebr_types = ['all', 'sgb', 'lennard_jones', 'electrostatic']
         if energy_by_residue_type not in ebr_types:
             raise ValueError('Energy by residue type not valid. valid options are: '+' '.join(energy_by_residue_type))
 
-        # Create analysis folder
-        if not os.path.exists('.pele_analysis'):
-            os.mkdir('.pele_analysis')
+        # Check data folder for paths to csv files
+        self._checkDataFolder(trajectories=trajectories)
 
-        parser = PDB.PDBParser()
+        # Check PELE folder for paths to pele data
+        self._checkPELEFolder(verbose=verbose)
 
-        if verbose:
-            print('Getting paths to PELE files')
+        # Copy PELE inputs to analysis folder
+        self._copyPELEInputs()
 
-        for d in os.listdir(self.pele_folder):
-            if os.path.isdir(self.pele_folder+'/'+d):
+        # Copy PELE topology files to analysis folder
+        self._copyPELETopology()
 
-                # Store paths to the pele folders
-                pele_dir = self.pele_folder+'/'+d
-                protein = d.split(self.separator)[0]
-                ligand = d.split(self.separator)[1]
-                if protein not in self.pele_directories:
-                    self.pele_directories[protein] = {}
-                if protein not in self.report_files:
-                    self.report_files[protein] = {}
-                if protein not in self.report_files:
-                    self.report_files[protein] = {}
-                if protein not in self.trajectory_files:
-                    self.trajectory_files[protein] = {}
-                if protein not in self.topology_files:
-                    self.topology_files[protein] = {}
-                if protein not in self.equilibration['report']:
-                    self.equilibration['report'][protein] = {}
-                if protein not in self.equilibration['trajectory']:
-                    self.equilibration['trajectory'][protein] = {}
+        # Copy PELE trajectories to analysis folder
+        if trajectories:
+            self._copyPELETrajectories()
 
-                self.pele_directories[protein][ligand] = pele_dir
+        # Set dictionary with Chain IDs to match mdtraj indexing
+        self._setChainIDs(force_reading=force_reading)
 
-                if not os.path.exists(pele_dir+'/'+self.pele_output_folder+'/output'):
-                    print('Output folder not found for %s-%s PELE calculation.' % (protein, ligand))
-                    continue
-                else:
-                    self.report_files[protein][ligand] = pele_read.getReportFiles(pele_dir+'/'+self.pele_output_folder+'/output')
-                    self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
-                    self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(pele_dir+'/'+self.pele_output_folder+'/output')
-                    self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(pele_dir+'/'+self.pele_output_folder+'/output')
-
-                if not os.path.exists(pele_dir+'/'+self.pele_output_folder+'/input'):
-                    print('PELE input folder not found for %s-%s PELE calculation.' % (protein, ligand))
-                    continue
-                else:
-                    self.topology_files[protein][ligand] = pele_read.getTopologyFile(pele_dir+'/'+self.pele_output_folder+'/input')
-
-                if protein not in self.proteins:
-                    self.proteins.append(protein)
-                if ligand not in self.ligands:
-                    self.ligands.append(ligand)
-
-        self.proteins = sorted(self.proteins)
-        self.ligands = sorted(self.ligands)
-
-        # Read complex chain ids
-        self.structure = {}
-        self.ligand_structure = {}
-        self.md_topology = {}
-
-        if not os.path.exists('.pele_analysis/chains_ids.json') or not os.path.exists('.pele_analysis/atom_indexes.json') or force_reading:
-            for protein in self.report_files:
-                if protein not in self.chain_ids:
-                    self.structure[protein] = {}
-                    self.ligand_structure[protein] = {}
-                    self.md_topology[protein] = {}
-                    self.chain_ids[protein] = {}
-                    self.atom_indexes[protein] = {}
-                for ligand in self.report_files[protein]:
-                    if ligand not in self.chain_ids[protein]:
-                        self.chain_ids[protein][ligand] = {}
-
-                    if ligand not in self.atom_indexes[protein]:
-                        self.atom_indexes[protein][ligand] = {}
-
-                    # Load input PDB with Bio.PDB and mdtraj
-                    input_pdb = self._getInputPDB(self.pele_directories[protein][ligand])
-                    self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
-                    input_ligand_pdb = self._getInputLigandPDB(self.pele_directories[protein][ligand])
-                    self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
-
-                    # Add ligand three letter code ligand_names
-                    if ligand not in self.ligand_names:
-                        for residue in self.ligand_structure[protein][ligand].get_residues():
-                            self.ligand_names[ligand] = residue.resname
-
-                    # Read topology mdtraj trajectory object
-                    self.md_topology[protein][ligand] = md.load(input_pdb)
-
-                    # Match the MDTraj chain with the PDB chain id
-                    biopdb_residues = [r for r in self.structure[protein][ligand].get_residues()]
-                    mdtrj_residues = [r for r in self.md_topology[protein][ligand].topology.residues]
-                    for r_pdb, r_md in zip(biopdb_residues, mdtrj_residues):
-                        chain_pdb = r_pdb.get_parent().id
-                        chain_md = r_md.chain.index
-                        self.chain_ids[protein][ligand][chain_md] = chain_pdb
-
-                        # Get a dictionary mapping (chain, residue, atom) to traj atom_index
-                        biopdb_atoms = [a for a in r_pdb]
-                        mdtrj_atoms = [a for a in r_md.atoms]
-                        for a_pdb, a_md in zip(biopdb_atoms, mdtrj_atoms):
-                            # Check water residues and remove final W
-                            if r_pdb.id[0] == 'W':
-                                atom_name = a_pdb.name[:-1]
-                            else:
-                                atom_name = a_pdb.name
-                            # Join tuple as a string to save as json.
-                            atom_map = '-'.join([r_pdb.get_parent().id, str(r_pdb.id[1]), atom_name])
-                            self.atom_indexes[protein][ligand][atom_map] = a_md.index
-
-            self._saveDictionaryAsJson(self.chain_ids, '.pele_analysis/chains_ids.json')
-            self._saveDictionaryAsJson(self.atom_indexes, '.pele_analysis/atom_indexes.json')
-
-            # Recover atom_indexes tuple status
-            atom_indexes = {}
-            for protein in self.atom_indexes:
-                atom_indexes[protein] = {}
-                for ligand in self.atom_indexes[protein]:
-                    atom_indexes[protein][ligand] = {}
-                    for am in self.atom_indexes[protein][ligand]:
-                        ams = am.split('-')
-                        atom_indexes[protein][ligand][(ams[0], int(ams[1]), ams[2])] = self.atom_indexes[protein][ligand][am]
-            self.atom_indexes = atom_indexes
-        else:
-            self.chain_ids = self._loadDictionaryFromJson('.pele_analysis/chains_ids.json')
-            # Recover chain as integer in the dictionary
-            chain_ids = {}
-            for protein in self.chain_ids:
-                self.structure[protein] = {}
-                self.ligand_structure[protein] = {}
-                self.md_topology[protein] = {}
-                chain_ids[protein] = {}
-                for ligand in self.chain_ids[protein]:
-                    chain_ids[protein][ligand] = {}
-                    input_pdb = self._getInputPDB(self.pele_directories[protein][ligand])
-                    self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
-                    input_ligand_pdb = self._getInputLigandPDB(self.pele_directories[protein][ligand])
-                    self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
-
-                    # Add ligand three letter code ligand_names
-                    if ligand not in self.ligand_names:
-                        for residue in self.ligand_structure[protein][ligand].get_residues():
-                            self.ligand_names[ligand] = residue.resname
-
-                    # Read topology mdtraj trajectory object
-                    self.md_topology[protein][ligand] = md.load(input_pdb)
-                    for chain in self.chain_ids[protein][ligand]:
-                        chain_ids[protein][ligand][int(chain)] = self.chain_ids[protein][ligand][chain]
-
-            self.chain_ids = chain_ids
-
-            self.atom_indexes = self._loadDictionaryFromJson('.pele_analysis/atom_indexes.json')
-            # Recover atom_indexes tuple status
-            atom_indexes = {}
-            for protein in self.atom_indexes:
-                atom_indexes[protein] = {}
-                for ligand in self.atom_indexes[protein]:
-                    atom_indexes[protein][ligand] = {}
-                    for am in self.atom_indexes[protein][ligand]:
-                        ams = am.split('-')
-                        atom_indexes[protein][ligand][(ams[0], int(ams[1]), ams[2])] = self.atom_indexes[protein][ligand][am]
-            self.atom_indexes = atom_indexes
-
-        if verbose:
-            print('Reading information from report files from:')
-
-        # Read report files into pandas
-        report_data = []
+        # Gather protein and ligand combinations
+        pele_combinations = []
         for protein in sorted(self.report_files):
             for ligand in sorted(self.report_files[protein]):
-                if verbose:
-                    print('\t'+protein+self.separator+ligand, end=' ')
-                    start = time.time()
-                data = pele_read.readReportFiles(self.report_files[protein][ligand],
-                                                 protein,
-                                                 ligand,
-                                                 force_reading=force_reading,
-                                                 ebr_threshold=0.1)
-                if isinstance(data, type(None)):
-                    continue
+                if (protein, ligand) not in pele_combinations:
+                    pele_combinations.append((protein, ligand))
 
-                keep = [k for k in data.keys() if not k.startswith('L:1_')]
-                if energy_by_residue:
-                    keep += [k for k in data.keys() if k.startswith('L:1_') and k.endswith(energy_by_residue_type)]
-                data = data[keep]
+        for protein in sorted(self.csv_files):
+            for ligand in sorted(self.csv_files[protein]):
+                if (protein, ligand) not in pele_combinations:
+                    pele_combinations.append((protein, ligand))
 
-                data = data.reset_index()
-                data['Protein'] = protein
-                data['Ligand'] = ligand
-                data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-                report_data.append(data)
-                if verbose:
-                    print('\t in %.2f seconds.' % (time.time()-start))
+        if pele_combinations == []:
+            raise ValueError('No PELE data was found.')
 
+        if verbose:
+            print('Reading PELE information for:')
+
+        # Iterate PELE folders to read report files
+        report_data = []
+        for protein, ligand in pele_combinations:
+            if verbose:
+                print('\t'+protein+self.separator+ligand, end=' ')
+                start = time.time()
+
+            # Check whether protein and ligand report files are present
+            if protein not in self.report_files or ligand not in self.report_files[protein]:
+                report_files = None
+            else:
+                report_files = self.report_files[protein][ligand]
+
+            # Read report files into panda dataframes
+            data = pele_read.readReportFiles(report_files,
+                                             protein,
+                                             ligand,
+                                             force_reading=force_reading,
+                                             ebr_threshold=0.1,
+                                             separator=self.separator,
+                                             data_folder_name=self.data_folder)
+            # Skip of dataframe is None
+            if isinstance(data, type(None)):
+                continue
+
+            # Check which dataframe columns are to be kept
+            keep = [k for k in data.keys() if not k.startswith('L:1_')]
+            if energy_by_residue:
+                keep += [k for k in data.keys() if k.startswith('L:1_') and k.endswith(energy_by_residue_type)]
+
+            # Format dataframe with multi-indexing
+            data = data[keep]
+            data = data.reset_index()
+            data['Protein'] = protein
+            data['Ligand'] = ligand
+            data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+            report_data.append(data)
+            if verbose:
+                print('\t in %.2f seconds.' % (time.time()-start))
+
+        # Merge all dataframes into a single dataframe
         self.data = pd.concat(report_data)
+
         # Remove Task column
         self.data.drop(['Task'], axis=1)
 
-        # Save and reaload dataframe to avoid memory fragmentation
+        # Save and reload dataframe to avoid memory fragmentation
         self._saveDataState()
         self.data = None
         gc.collect()
@@ -279,33 +169,40 @@ class peleAnalysis:
 
         # Read equlibration files
         equilibration_data = []
-        for protein in sorted(self.equilibration['report']):
-            for ligand in sorted(self.equilibration['report'][protein]):
+        for protein, ligand in pele_combinations:
 
-                if self.equilibration['report'][protein][ligand] == {}:
-                    print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
-                    continue
+            # Check if equilibration files are present
+            if protein not in self.equilibration['report'] or ligand not in self.equilibration['report'][protein]:
+                equilibration = None
+            else:
+                equilibration = self.equilibration['report'][protein][ligand]
 
-                if verbose:
-                    print('\t'+protein+self.separator+ligand, end=' ')
-                    start = time.time()
+            if equilibration == {}:
+                print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
+                continue
 
-                data = pele_read.readReportFiles(self.equilibration['report'][protein][ligand],
-                                                 protein,
-                                                 ligand,
-                                                 force_reading=force_reading,
-                                                 equilibration=True)
+            if verbose:
+                print('\t'+protein+self.separator+ligand, end=' ')
+                start = time.time()
 
-                if isinstance(data, type(None)):
-                    continue
+            data = pele_read.readReportFiles(equilibration,
+                                             protein,
+                                             ligand,
+                                             force_reading=force_reading,
+                                             equilibration=True,
+                                             separator=self.separator,
+                                             data_folder_name=self.data_folder)
 
-                data = data.reset_index()
-                data['Protein'] = protein
-                data['Ligand'] = ligand
-                data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-                equilibration_data.append(data)
-                if verbose:
-                    print('\t in %.2f seconds.' % (time.time()-start))
+            if isinstance(data, type(None)):
+                continue
+
+            data = data.reset_index()
+            data['Protein'] = protein
+            data['Ligand'] = ligand
+            data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+            equilibration_data.append(data)
+            if verbose:
+                print('\t in %.2f seconds.' % (time.time()-start))
 
         if equilibration_data != []:
             self.equilibration_data = pd.concat(equilibration_data)
@@ -313,6 +210,45 @@ class peleAnalysis:
             self.equilibration_data = None
             gc.collect()
             self._recoverEquilibrationDataState(remove=True)
+        else:
+            if not os.path.exists(self.data_folder):
+                raise ValuError('Pele directory not found and pele analysis folder does not exist')
+
+            if force_reading:
+                raise ValueError('Cannot force read. Pele folder was not found')
+
+            report_data = []
+            for file in os.listdir(self.data_folder):
+                if file.startswith('data'):
+                    name = file.split('_')
+                    protein = name[-2]
+                    ligand = name[-1].split('.')[0]
+
+                    if protein not in self.proteins:
+                        self.proteins.append(protein)
+                    if ligand not in self.ligands:
+                        self.ligands.append(ligand)
+
+                    data = pd.read_csv(self.data_folder+'/'+file)
+                    data = data.reset_index()
+                    data['Protein'] = protein
+                    data['Ligand'] = ligand
+                    data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+                    report_data.append(data)
+
+            self.data = pd.concat(report_data)
+            # Remove Task column
+            self.data.drop(['Task'], axis=1)
+
+            # Save and reaload dataframe to avoid memory fragmentation
+            self._saveDataState()
+            self.data = None
+            gc.collect()
+            self._recoverDataState(remove=True)
+
+            self.proteins = sorted(self.proteins)
+            self.ligands = sorted(self.ligands)
+
 
     def calculateDistances(self, atom_pairs, equilibration=False, verbose=False, overwrite=False):
         """
@@ -336,8 +272,11 @@ class peleAnalysis:
             Force recalculation of distances.
         """
 
-        if not os.path.exists('.pele_analysis/distances'):
-            os.mkdir('.pele_analysis/distances')
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Distances cannot be calculated without pele folder')
+
+        if not os.path.exists(self.data_folder+'/distances'):
+            os.mkdir(self.data_folder+'/distances')
 
         # Iterate all PELE protein + ligand entries
         distances = {}
@@ -346,7 +285,7 @@ class peleAnalysis:
             for ligand in sorted(self.trajectory_files[protein]):
 
                 # Define a different distance output file for each pele run
-                distance_file = '.pele_analysis/distances/'+protein+self.separator+ligand+'.csv'
+                distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
 
                 # Check if distance have been previously calculated
                 if os.path.exists(distance_file) and not overwrite:
@@ -452,6 +391,10 @@ class peleAnalysis:
         """
         Load trajectory file for the selected protein, ligand, step, and trajectory number.
         """
+
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot get trajectory without pele folder')
+
         if equilibration:
             traj = md.load(self.equilibration['trajectory'][protein][ligand][step][trajectory],
                             top=self.topology_files[protein][ligand])
@@ -464,6 +407,9 @@ class peleAnalysis:
         """
         Calculate the RMSD of all steps regarding the input (topology) structure.
         """
+
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. RMSD cannot be calculated without pele folder')
 
         if equilibration:
             if 'RMSD' in self.equilibration_data.keys() and not recalculate:
@@ -534,6 +480,7 @@ class peleAnalysis:
         plt.figure()
 
         if equilibration:
+
             last_step = {}
             for protein in self.proteins:
                 last_step[protein] = {}
@@ -585,7 +532,6 @@ class peleAnalysis:
         productive : bool
             Productive data is present or not
         """
-
         self.plotSimulationMetric('Total Energy',
                                   equilibration=equilibration,
                                   productive=productive)
@@ -611,7 +557,7 @@ class peleAnalysis:
                                   productive=productive)
 
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None,
-                                        ylim=None):
+                                        ylim=None, metrics=None):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns.
@@ -623,6 +569,10 @@ class peleAnalysis:
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         if ligand_series.empty:
             raise ValueError('Ligand name %s not found in protein %s data!' % (ligand, protein))
+
+        if not isinstance(metrics, type(None)):
+            for metric in metrics:
+                ligand_series = ligand_series[ligand_series[metric] <= metrics[metric]]
 
         plt.figure(figsize=(10, 8))
         if color_column != None:
@@ -731,12 +681,21 @@ class peleAnalysis:
         """
         Plot binding energy as interactive plot.
         """
-        def getLigands(Protein, by_metric=True, vertical_line=None):
+
+        if not any(column.startswith('distance') for column in self.data.columns):
+            if os.path.isdir(self.pele_folder):
+                raise ValueError('There are no distances in pele data. Use calculateDistances to show plot.')
+            else:
+                raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
+
+
+        def getLigands(Protein, by_metric=True, vertical_line=None, filter_by_metric=False):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
-            interact(getDistance, Protein=fixed(Protein), Ligand=ligands, vertical_line=fixed(vertical_line), by_metric=fixed(by_metric))
+            interact(getDistance, Protein=fixed(Protein), Ligand=ligands, vertical_line=fixed(vertical_line),
+                     by_metric=fixed(by_metric), filter_by_metric=fixed(filter_by_metric))
 
-        def getDistance(Protein, Ligand, vertical_line=None, by_metric=True):
+        def getDistance(Protein, Ligand, vertical_line=None, by_metric=True, filter_by_metric=False):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
 
@@ -754,7 +713,7 @@ class peleAnalysis:
             if not by_metric:
                 distances = []
                 for d in ligand_series:
-                    if 'distance' in d:
+                    if 'distance' in d or d == 'RMSD':
                         if not ligand_series[d].dropna().empty:
                             distances.append(d)
 
@@ -767,18 +726,53 @@ class peleAnalysis:
             del color_columns[color_columns.index('Task')]
             del color_columns[color_columns.index('Binding Energy')]
 
-            interact(_bindingEnergyLandscape,
-                     Protein=fixed(Protein),
-                     Ligand=fixed(Ligand),
-                     Distance=distances,
-                     Color=color_columns,
-                     vertical_line=fixed(vertical_line))
+            if filter_by_metric:# Add checks for the given pele data pandas df
+                metrics = [k for k in ligand_series.keys() if 'metric_' in k]
+                metrics_sliders = {}
 
-        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None):
-            self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', ylim=ylim,
-                                                 vertical_line=vertical_line, color_column=Color)
+                for m in metrics:
+                    m_slider = FloatSlider(
+                                    value=4.0,
+                                    min=0,
+                                    max=30,
+                                    step=0.1,
+                                    description=m+':',
+                                    disabled=False,
+                                    continuous_update=False,
+                                    orientation='horizontal',
+                                    readout=True,
+                                    readout_format='.2f',
+                                )
+                    metrics_sliders[m] = m_slider
 
-        interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line), by_metric=False)
+                interact(_bindingEnergyLandscape,
+                         Protein=fixed(Protein),
+                         Ligand=fixed(Ligand),
+                         Distance=distances,
+                         Color=color_columns,
+                         vertical_line=fixed(vertical_line),
+                         **metrics_sliders)
+            else:
+                interact(_bindingEnergyLandscape,
+                         Protein=fixed(Protein),
+                         Ligand=fixed(Ligand),
+                         Distance=distances,
+                         Color=color_columns,
+                         vertical_line=fixed(vertical_line))
+
+        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, **metrics_sliders):
+
+            if isinstance(metrics_sliders, type(None)):
+                self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', ylim=ylim,
+                                                     vertical_line=vertical_line, color_column=Color)
+            else:
+                self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', ylim=ylim,
+                                                     vertical_line=vertical_line, color_column=Color,
+                                                     metrics=metrics_sliders)
+
+
+        interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line),
+                 by_metric=False, filter_by_metric=False)
 
     def plotDistributions(self):
         """
@@ -804,6 +798,13 @@ class peleAnalysis:
         """
         Returns the distance associated to a specific protein and ligand simulation
         """
+
+        if not any(column.startswith('distance') for column in self.data.columns):
+            if os.path.isdir(self.pele_folder):
+                raise ValueError('There are no distances in pele data. Use calculateDistances to obtain them.')
+            else:
+                raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
+
         protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         if not ligand_series.empty:
@@ -822,6 +823,9 @@ class peleAnalysis:
         of the different catalytic metrics. The plot can be done by protein or by ligand.
         """
         metrics = [k for k in self.data.keys() if 'metric_' in k]
+
+        if len(metrics)==0:
+            raise ValuError('No calatytic metrics have been computed.')
 
         def _plotCatalyticPosesFractionByProtein(Protein, Separate_by_metric=True, **metrics):
 
@@ -956,6 +960,9 @@ class peleAnalysis:
         of the different catalytic metrics. The plot can be done by protein or by ligand.
         """
         metrics = [k for k in self.data.keys() if 'metric_' in k]
+
+        if len(metrics)==0:
+            raise ValuError('No calatytic metrics have been computed.')
 
         def _plotBindingEnergyByProtein(Protein, Separate_by_metric=True, **metrics):
 
@@ -1224,8 +1231,6 @@ class peleAnalysis:
                         )
             metrics_sliders[m] = m_slider
 
-        metrics = {m:initial_threshold for m in metrics}
-
         KT_slider = FloatSlider(
                         value=0.593,
                         min=0.593,
@@ -1252,6 +1257,10 @@ class peleAnalysis:
                  dA=dA, Ec=Ec, Enc=Enc, models_file=fixed(models_file), lig_label_rot=fixed(lig_label_rot), **metrics_sliders)
 
     def visualiseBestPoses(self, pele_data=None, initial_threshold=3.5):
+
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. There are no trajectories.')
+
 
         def _visualiseBestPoses(Protein, Ligand, n_smallest=10, **metrics):
             protein_series = pele_data[pele_data.index.get_level_values('Protein') == Protein]
@@ -1330,6 +1339,9 @@ class peleAnalysis:
 
     def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False,
                       num_trajectories='all', epochs=None, trajectories=None):
+
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. There are no trajectories.')
 
         if isinstance(resnames, str):
             resnames = [resnames]
@@ -1831,6 +1843,9 @@ class peleAnalysis:
             Symbol used to separate protein, ligand, epoch, trajectory and pele step for each pose filename.
         """
 
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot extract poses')
+
         # Create output folder
         if not os.path.exists(output_folder):
             os.mkdir(output_folder)
@@ -1931,7 +1946,11 @@ class peleAnalysis:
             Dictionary by trajectory index with the mdtraj.Trajectory objects as values.
         """
 
-        ligand_traj_dir = '.pele_analysis/ligand_traj'
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot acces trajectories.')
+
+
+        ligand_traj_dir = self.data_folder+'/ligand_traj'
         if not os.path.exists(ligand_traj_dir):
             os.mkdir(ligand_traj_dir)
 
@@ -2025,7 +2044,12 @@ class peleAnalysis:
             a tuple: (ligand_traj, traj_dict).
         """
 
-        ligand_traj_dir = '.pele_analysis/ligand_traj'
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot acces trajectories.')
+
+
+
+        ligand_traj_dir = self.data_folder+'/ligand_traj'
         if not os.path.exists(ligand_traj_dir):
             os.mkdir(ligand_traj_dir)
 
@@ -2103,7 +2127,12 @@ class peleAnalysis:
             Whether to recalculate the ligand trajectory (see getLigandTrajectory()).
         """
 
-        clustering_dir = '.pele_analysis/clustering'
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('Pele folder not found. Cannot acces trajectories.')
+
+
+
+        clustering_dir = self.data_folder+'/clustering'
         if not os.path.exists(clustering_dir):
             os.mkdir(clustering_dir)
 
@@ -2205,8 +2234,12 @@ class peleAnalysis:
                     protein, ligand = model
                     keywords = ['system', 'chain', 'resname', 'steps', 'iterations', 'atom_dist', 'analyse',
                                 'cpus', 'equilibration', 'equilibration_steps', 'traj', 'working_folder',
+<<<<<<< HEAD
                                 'usesrun', 'use_peleffy', 'debug', 'box_radius', 'equilibration_mode',
                                 'seed']
+=======
+                                'usesrun', 'use_peleffy', 'debug', 'box_radius', 'box_center', 'equilibration_mode']
+>>>>>>> acc636c9d89dc999aa7e7651488d83eb8e9443ad
 
                     # Skip given protein models
                     if skip_models != None:
@@ -2284,13 +2317,14 @@ class peleAnalysis:
                         if not isinstance(box_centers, type(None)):
                             if not all(isinstance(x, float) for x in box_centers[model]):
                                 # get coordinates from tuple
-                                for chain in self.structures[model[0]].get_chains():
-                                    if chain.id == box_centers[model][0]:
-                                        for r in chain:
-                                            if r.id[1] == box_centers[model][1]:
-                                                for atom in r:
-                                                    if atom.name == box_centers[model][2]:
-                                                        coordinates = atom.coord
+                                raise ValueError('This is not yet implemented!')
+                                # for chain in self.structures[model[0]].get_chains():
+                                #     if chain.id == box_centers[model][0]:
+                                #         for r in chain:
+                                #             if r.id[1] == box_centers[model][1]:
+                                #                 for atom in r:
+                                #                     if atom.name == box_centers[model][2]:
+                                #                         coordinates = atom.coord
                             else:
                                 coordinates = box_centers[model]
 
@@ -2403,14 +2437,37 @@ class peleAnalysis:
 
         return jobs
 
+    def removeTrajectoryFiles(self):
+        """
+        Remove all trajectory files from PELE calculation.
+        """
+
+        # Remove PELE trajectories
+        for protein in self.trajectory_files:
+            for ligand in self.trajectory_files[protein]:
+                for epoch in self.trajectory_files[protein][ligand]:
+                    for trajectory in self.trajectory_files[protein][ligand][epoch]:
+                        f = self.trajectory_files[protein][ligand][epoch][trajectory]
+                        if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
+                            os.remove(self.trajectory_files[protein][ligand][epoch][trajectory])
+
+        # Remove PELE equilibration trajectories
+        for protein in self.equilibration['trajectory']:
+            for ligand in self.equilibration['trajectory'][protein]:
+                for epoch in self.equilibration['trajectory'][protein][ligand]:
+                    for trajectory in self.equilibration['trajectory'][protein][ligand][epoch]:
+                        f = self.equilibration['trajectory'][protein][ligand][epoch][trajectory]
+                        if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
+                            os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
+
     def _saveDataState(self):
-        self.data.to_csv('.pele_analysis/data.csv')
+        self.data.to_csv(self.data_folder+'/data.csv')
 
     def _saveEquilibrationDataState(self):
-        self.equilibration_data.to_csv('.pele_analysis/equilibration_data.csv')
+        self.equilibration_data.to_csv(self.data_folder+'/equilibration_data.csv')
 
     def _recoverDataState(self, remove=False):
-        csv_file = '.pele_analysis/data.csv'
+        csv_file = self.data_folder+'/data.csv'
         if os.path.exists(csv_file):
             self.data = pd.read_csv(csv_file, index_col=False)
             self.data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
@@ -2418,7 +2475,7 @@ class peleAnalysis:
                 os.remove(csv_file)
 
     def _recoverEquilibrationDataState(self, remove=False):
-        csv_file = '.pele_analysis/equilibration_data.csv'
+        csv_file = self.data_folder+'/equilibration_data.csv'
         if os.path.exists(csv_file):
             self.equilibration_data = pd.read_csv(csv_file, index_col=False)
             self.equilibration_data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
@@ -2476,11 +2533,16 @@ class peleAnalysis:
         else:
             io.save(output_file)
 
-    def _getInputPDB(self, pele_dir):
+    def _getInputPDB(self, protein, ligand):
         """
         Returns the input PDB for the PELE simulation.
         """
+        # If PELE input folder is not found return None
+        if protein not in self.pele_directories or ligand not in self.pele_directories[protein]:
+            return
+
         # Load input PDB with Bio.PDB and mdtraj
+        pele_dir = self.pele_directories[protein][ligand]
         folder = pele_dir+'/'+self.pele_output_folder+'/input/'
         for d in os.listdir(folder):
             if d.endswith('processed.pdb'):
@@ -2515,3 +2577,340 @@ class peleAnalysis:
                 name += s
 
         return (chain, index, name)
+
+    def _checkSeparator(self, folder):
+        # Check for separator
+        if self.separator not in folder:
+            raise ValueError('Separator %s not found in PELE folder names' % self.separator)
+        if folder.count(self.separator) > 1:
+            raise ValueError('Separator %s appears more than once in the PELE folder %s' % (self.separator, folder))
+
+    def _checkDataFolder(self, trajectories=True):
+        """
+        Check protein and ligand information contained in the CSV files of the
+        PELE data folder.
+        """
+        if os.path.exists(self.data_folder):
+            # Iterate over CSV files and get protein and ligand names
+            for d in os.listdir(self.data_folder):
+                if d.endswith('.csv') and d.startswith('data_'):
+                    protein = d.split(self.separator)[-2].replace('data_','')
+                    ligand = d.split(self.separator)[-1].replace('.csv','')
+                    if protein not in self.csv_files:
+                        self.csv_files[protein] = {}
+                    if ligand not in self.csv_files[protein]:
+                        self.csv_files[protein][ligand] = self.data_folder+'/'+d
+
+                    # Add protein and ligand to attribute lists
+                    if protein not in self.proteins:
+                        self.proteins.append(protein)
+                    if ligand not in self.ligands:
+                        self.ligands.append(ligand)# Create PELE input folders
+
+            # Read trajectories if found
+            traj_dir = self.data_folder+'/pele_trajectories'
+            if os.path.exists(traj_dir):
+                for d in os.listdir(traj_dir):
+                    protein = d.split(self.separator)[-2]
+                    ligand = d.split(self.separator)[-1]
+                    if protein not in self.trajectory_files:
+                        self.trajectory_files[protein] = {}
+                        self.equilibration['trajectory'][protein] = {}
+                    self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(traj_dir+'/'+d)
+                    self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(traj_dir+'/'+d)
+
+            # Read PELE topology if found
+            topology_dir = self.data_folder+'/pele_topologies'
+            for d in os.listdir(topology_dir):
+                protein = d.split(self.separator)[-2].replace('.pdb', '')
+                ligand = d.split(self.separator)[-1]
+                if protein not in self.topology_files:
+                    self.topology_files[protein] = {}
+                for f in os.listdir(topology_dir+'/'+d):
+                    if f.endswith('.pdb'):
+                        self.topology_files[protein][ligand] = topology_dir+'/'+d+'/'+f
+        else:
+            # Create analysis folder
+            os.mkdir(self.data_folder)
+
+            # Create PELE input folders
+            os.mkdir(self.data_folder+'/pele_inputs')
+
+            # Create PELE input folders
+            os.mkdir(self.data_folder+'/pele_trajectories')
+
+            # Create PELE input folders
+            os.mkdir(self.data_folder+'/pele_topologies')
+
+    def _copyPELEInputs(self):
+        """
+        Copy PELE input files to analysis folder for easy setup PELE reruns.
+        """
+        for protein in self.pele_directories:
+            for ligand in self.pele_directories[protein]:
+                dir = self.data_folder+'/pele_inputs/'+protein+self.separator+ligand
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+                for f in os.listdir(self.pele_directories[protein][ligand]):
+                    orig = self.pele_directories[protein][ligand]+'/'+f
+                    dest = self.data_folder+'/pele_inputs/'+protein+self.separator+ligand+'/'+f
+                    if f.endswith('.pdb'):
+                        shutil.copyfile(orig, dest)
+                    elif f.endswith('.yaml'):
+                        shutil.copyfile(orig, dest)
+
+    def _copyPELETopology(self):
+        """
+        Copy topology files to analysis folder.
+        """
+        for protein in self.topology_files:
+            for ligand in self.topology_files[protein]:
+                dir = self.data_folder+'/pele_topologies/'+protein+self.separator+ligand
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+                orig = self.topology_files[protein][ligand]
+                dest = dir+'/'+protein+self.separator+ligand+'.pdb'
+                if orig != dest:
+                    shutil.copyfile(orig, dest)
+                    self.topology_files[protein][ligand] = dest
+
+    def _copyPELETrajectories(self):
+        """
+        Copy PELE output trajectories to analysis folder.
+        """
+        # Copy PELE trajectories
+        for protein in self.trajectory_files:
+            for ligand in self.trajectory_files[protein]:
+                dir = self.data_folder+'/pele_trajectories/'+protein+self.separator+ligand
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+                for epoch in self.trajectory_files[protein][ligand]:
+                    epoch_folder = dir+'/'+str(epoch)
+                    if not os.path.exists(epoch_folder):
+                        os.mkdir(epoch_folder)
+                    for traj in self.trajectory_files[protein][ligand][epoch]:
+                        orig = self.trajectory_files[protein][ligand][epoch][traj]
+                        dest = epoch_folder+'/'+orig.split('/')[-1]
+                        if orig != dest: # Copy only they are not found in the analysis folder
+                            shutil.copyfile(orig, dest)
+                            self.trajectory_files[protein][ligand][epoch][traj] = dest
+
+        # Copy equilibration PELE trajectories
+        for protein in self.equilibration['trajectory']:
+            for ligand in self.equilibration['trajectory'][protein]:
+                dir = self.data_folder+'/pele_trajectories/'+protein+self.separator+ligand
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+                for epoch in self.equilibration['trajectory'][protein][ligand]:
+                    epoch_folder = dir+'/equilibration_'+str(epoch)
+                    if not os.path.exists(epoch_folder):
+                        os.mkdir(epoch_folder)
+                    for traj in self.equilibration['trajectory'][protein][ligand][epoch]:
+                        orig = self.equilibration['trajectory'][protein][ligand][epoch][traj]
+                        dest = epoch_folder+'/'+orig.split('/')[-1]
+                        if orig != dest: # Copy only they are not found in the analysis folder
+                            shutil.copyfile(orig, dest)
+                            self.equilibration['trajectory'][protein][ligand][epoch][traj] = dest
+
+    def _checkPELEFolder(self, verbose=False):
+        """
+        Check for the paths to files in the PELE folder.
+        """
+
+        # Check if PELE folder exists
+        if os.path.isdir(self.pele_folder):
+            if verbose:
+                print('Getting paths to PELE files')
+        else:
+            print('Pele directory not found. Checking %s folder...' % self.data_folder)
+            return
+
+        # Check pele_folder for PELE runs.
+        for d in os.listdir(self.pele_folder):
+            if os.path.isdir(self.pele_folder+'/'+d):
+
+                self._checkSeparator(d)
+
+                # set pele folder dir
+                pele_dir = self.pele_folder+'/'+d
+
+                # Get protein and ligand name based on separator
+                protein = d.split(self.separator)[0]
+                ligand = d.split(self.separator)[1]
+
+                # Add protein name ligand names to dictionaries
+                if protein not in self.pele_directories:
+                    self.pele_directories[protein] = {}
+                if protein not in self.report_files:
+                    self.report_files[protein] = {}
+                if protein not in self.report_files:
+                    self.report_files[protein] = {}
+                if protein not in self.trajectory_files:
+                    self.trajectory_files[protein] = {}
+                if protein not in self.topology_files:
+                    self.topology_files[protein] = {}
+                if protein not in self.equilibration['report']:
+                    self.equilibration['report'][protein] = {}
+                if protein not in self.equilibration['trajectory']:
+                    self.equilibration['trajectory'][protein] = {}
+                self.pele_directories[protein][ligand] = pele_dir
+
+                # Set names for output and input folders
+                output_dir = pele_dir+'/'+self.pele_output_folder+'/output'
+                input_dir = pele_dir+'/'+self.pele_output_folder+'/input'
+
+                # Check if output folder exists
+                if not os.path.exists(output_dir):
+                    print('Output folder not found for %s-%s PELE calculation.' % (protein, ligand))
+                    continue
+
+                # Get paths to PELE folders
+                else:
+                    self.report_files[protein][ligand] = pele_read.getReportFiles(output_dir)
+                    self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(output_dir)
+
+                    # Read trajectory files if not in analysis folder
+                    trajectories = pele_read.getTrajectoryFiles(output_dir)
+                    if trajectories != {}:
+                        self.trajectory_files[protein][ligand] = trajectories
+                    trajectories = pele_read.getEquilibrationTrajectoryFiles(output_dir)
+                    if trajectories != {}:
+                        self.equilibration['trajectory'][protein][ligand] = trajectories
+
+                # Check if input folder exists
+                if not os.path.exists(input_dir):
+                    print('PELE input folder not found for %s-%s PELE calculation.' % (protein, ligand))
+                    continue
+                # Get path to topology file
+                else:
+                    self.topology_files[protein][ligand] = pele_read.getTopologyFile(input_dir)
+
+                # Add protein and ligand to attribute lists
+                if protein not in self.proteins:
+                    self.proteins.append(protein)
+                if ligand not in self.ligands:
+                    self.ligands.append(ligand)
+
+        # Sort protein and ligands for easy iteration
+        self.proteins = sorted(self.proteins)
+        self.ligands = sorted(self.ligands)
+
+    def _setChainIDs(self, force_reading=False):
+
+        # Crea Bio PDB parser and io
+        parser = PDB.PDBParser()
+        io = PDB.PDBIO()
+
+        # Read complex chain ids
+        self.structure = {}
+        self.ligand_structure = {}
+        self.md_topology = {}
+
+
+        if not os.path.exists(self.data_folder+'/chains_ids.json') or not os.path.exists(self.data_folder+'/atom_indexes.json') or force_reading:
+            for protein in self.report_files:
+                if protein not in self.chain_ids:
+                    self.structure[protein] = {}
+                    self.ligand_structure[protein] = {}
+                    self.md_topology[protein] = {}
+                    self.chain_ids[protein] = {}
+                    self.atom_indexes[protein] = {}
+                for ligand in self.report_files[protein]:
+                    if ligand not in self.chain_ids[protein]:
+                        self.chain_ids[protein][ligand] = {}
+
+                    if ligand not in self.atom_indexes[protein]:
+                        self.atom_indexes[protein][ligand] = {}
+
+                    # Load input PDB with Bio.PDB and mdtraj
+                    input_pdb = self._getInputPDB(protein, ligand)
+                    self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
+                    input_ligand_pdb = self._getInputLigandPDB(self.pele_directories[protein][ligand])
+                    self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
+
+                    # Add ligand three letter code ligand_names
+                    if ligand not in self.ligand_names:
+                        for residue in self.ligand_structure[protein][ligand].get_residues():
+                            self.ligand_names[ligand] = residue.resname
+
+                    # Read topology mdtraj trajectory object
+                    self.md_topology[protein][ligand] = md.load(input_pdb)
+
+                    # Match the MDTraj chain with the PDB chain id
+                    biopdb_residues = [r for r in self.structure[protein][ligand].get_residues()]
+                    mdtrj_residues = [r for r in self.md_topology[protein][ligand].topology.residues]
+                    for r_pdb, r_md in zip(biopdb_residues, mdtrj_residues):
+                        chain_pdb = r_pdb.get_parent().id
+                        chain_md = r_md.chain.index
+                        self.chain_ids[protein][ligand][chain_md] = chain_pdb
+
+                        # Get a dictionary mapping (chain, residue, atom) to traj atom_index
+                        biopdb_atoms = [a for a in r_pdb]
+                        mdtrj_atoms = [a for a in r_md.atoms]
+                        for a_pdb, a_md in zip(biopdb_atoms, mdtrj_atoms):
+                            # Check water residues and remove final W
+                            if r_pdb.id[0] == 'W':
+                                atom_name = a_pdb.name[:-1]
+                            else:
+                                atom_name = a_pdb.name
+                            # Join tuple as a string to save as json.
+                            atom_map = '-'.join([r_pdb.get_parent().id, str(r_pdb.id[1]), atom_name])
+                            self.atom_indexes[protein][ligand][atom_map] = a_md.index
+
+            self._saveDictionaryAsJson(self.chain_ids, self.data_folder+'/chains_ids.json')
+            self._saveDictionaryAsJson(self.atom_indexes, self.data_folder+'/atom_indexes.json')
+
+            # Recover atom_indexes tuple status
+            atom_indexes = {}
+            for protein in self.atom_indexes:
+                atom_indexes[protein] = {}
+                for ligand in self.atom_indexes[protein]:
+                    atom_indexes[protein][ligand] = {}
+                    for am in self.atom_indexes[protein][ligand]:
+                        ams = am.split('-')
+                        atom_indexes[protein][ligand][(ams[0], int(ams[1]), ams[2])] = self.atom_indexes[protein][ligand][am]
+            self.atom_indexes = atom_indexes
+        else:
+            self.chain_ids = self._loadDictionaryFromJson(self.data_folder+'/chains_ids.json')
+            # Recover chain as integer in the dictionary
+            chain_ids = {}
+            for protein in self.chain_ids:
+                self.structure[protein] = {}
+                self.ligand_structure[protein] = {}
+                self.md_topology[protein] = {}
+                chain_ids[protein] = {}
+                for ligand in self.chain_ids[protein]:
+                    chain_ids[protein][ligand] = {}
+                    input_pdb = self._getInputPDB(protein, ligand)
+
+                    # If input file is not found continue
+                    if input_pdb == None:
+                        continue
+
+                    self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
+                    input_ligand_pdb = self._getInputLigandPDB(self.pele_directories[protein][ligand])
+                    self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
+
+                    # Add ligand three letter code ligand_names
+                    if ligand not in self.ligand_names:
+                        for residue in self.ligand_structure[protein][ligand].get_residues():
+                            self.ligand_names[ligand] = residue.resname
+
+                    # Read topology mdtraj trajectory object
+                    self.md_topology[protein][ligand] = md.load(input_pdb)
+                    for chain in self.chain_ids[protein][ligand]:
+                        chain_ids[protein][ligand][int(chain)] = self.chain_ids[protein][ligand][chain]
+
+            self.chain_ids = chain_ids
+
+            self.atom_indexes = self._loadDictionaryFromJson(self.data_folder+'/atom_indexes.json')
+            # Recover atom_indexes tuple status
+            atom_indexes = {}
+            for protein in self.atom_indexes:
+                atom_indexes[protein] = {}
+                for ligand in self.atom_indexes[protein]:
+                    atom_indexes[protein][ligand] = {}
+                    for am in self.atom_indexes[protein][ligand]:
+                        ams = am.split('-')
+                        atom_indexes[protein][ligand][(ams[0], int(ams[1]), ams[2])] = self.atom_indexes[protein][ligand][am]
+            self.atom_indexes = atom_indexes

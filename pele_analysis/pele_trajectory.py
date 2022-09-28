@@ -60,7 +60,7 @@ def showTrajectory(trajectory, residues=[]):
     return show
 
 def calculateDistances(trajectory_files, topology_file, protein, ligand, atom_pairs, md_topology=None, equilibration=False,
-                       force_reading=False):
+                       force_reading=False,data_folder_name='.pele_analysis'):
     """
     Calculate distances for a specified set of PELE trajectories and compile a
     DataFrame with the data.
@@ -70,9 +70,9 @@ def calculateDistances(trajectory_files, topology_file, protein, ligand, atom_pa
         md_topology = md.load(topology_file)
 
     if equilibration:
-        csv_file_name = '.pele_analysis/equilibration_metrics_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/equilibration_metrics_'+protein+'_'+ligand+'.csv'
     else:
-        csv_file_name = '.pele_analysis/metrics_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/metrics_'+protein+'_'+ligand+'.csv'
 
     if os.path.exists(csv_file_name) and not force_reading:
         metric_data = pd.read_csv(csv_file_name)

@@ -1,11 +1,11 @@
 import os
 import pandas as pd
 import numpy as np
+import mdtraj as md
 
 def getTrajectoryFiles(pele_output_folder):
     """
     Retrieves the paths to the trajectory files from an Adaptive-PELE Platform output folder.
-    Be mindful of iterate using the sorted() function upon the returned dictionary!
 
     Parameters
     ==========
@@ -16,19 +16,51 @@ def getTrajectoryFiles(pele_output_folder):
     =======
     trajectory_file : dict
         Dictionary containing the path to the trajectory files separated by epochs and then trajectories.
+        Be mindful of iterate using the sorted() function upon the returned dictionary!
     """
 
     trajectory_file = {}
+
+    pdb_warn = True
     for e in sorted(os.listdir(pele_output_folder)):
-        try:
-            epoch = int(e)
-            trajectory_file[epoch] = {}
-            for f in sorted(os.listdir(pele_output_folder+'/'+e)):
-                if f.endswith('.xtc'):
-                    t = int(f.split('_')[-1].split('.')[0])
-                    trajectory_file[epoch][t] = pele_output_folder+'/'+e+'/'+f
-        except:
+        # Check that folder is a simulation folder
+        is_sim = False
+        if not os.path.isdir(pele_output_folder+'/'+e):
             continue
+        else:
+            for f in os.listdir(pele_output_folder+'/'+e):
+                if f.startswith('trajectory_'):
+                    is_sim = True
+                    break
+        if not is_sim:
+            continue
+        # Skip equilibration files
+        if e.startswith('equilibration_'):
+            continue
+
+        # Add epoch to trajectory file
+        epoch_directory = pele_output_folder+'/'+e
+        epoch = int(e)
+        trajectory_file[epoch] = {}
+
+        for f in sorted(os.listdir(epoch_directory)):
+            if f.endswith('.xtc'):
+                t = int(f.split('_')[-1].split('.')[0])
+                trajectory_file[epoch][t] = epoch_directory+'/'+f
+
+            # Check if trajectory has been given as PDB
+            elif f.endswith('.pdb') and f.startswith('trajectory_'):
+                if pdb_warn:
+                    print('Trajectories found as PDB at %s' % pele_output_folder)
+                    pdb_warn = False
+                    print('Converting trajectories to xtc...')
+
+                print('Converting file %s' % epoch_directory+'/'+f, end='\r')
+                traj = md.load(epoch_directory+'/'+f)
+                traj.save(epoch_directory+'/'+f.replace('.pdb', '.xtc'))
+                os.remove(epoch_directory+'/'+f)
+                t = int(f.split('_')[-1].split('.')[0])
+                trajectory_file[epoch][t] = epoch_directory+'/'+f.replace('.pdb', '.xtc')
 
     return trajectory_file
 
@@ -107,15 +139,49 @@ def getEquilibrationTrajectoryFiles(pele_output_folder):
         Dictionary containing the path to the report files separated by epochs and then trajectories.
     """
 
+    pdb_warn = True
     trajectory_file = {}
-    for s in sorted(os.listdir(pele_output_folder)):
-        if s.startswith('equilibration'):
-            step = s.split('_')[1]
-            trajectory_file[step] = {}
-            for f in sorted(os.listdir(pele_output_folder+'/'+s)):
-                if f.endswith('.xtc'):
-                    t = int(f.split('_')[-1].split('.')[0])
-                    trajectory_file[step][t] = pele_output_folder+'/'+s+'/'+f
+    for e in sorted(os.listdir(pele_output_folder)):
+
+        # Check that folder is a simulation folder
+        is_sim = False
+        if not os.path.isdir(pele_output_folder+'/'+e):
+            continue
+        else:
+            for f in os.listdir(pele_output_folder+'/'+e):
+                if f.startswith('trajectory_'):
+                    is_sim = True
+                    break
+
+        if not is_sim:
+            continue
+
+        # Skip non equilibration folders
+        if not e.startswith('equilibration_'):
+            continue
+
+        # Add epoch to trajectory file
+        epoch_directory = pele_output_folder+'/'+e
+        epoch = int(e.split('_')[1])
+        trajectory_file[epoch] = {}
+        for f in sorted(os.listdir(epoch_directory)):
+            if f.endswith('.xtc'):
+                t = int(f.split('_')[-1].split('.')[0])
+                trajectory_file[epoch][t] = epoch_directory+'/'+f
+
+            # Check if trajectory has been given as PDB
+            elif f.endswith('.pdb') and f.startswith('trajectory_'):
+                if pdb_warn:
+                    print('Trajectories found as PDB at %s' % epoch_directory)
+                    pdb_warn = False
+                    print('Converting trajectories to xtc...')
+
+                print('Converting file %s' % epoch_directory+'/'+f, end='\r')
+                traj = md.load(epoch_directory+'/'+f)
+                traj.save(epoch_directory+'/'+f.replace('.pdb', '.xtc'))
+                os.remove(epoch_directory+'/'+f)
+                t = int(f.split('_')[-1].split('.')[0])
+                trajectory_file[epoch][t] = epoch_directory+'/'+f.replace('.pdb', '.xtc')
 
     return trajectory_file
 
@@ -141,7 +207,7 @@ def getTopologyFile(pele_input_folder):
     return topology_file
 
 def readReportFiles(report_files, protein, ligand, equilibration=False, force_reading=False,
-                    ebr_threshold=0.1):
+                    ebr_threshold=0.1, data_folder_name='.pele_analysis', separator='-'):
     """
     Merge a list of report files data into a single data frame. It adds epoch and trajectory
     information based on the input dictionary structure: report_files[epoch][trajectory].
@@ -160,9 +226,9 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
     """
 
     if equilibration:
-        csv_file_name = '.pele_analysis/equilibration_data_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/equilibration_data_'+protein+separator+ligand+'.csv'
     else:
-        csv_file_name = '.pele_analysis/data_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/data_'+protein+separator+ligand+'.csv'
 
     if os.path.exists(csv_file_name) and not force_reading:
         report_data = pd.read_csv(csv_file_name)
@@ -197,7 +263,8 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
 
         report_data.set_index([step, 'Trajectory', 'Accepted Pele Steps'], inplace=True)
 
-        _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration)
+        _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration,
+                       separator=separator, data_folder_name=data_folder_name)
 
     return report_data
 
@@ -260,11 +327,11 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1):
 
     return report_values
 
-def _saveDataToCSV(dataframe, protein, ligand, equilibration=False):
-    if not os.path.exists('.pele_analysis'):
-        os.mkdir('.pele_analysis')
+def _saveDataToCSV(dataframe, protein, ligand, equilibration=False, separator='-', data_folder_name='.pele_analysis'):
+    if not os.path.exists(data_folder_name):
+        os.mkdir(data_folder_name)
     if equilibration:
-        csv_file_name = '.pele_analysis/equilibration_data_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/equilibration_data_'+protein+separator+ligand+'.csv'
     else:
-        csv_file_name = '.pele_analysis/data_'+protein+'_'+ligand+'.csv'
+        csv_file_name = data_folder_name+'/data_'+protein+separator+ligand+'.csv'
     dataframe.to_csv(csv_file_name)
