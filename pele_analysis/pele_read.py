@@ -23,46 +23,30 @@ def getTrajectoryFiles(pele_output_folder):
 
     pdb_warn = True
     for e in sorted(os.listdir(pele_output_folder)):
-
-        equilibration = False
-
-        # Check that file
+        # Check that folder is a simulation folder
         is_sim = False
         if not os.path.isdir(pele_output_folder+'/'+e):
             continue
         else:
             for f in os.listdir(pele_output_folder+'/'+e):
-                if f.startswith('report'):
+                if f.startswith('trajectory_'):
                     is_sim = True
                     break
-
         if not is_sim:
             continue
-
+        # Skip equilibration files
         if e.startswith('equilibration_'):
-            equilibration = True
-            if 'equilibration' not in trajectory_file:
-                trajectory_file['equilibration'] = {}
+            continue
 
-            # Add epoch to trajectory file
-            epoch_directory = pele_output_folder+'/'+e
-            e = e.split('_')[-1]
-            epoch = int(e)
-            trajectory_file['equilibration'][epoch] = {}
-
-        else:
-            # Add epoch to trajectory file
-            epoch_directory = pele_output_folder+'/'+e
-            epoch = int(e)
-            trajectory_file[epoch] = {}
+        # Add epoch to trajectory file
+        epoch_directory = pele_output_folder+'/'+e
+        epoch = int(e)
+        trajectory_file[epoch] = {}
 
         for f in sorted(os.listdir(epoch_directory)):
             if f.endswith('.xtc'):
                 t = int(f.split('_')[-1].split('.')[0])
-                if equilibration:
-                    trajectory_file['equilibration'][epoch][t] = pele_output_folder+'/'+e+'/'+f
-                else:
-                    trajectory_file[epoch][t] = pele_output_folder+'/'+e+'/'+f
+                trajectory_file[epoch][t] = epoch_directory+'/'+f
 
             # Check if trajectory has been given as PDB
             elif f.endswith('.pdb') and f.startswith('trajectory_'):
@@ -71,15 +55,12 @@ def getTrajectoryFiles(pele_output_folder):
                     pdb_warn = False
                     print('Converting trajectories to xtc...')
 
-                print('Converting file %s' % pele_output_folder+'/'+e+'/'+f, end='\r')
-                traj = md.load(pele_output_folder+'/'+e+'/'+f)
-                traj.save(pele_output_folder+'/'+e+'/'+f.replace('.pdb', '.xtc'))
-                os.remove(pele_output_folder+'/'+e+'/'+f)
+                print('Converting file %s' % epoch_directory+'/'+f, end='\r')
+                traj = md.load(epoch_directory+'/'+f)
+                traj.save(epoch_directory+'/'+f.replace('.pdb', '.xtc'))
+                os.remove(epoch_directory+'/'+f)
                 t = int(f.split('_')[-1].split('.')[0])
-                if equilibration:
-                    trajectory_file['equilibration'][epoch][t] = pele_output_folder+'/'+e+'/'+f
-                else:
-                    trajectory_file[epoch][t] = pele_output_folder+'/'+e+'/'+f
+                trajectory_file[epoch][t] = epoch_directory+'/'+f.replace('.pdb', '.xtc')
 
     return trajectory_file
 
@@ -158,15 +139,49 @@ def getEquilibrationTrajectoryFiles(pele_output_folder):
         Dictionary containing the path to the report files separated by epochs and then trajectories.
     """
 
+    pdb_warn = True
     trajectory_file = {}
-    for s in sorted(os.listdir(pele_output_folder)):
-        if s.startswith('equilibration'):
-            step = s.split('_')[1]
-            trajectory_file[step] = {}
-            for f in sorted(os.listdir(pele_output_folder+'/'+s)):
-                if f.endswith('.xtc'):
-                    t = int(f.split('_')[-1].split('.')[0])
-                    trajectory_file[step][t] = pele_output_folder+'/'+s+'/'+f
+    for e in sorted(os.listdir(pele_output_folder)):
+
+        # Check that folder is a simulation folder
+        is_sim = False
+        if not os.path.isdir(pele_output_folder+'/'+e):
+            continue
+        else:
+            for f in os.listdir(pele_output_folder+'/'+e):
+                if f.startswith('trajectory_'):
+                    is_sim = True
+                    break
+
+        if not is_sim:
+            continue
+
+        # Skip non equilibration folders
+        if not e.startswith('equilibration_'):
+            continue
+
+        # Add epoch to trajectory file
+        epoch_directory = pele_output_folder+'/'+e
+        epoch = int(e.split('_')[1])
+        trajectory_file[epoch] = {}
+        for f in sorted(os.listdir(epoch_directory)):
+            if f.endswith('.xtc'):
+                t = int(f.split('_')[-1].split('.')[0])
+                trajectory_file[epoch][t] = epoch_directory+'/'+f
+
+            # Check if trajectory has been given as PDB
+            elif f.endswith('.pdb') and f.startswith('trajectory_'):
+                if pdb_warn:
+                    print('Trajectories found as PDB at %s' % epoch_directory)
+                    pdb_warn = False
+                    print('Converting trajectories to xtc...')
+
+                print('Converting file %s' % epoch_directory+'/'+f, end='\r')
+                traj = md.load(epoch_directory+'/'+f)
+                traj.save(epoch_directory+'/'+f.replace('.pdb', '.xtc'))
+                os.remove(epoch_directory+'/'+f)
+                t = int(f.split('_')[-1].split('.')[0])
+                trajectory_file[epoch][t] = epoch_directory+'/'+f.replace('.pdb', '.xtc')
 
     return trajectory_file
 

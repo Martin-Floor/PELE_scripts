@@ -33,7 +33,7 @@ class peleAnalysis:
 
     def __init__(self, pele_folder, pele_output_folder='output', force_reading=False, separator='-',
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
-                 data_folder_name=None):
+                 data_folder_name=None, trajectories=True):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -76,13 +76,20 @@ class peleAnalysis:
             raise ValueError('Energy by residue type not valid. valid options are: '+' '.join(energy_by_residue_type))
 
         # Check data folder for paths to csv files
-        self._checkDataFolder()
+        self._checkDataFolder(trajectories=trajectories)
 
         # Check PELE folder for paths to pele data
         self._checkPELEFolder(verbose=verbose)
 
         # Copy PELE inputs to analysis folder
         self._copyPELEInputs()
+
+        # Copy PELE topology files to analysis folder
+        self._copyPELETopology()
+
+        # Copy PELE trajectories to analysis folder
+        if trajectories:
+            self._copyPELETrajectories()
 
         # Set dictionary with Chain IDs to match mdtraj indexing
         self._setChainIDs(force_reading=force_reading)
@@ -687,7 +694,7 @@ class peleAnalysis:
             if not by_metric:
                 distances = []
                 for d in ligand_series:
-                    if 'distance' in d:
+                    if 'distance' in d or d == 'RMSD':
                         if not ligand_series[d].dropna().empty:
                             distances.append(d)
 
@@ -2372,20 +2379,23 @@ class peleAnalysis:
         Remove all trajectory files from PELE calculation.
         """
 
+        # Remove PELE trajectories
         for protein in self.trajectory_files:
             for ligand in self.trajectory_files[protein]:
                 for epoch in self.trajectory_files[protein][ligand]:
-                    if epoch == 'equilibration':
-                        for epoch in self.trajectory_files[protein][ligand]['equilibration']:
-                            for trajectory in self.trajectory_files[protein][ligand]['equilibration'][epoch]:
-                                f = self.trajectory_files[protein][ligand]['equilibration'][epoch][trajectory]
-                                if f != {} and os.path.exists(f):
-                                    os.remove(self.trajectory_files[protein][ligand]['equilibration'][epoch][trajectory])
-                    else:
-                        for trajectory in self.trajectory_files[protein][ligand][epoch]:
-                            f = self.trajectory_files[protein][ligand][epoch][trajectory]
-                            if f != {} and os.path.exists(f):
-                                os.remove(self.trajectory_files[protein][ligand][epoch][trajectory])
+                    for trajectory in self.trajectory_files[protein][ligand][epoch]:
+                        f = self.trajectory_files[protein][ligand][epoch][trajectory]
+                        if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
+                            os.remove(self.trajectory_files[protein][ligand][epoch][trajectory])
+
+        # Remove PELE equilibration trajectories
+        for protein in self.equilibration['trajectory']:
+            for ligand in self.equilibration['trajectory'][protein]:
+                for epoch in self.equilibration['trajectory'][protein][ligand]:
+                    for trajectory in self.equilibration['trajectory'][protein][ligand][epoch]:
+                        f = self.equilibration['trajectory'][protein][ligand][epoch][trajectory]
+                        if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
+                            os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
 
     def _saveDataState(self):
         self.data.to_csv(self.data_folder+'/data.csv')
@@ -2512,7 +2522,7 @@ class peleAnalysis:
         if folder.count(self.separator) > 1:
             raise ValueError('Separator %s appears more than once in the PELE folder %s' % (self.separator, folder))
 
-    def _checkDataFolder(self):
+    def _checkDataFolder(self, trajectories=True):
         """
         Check protein and ligand information contained in the CSV files of the
         PELE data folder.
@@ -2521,8 +2531,8 @@ class peleAnalysis:
             # Iterate over CSV files and get protein and ligand names
             for d in os.listdir(self.data_folder):
                 if d.endswith('.csv') and d.startswith('data_'):
-                    protein = d.split(self.separator)[1].replace('data_','')
-                    ligand = d.split(self.separator)[2].replace('.csv','')
+                    protein = d.split(self.separator)[-2].replace('data_','')
+                    ligand = d.split(self.separator)[-1].replace('.csv','')
                     if protein not in self.csv_files:
                         self.csv_files[protein] = {}
                     if ligand not in self.csv_files[protein]:
@@ -2532,7 +2542,30 @@ class peleAnalysis:
                     if protein not in self.proteins:
                         self.proteins.append(protein)
                     if ligand not in self.ligands:
-                        self.ligands.append(ligand)
+                        self.ligands.append(ligand)# Create PELE input folders
+
+            # Read trajectories if found
+            traj_dir = self.data_folder+'/pele_trajectories'
+            if os.path.exists(traj_dir):
+                for d in os.listdir(traj_dir):
+                    protein = d.split(self.separator)[-2]
+                    ligand = d.split(self.separator)[-1]
+                    if protein not in self.trajectory_files:
+                        self.trajectory_files[protein] = {}
+                        self.equilibration['trajectory'][protein] = {}
+                    self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(traj_dir+'/'+d)
+                    self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(traj_dir+'/'+d)
+
+            # Read PELE topology if found
+            topology_dir = self.data_folder+'/pele_topologies'
+            for d in os.listdir(topology_dir):
+                protein = d.split(self.separator)[-2].replace('.pdb', '')
+                ligand = d.split(self.separator)[-1]
+                if protein not in self.topology_files:
+                    self.topology_files[protein] = {}
+                for f in os.listdir(topology_dir+'/'+d):
+                    if f.endswith('.pdb'):
+                        self.topology_files[protein][ligand] = topology_dir+'/'+d+'/'+f
         else:
             # Create analysis folder
             os.mkdir(self.data_folder)
@@ -2540,11 +2573,16 @@ class peleAnalysis:
             # Create PELE input folders
             os.mkdir(self.data_folder+'/pele_inputs')
 
+            # Create PELE input folders
+            os.mkdir(self.data_folder+'/pele_trajectories')
+
+            # Create PELE input folders
+            os.mkdir(self.data_folder+'/pele_topologies')
+
     def _copyPELEInputs(self):
         """
         Copy PELE input files to analysis folder for easy setup PELE reruns.
         """
-
         for protein in self.pele_directories:
             for ligand in self.pele_directories[protein]:
                 dir = self.data_folder+'/pele_inputs/'+protein+self.separator+ligand
@@ -2557,6 +2595,59 @@ class peleAnalysis:
                         shutil.copyfile(orig, dest)
                     elif f.endswith('.yaml'):
                         shutil.copyfile(orig, dest)
+
+    def _copyPELETopology(self):
+        """
+        Copy topology files to analysis folder.
+        """
+        for protein in self.topology_files:
+            for ligand in self.topology_files[protein]:
+                dir = self.data_folder+'/pele_topologies/'+protein+self.separator+ligand
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+                orig = self.topology_files[protein][ligand]
+                dest = dir+'/'+protein+self.separator+ligand+'.pdb'
+                if orig != dest:
+                    shutil.copyfile(orig, dest)
+                    self.topology_files[protein][ligand] = dest
+
+    def _copyPELETrajectories(self):
+        """
+        Copy PELE output trajectories to analysis folder.
+        """
+        # Copy PELE trajectories
+        for protein in self.trajectory_files:
+            for ligand in self.trajectory_files[protein]:
+                dir = self.data_folder+'/pele_trajectories/'+protein+self.separator+ligand
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+                for epoch in self.trajectory_files[protein][ligand]:
+                    epoch_folder = dir+'/'+str(epoch)
+                    if not os.path.exists(epoch_folder):
+                        os.mkdir(epoch_folder)
+                    for traj in self.trajectory_files[protein][ligand][epoch]:
+                        orig = self.trajectory_files[protein][ligand][epoch][traj]
+                        dest = epoch_folder+'/'+orig.split('/')[-1]
+                        if orig != dest: # Copy only they are not found in the analysis folder
+                            shutil.copyfile(orig, dest)
+                            self.trajectory_files[protein][ligand][epoch][traj] = dest
+
+        # Copy equilibration PELE trajectories
+        for protein in self.equilibration['trajectory']:
+            for ligand in self.equilibration['trajectory'][protein]:
+                dir = self.data_folder+'/pele_trajectories/'+protein+self.separator+ligand
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+                for epoch in self.equilibration['trajectory'][protein][ligand]:
+                    epoch_folder = dir+'/equilibration_'+str(epoch)
+                    if not os.path.exists(epoch_folder):
+                        os.mkdir(epoch_folder)
+                    for traj in self.equilibration['trajectory'][protein][ligand][epoch]:
+                        orig = self.equilibration['trajectory'][protein][ligand][epoch][traj]
+                        dest = epoch_folder+'/'+orig.split('/')[-1]
+                        if orig != dest: # Copy only they are not found in the analysis folder
+                            shutil.copyfile(orig, dest)
+                            self.equilibration['trajectory'][protein][ligand][epoch][traj] = dest
 
     def _checkPELEFolder(self, verbose=False):
         """
@@ -2613,9 +2704,15 @@ class peleAnalysis:
                 # Get paths to PELE folders
                 else:
                     self.report_files[protein][ligand] = pele_read.getReportFiles(output_dir)
-                    self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(output_dir)
                     self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(output_dir)
-                    self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(output_dir)
+
+                    # Read trajectory files if not in analysis folder
+                    trajectories = pele_read.getTrajectoryFiles(output_dir)
+                    if trajectories != {}:
+                        self.trajectory_files[protein][ligand] = trajectories
+                    trajectories = pele_read.getEquilibrationTrajectoryFiles(output_dir)
+                    if trajectories != {}:
+                        self.equilibration['trajectory'][protein][ligand] = trajectories
 
                 # Check if input folder exists
                 if not os.path.exists(input_dir):
