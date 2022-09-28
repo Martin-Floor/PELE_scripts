@@ -2098,7 +2098,7 @@ class peleAnalysis:
                              box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
                              separator='-', use_peleffy=True, usesrun=True, energy_by_residue=False, ninety_degrees_version=False,
                              analysis=False, energy_by_residue_type='all', peptide=False, equilibration_mode='equilibrationLastSnapshot',
-                             spawning='independent', continuation=False, equilibration=True, skip_models=None):
+                             spawning='independent', continuation=False, equilibration=True, skip_models=None, seed=12345):
         """
         Generates a PELE calculation for extracted poses. The function reads all the
         protein ligand poses and creates input for a PELE platform set up run.
@@ -2176,7 +2176,8 @@ class peleAnalysis:
                     protein, ligand = model
                     keywords = ['system', 'chain', 'resname', 'steps', 'iterations', 'atom_dist', 'analyse',
                                 'cpus', 'equilibration', 'equilibration_steps', 'traj', 'working_folder',
-                                'usesrun', 'use_peleffy', 'debug', 'box_radius', 'box_center', 'equilibration_mode']
+                                'usesrun', 'use_peleffy', 'debug', 'box_radius', 'box_center', 'equilibration_mode',
+                                'seed']
 
                     # Skip given protein models
                     if skip_models != None:
@@ -2292,6 +2293,8 @@ class peleAnalysis:
                                 iyf.write(d1)
                                 iyf.write(d2)
 
+                        if seed:
+                            iyf.write('seed: '+str(seed)+'\n')
                         iyf.write('\n')
                         iyf.write("#Options gathered from "+input_yaml+'\n')
 
