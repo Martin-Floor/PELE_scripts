@@ -94,157 +94,99 @@ class peleAnalysis:
         # Set dictionary with Chain IDs to match mdtraj indexing
         self._setChainIDs(force_reading=force_reading)
 
-        # Gather protein and ligand combinations
-        pele_combinations = []
-        for protein in sorted(self.report_files):
-            for ligand in sorted(self.report_files[protein]):
-                if (protein, ligand) not in pele_combinations:
-                    pele_combinations.append((protein, ligand))
-
-        for protein in sorted(self.csv_files):
-            for ligand in sorted(self.csv_files[protein]):
-                if (protein, ligand) not in pele_combinations:
-                    pele_combinations.append((protein, ligand))
-
-        if pele_combinations == []:
-            raise ValueError('No PELE data was found.')
+        # Get protein and ligand cominations wither from pele or analysis folders
+        pele_combinations = self._getProteinLigandCombinations()
 
         if verbose:
             print('Reading PELE information for:')
 
-        # Iterate PELE folders to read report files
-        report_data = []
-        for protein, ligand in pele_combinations:
-            if verbose:
-                print('\t'+protein+self.separator+ligand, end=' ')
-                start = time.time()
+        # Read PELE simulation report data
+        self._readReportData()
 
-            # Check whether protein and ligand report files are present
-            if protein not in self.report_files or ligand not in self.report_files[protein]:
-                report_files = None
-            else:
-                report_files = self.report_files[protein][ligand]
-
-            # Read report files into panda dataframes
-            data = pele_read.readReportFiles(report_files,
-                                             protein,
-                                             ligand,
-                                             force_reading=force_reading,
-                                             ebr_threshold=0.1,
-                                             separator=self.separator,
-                                             data_folder_name=self.data_folder)
-            # Skip of dataframe is None
-            if isinstance(data, type(None)):
-                continue
-
-            # Check which dataframe columns are to be kept
-            keep = [k for k in data.keys() if not k.startswith('L:1_')]
-            if energy_by_residue:
-                keep += [k for k in data.keys() if k.startswith('L:1_') and k.endswith(energy_by_residue_type)]
-
-            # Format dataframe with multi-indexing
-            data = data[keep]
-            data = data.reset_index()
-            data['Protein'] = protein
-            data['Ligand'] = ligand
-            data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-            report_data.append(data)
-            if verbose:
-                print('\t in %.2f seconds.' % (time.time()-start))
-
-        # Merge all dataframes into a single dataframe
-        self.data = pd.concat(report_data)
-
-        # Remove Task column
-        self.data.drop(['Task'], axis=1)
-
-        # Save and reload dataframe to avoid memory fragmentation
-        self._saveDataState()
-        self.data = None
-        gc.collect()
-        self._recoverDataState(remove=True)
+        # Read PELE equilibration report data
+        self._readReportData(equilibration=True)
 
         if verbose:
             print('Reading equilibration information from report files from:')
 
-        # Read equlibration files
-        equilibration_data = []
-        for protein, ligand in pele_combinations:
-
-            # Check if equilibration files are present
-            if protein not in self.equilibration['report'] or ligand not in self.equilibration['report'][protein]:
-                equilibration = None
-            else:
-                equilibration = self.equilibration['report'][protein][ligand]
-
-            if equilibration == {}:
-                print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
-                continue
-
-            if verbose:
-                print('\t'+protein+self.separator+ligand, end=' ')
-                start = time.time()
-
-            data = pele_read.readReportFiles(equilibration,
-                                             protein,
-                                             ligand,
-                                             force_reading=force_reading,
-                                             equilibration=True,
-                                             separator=self.separator,
-                                             data_folder_name=self.data_folder)
-
-            if isinstance(data, type(None)):
-                continue
-
-            data = data.reset_index()
-            data['Protein'] = protein
-            data['Ligand'] = ligand
-            data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-            equilibration_data.append(data)
-            if verbose:
-                print('\t in %.2f seconds.' % (time.time()-start))
-
-        if equilibration_data != []:
-            self.equilibration_data = pd.concat(equilibration_data)
-            self._saveEquilibrationDataState()
-            self.equilibration_data = None
-            gc.collect()
-            self._recoverEquilibrationDataState(remove=True)
-        else:
-            if not os.path.exists(self.data_folder):
-                raise ValuError('Pele directory not found and pele analysis folder does not exist')
-
-            if force_reading:
-                raise ValueError('Cannot force read. Pele folder was not found')
-
-            report_data = []
-            for file in os.listdir(self.data_folder):
-                if file.startswith('data'):
-                    name = file.split('_')
-                    protein = name[-2]
-                    ligand = name[-1].split('.')[0]
-
-                    if protein not in self.proteins:
-                        self.proteins.append(protein)
-                    if ligand not in self.ligands:
-                        self.ligands.append(ligand)
-
-                    data = pd.read_csv(self.data_folder+'/'+file)
-                    data = data.reset_index()
-                    data['Protein'] = protein
-                    data['Ligand'] = ligand
-                    data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-                    report_data.append(data)
-
-            self.data = pd.concat(report_data)
-            # Remove Task column
-            self.data.drop(['Task'], axis=1)
-
-            # Save and reaload dataframe to avoid memory fragmentation
-            self._saveDataState()
-            self.data = None
-            gc.collect()
-            self._recoverDataState(remove=True)
+        # # Read equlibration files
+        # equilibration_data = []
+        # for protein, ligand in pele_combinations:
+        #
+        #     # Check if equilibration files are present
+        #     if protein not in self.equilibration['report'] or ligand not in self.equilibration['report'][protein]:
+        #         equilibration = None
+        #     else:
+        #         equilibration = self.equilibration['report'][protein][ligand]
+        #
+        #     if equilibration == {}:
+        #         print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
+        #         continue
+        #
+        #     if verbose:
+        #         print('\t'+protein+self.separator+ligand, end=' ')
+        #         start = time.time()
+        #
+        #     data = pele_read.readReportFiles(equilibration,
+        #                                      protein,
+        #                                      ligand,
+        #                                      force_reading=force_reading,
+        #                                      equilibration=True,
+        #                                      separator=self.separator,
+        #                                      data_folder_name=self.data_folder)
+        #
+        #     if isinstance(data, type(None)):
+        #         continue
+        #
+        #     data = data.reset_index()
+        #     data['Protein'] = protein
+        #     data['Ligand'] = ligand
+        #     data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+        #     equilibration_data.append(data)
+        #     if verbose:
+        #         print('\t in %.2f seconds.' % (time.time()-start))
+        #
+        # if equilibration_data != []:
+        #     self.equilibration_data = pd.concat(equilibration_data)
+        #     self._saveEquilibrationDataState()
+        #     self.equilibration_data = None
+        #     gc.collect()
+        #     self._recoverEquilibrationDataState(remove=True)
+        # else:
+        #     if not os.path.exists(self.data_folder):
+        #         raise ValuError('Pele directory not found and pele analysis folder does not exist')
+        #
+        #     if force_reading:
+        #         raise ValueError('Cannot force read. Pele folder was not found')
+        #
+        #     report_data = []
+        #     for file in os.listdir(self.data_folder):
+        #         if file.startswith('data'):
+        #             name = file.split('_')
+        #             protein = name[-2]
+        #             ligand = name[-1].split('.')[0]
+        #
+        #             if protein not in self.proteins:
+        #                 self.proteins.append(protein)
+        #             if ligand not in self.ligands:
+        #                 self.ligands.append(ligand)
+        #
+        #             data = pd.read_csv(self.data_folder+'/'+file)
+        #             data = data.reset_index()
+        #             data['Protein'] = protein
+        #             data['Ligand'] = ligand
+        #             data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+        #             report_data.append(data)
+        #
+        #     self.data = pd.concat(report_data)
+        #     # Remove Task column
+        #     self.data.drop(['Task'], axis=1)
+        #
+        #     # Save and reaload dataframe to avoid memory fragmentation
+        #     self._saveDataState()
+        #     self.data = None
+        #     gc.collect()
+        #     self._recoverDataState(remove=True)
 
             self.proteins = sorted(self.proteins)
             self.ligands = sorted(self.ligands)
@@ -2634,6 +2576,141 @@ class peleAnalysis:
 
             # Create PELE input folders
             os.mkdir(self.data_folder+'/pele_topologies')
+
+    def _getProteinLigandCombinations(self):
+        """
+        Get existing protein and ligand combinations from the analysis or PELE folders.
+        """
+        # Gather protein and ligand combinations
+        pele_combinations = []
+        for protein in sorted(self.report_files):
+            for ligand in sorted(self.report_files[protein]):
+                if (protein, ligand) not in pele_combinations:
+                    pele_combinations.append((protein, ligand))
+
+        for protein in sorted(self.csv_files):
+            for ligand in sorted(self.csv_files[protein]):
+                if (protein, ligand) not in pele_combinations:
+                    pele_combinations.append((protein, ligand))
+
+        if pele_combinations == []:
+            raise ValueError('No PELE data was found.')
+
+        return pele_combinations
+
+    def _readReportData(equilibration=False):
+        """
+        Read report data from PELE simulation report files.
+        """
+
+        if equilibration:
+            reports_dict= self.equilibration['report']
+        else:
+            reports_dict = self.report_files
+
+        # Iterate PELE folders to read report files
+        report_data = []
+        for protein, ligand in pele_combinations:
+            if verbose:
+                print('\t'+protein+self.separator+ligand, end=' ')
+                start = time.time()
+
+            # Check whether protein and ligand report files are present
+            if protein not in reports_dict or ligand not in reports_dict[protein]:
+                report_files = None
+            else:
+                if equilibration:
+                    report_files = reports_dict[protein][ligand]
+                else:
+                    report_files = reports_dict[protein][ligand]
+
+            if report_files == None and equilibration:
+                print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
+                continue
+
+            # Read report files into panda dataframes
+            data = pele_read.readReportFiles(report_files,
+                                             protein,
+                                             ligand,
+                                             force_reading=force_reading,
+                                             ebr_threshold=0.1,
+                                             separator=self.separator,
+                                             equilibration=equilibration,
+                                             data_folder_name=self.data_folder)
+            # Skip of dataframe is None
+            if isinstance(data, type(None)):
+                continue
+
+            # Check which dataframe columns are to be kept
+            if not equilibration:
+                keep = [k for k in data.keys() if not k.startswith('L:1_')]
+                if energy_by_residue:
+                    keep += [k for k in data.keys() if k.startswith('L:1_') and k.endswith(energy_by_residue_type)]
+                data = data[keep]
+
+            # Format dataframe with multi-indexing
+            data = data.reset_index()
+            data['Protein'] = protein
+            data['Ligand'] = ligand
+            data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+            report_data.append(data)
+            if verbose:
+                print('\t in %.2f seconds.' % (time.time()-start))
+
+        # Merge all dataframes into a single dataframe
+        self.data = pd.concat(report_data)
+
+        # Remove Task column
+        if equilibration:
+            self.equilibration_data = pd.concat(equilibration_data)
+            self._saveEquilibrationDataState()
+            self.equilibration_data = None
+            gc.collect()
+            self._recoverEquilibrationDataState(remove=True)
+        else:
+            self.data.drop(['Task'], axis=1)
+            # Save and reload dataframe to avoid memory fragmentation
+            self._saveDataState()
+            self.data = None
+            gc.collect()
+            self._recoverDataState(remove=True)
+
+        ######################
+
+            # if not os.path.exists(self.data_folder):
+            #     raise ValuError('Pele directory not found and pele analysis folder does not exist')
+            #
+            # if force_reading:
+            #     raise ValueError('Cannot force read. Pele folder was not found')
+            #
+            # report_data = []
+            # for file in os.listdir(self.data_folder):
+            #     if file.startswith('data'):
+            #         name = file.split('_')
+            #         protein = name[-2]
+            #         ligand = name[-1].split('.')[0]
+            #
+            #         if protein not in self.proteins:
+            #             self.proteins.append(protein)
+            #         if ligand not in self.ligands:
+            #             self.ligands.append(ligand)
+            #
+            #         data = pd.read_csv(self.data_folder+'/'+file)
+            #         data = data.reset_index()
+            #         data['Protein'] = protein
+            #         data['Ligand'] = ligand
+            #         data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+            #         report_data.append(data)
+            #
+            # self.data = pd.concat(report_data)
+            # # Remove Task column
+            # self.data.drop(['Task'], axis=1)
+            #
+            # # Save and reaload dataframe to avoid memory fragmentation
+            # self._saveDataState()
+            # self.data = None
+            # gc.collect()
+            # self._recoverDataState(remove=True)
 
     def _copyPELEInputs(self):
         """
