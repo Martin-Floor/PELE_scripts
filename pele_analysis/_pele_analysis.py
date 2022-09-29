@@ -2021,6 +2021,50 @@ class peleAnalysis:
                                                     rmsd_matrix_file=rmsd_matrix_file)
                 return ligand_traj, clusters
 
+    def setUpPELERerun(self, pele_folder, protein_ligands):
+        """
+        Generate PELE simulations from original input yamls and PDBs.
+
+        Parameters
+        ==========
+        pele_folder : str
+            Path to the folder where PELE calcualtions will be located.
+        protein_ligands : list
+            List of (protein, ligand) tuples for which to set up PELE rerun.
+        """
+
+        # Check input
+        if not isinstance(protein_ligands, list):
+            raise ValueError('protein_ligands must be a list of 2-elements tuples')
+        else:
+            for tup in protein_ligands:
+                if not isinstance(tup, tuple) and len(tup) != 2:
+                    raise ValueError('protein_ligands must be a list of 2-elements tuples')
+
+        # Create PELE job folder
+        if not os.path.exists(pele_folder):
+            os.mkdir(pele_folder)
+
+        jobs = []
+        for protein, ligand in protein_ligands:
+            pl_name = protein+self.separator+ligand
+
+            # Create input folder
+            if not os.path.exists(pele_folder+'/'+pl_name):
+                os.mkdir(pele_folder+'/'+pl_name)
+
+            # Copy files in input folder
+            for f in os.listdir(self.data_folder+'/pele_inputs/'+pl_name):
+                if f.endswith('.yaml') and 'restart' not in f:
+                    input_yaml = f
+                shutil.copyfile(self.data_folder+'/pele_inputs/'+pl_name+'/'+f,
+                                pele_folder+'/'+pl_name+'/'+f)
+
+        return jobs
+
+
+
+
     def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
                              box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
                              separator='-', use_peleffy=True, usesrun=True, energy_by_residue=False, ninety_degrees_version=False,
@@ -2183,13 +2227,6 @@ class peleAnalysis:
                             if not all(isinstance(x, float) for x in box_centers[model]):
                                 # get coordinates from tuple
                                 raise ValueError('This is not yet implemented!')
-                                # for chain in self.structures[model[0]].get_chains():
-                                #     if chain.id == box_centers[model][0]:
-                                #         for r in chain:
-                                #             if r.id[1] == box_centers[model][1]:
-                                #                 for atom in r:
-                                #                     if atom.name == box_centers[model][2]:
-                                #                         coordinates = atom.coord
                             else:
                                 coordinates = box_centers[model]
 
