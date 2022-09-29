@@ -2570,7 +2570,7 @@ class peleAnalysis:
                 else:
                     report_files = reports_dict[protein][ligand]
 
-            if report_files == None and equilibration and self.csv_equilibration_files == {}:
+            if report_files == {} and equilibration and self.csv_equilibration_files == {}:
                 print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
                 continue
 
@@ -2604,6 +2604,10 @@ class peleAnalysis:
             report_data.append(data)
             if self.verbose:
                 print('\t in %.2f seconds.' % (time.time()-start))
+
+        if report_data == [] and equilibration:
+            self.equilibration_data = None
+            return
 
         # Merge all dataframes into a single dataframe
         self.data = pd.concat(report_data)
