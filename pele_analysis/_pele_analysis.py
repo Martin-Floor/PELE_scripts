@@ -57,6 +57,7 @@ class peleAnalysis:
         self.pele_directories = {}
         self.report_files = {}
         self.csv_files = {}
+        self.csv_equilibration_files = {}
         self.trajectory_files = {}
         self.topology_files = {}
         self.equilibration = {}
@@ -111,13 +112,15 @@ class peleAnalysis:
             print('Reading PELE information for:')
 
         # Read PELE simulation report data
-        self._readReportData()
-
-        # Read PELE equilibration report data
-        self._readReportData(equilibration=True)
+        self._readReportData(pele_combinations, verbose=verbose, force_reading=force_reading,
+                             energy_by_residue=energy_by_residue)
 
         if verbose:
             print('Reading equilibration information from report files from:')
+
+        # Read PELE equilibration report data
+        self._readReportData(pele_combinations, equilibration=True, verbose=verbose,
+                             force_reading=force_reading, energy_by_residue=energy_by_residue)
 
         # # Read equlibration files
         # equilibration_data = []
@@ -198,8 +201,8 @@ class peleAnalysis:
         #     gc.collect()
         #     self._recoverDataState(remove=True)
 
-            self.proteins = sorted(self.proteins)
-            self.ligands = sorted(self.ligands)
+        self.proteins = sorted(self.proteins)
+        self.ligands = sorted(self.ligands)
 
 
     def calculateDistances(self, atom_pairs, equilibration=False, verbose=False, overwrite=False):
@@ -224,8 +227,8 @@ class peleAnalysis:
             Force recalculation of distances.
         """
 
-        if not os.path.isdir(self.pele_folder):
-            raise ValueError('Pele folder not found. Distances cannot be calculated without pele folder')
+        # if not os.path.isdir(self.pele_folder):
+            # raise ValueError('Pele folder not found. Distances cannot be calculated without pele folder')
 
         if not os.path.exists(self.data_folder+'/distances'):
             os.mkdir(self.data_folder+'/distances')
@@ -1428,13 +1431,12 @@ class peleAnalysis:
             else:
                 changed = True
                 values = []
-                for protein in sorted(self.report_files):
+                for protein in sorted(self.csv_files):
                     protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
-                    for ligand in sorted(self.report_files[protein]):
+                    for ligand in sorted(self.csv_files[protein]):
                         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
                         distances = catalytic_labels[name][protein][ligand]
                         values += ligand_series[distances].min(axis=1).tolist()
-
                 self.data['metric_'+name] = values
 
         if changed:
@@ -1794,9 +1796,6 @@ class peleAnalysis:
         separator : str
             Symbol used to separate protein, ligand, epoch, trajectory and pele step for each pose filename.
         """
-
-        if not os.path.isdir(self.pele_folder):
-            raise ValueError('Pele folder not found. Cannot extract poses')
 
         # Create output folder
         if not os.path.exists(output_folder):
@@ -2539,6 +2538,7 @@ class peleAnalysis:
         PELE data folder.
         """
         if os.path.exists(self.data_folder):
+
             # Iterate over CSV files and get protein and ligand names
             for d in os.listdir(self.data_folder):
                 if d.endswith('.csv') and d.startswith('data_'):
@@ -2555,6 +2555,20 @@ class peleAnalysis:
                     if ligand not in self.ligands:
                         self.ligands.append(ligand)# Create PELE input folders
 
+                if d.endswith('.csv') and d.startswith('equilibration_data_'):
+                    protein = d.split(self.separator)[-2].replace('equilibration_data_','')
+                    ligand = d.split(self.separator)[-1].replace('.csv','')
+                    if protein not in self.csv_equilibration_files:
+                        self.csv_equilibration_files[protein] = {}
+                    if ligand not in self.csv_equilibration_files[protein]:
+                        self.csv_equilibration_files[protein][ligand] = self.data_folder+'/'+d
+
+                    # Add protein and ligand to attribute lists
+                    if protein not in self.proteins:
+                        self.proteins.append(protein)
+                    if ligand not in self.ligands:
+                        self.ligands.append(ligand)# Create PELE input folders
+
             # Read trajectories if found
             traj_dir = self.data_folder+'/pele_trajectories'
             if os.path.exists(traj_dir):
@@ -2563,6 +2577,7 @@ class peleAnalysis:
                     ligand = d.split(self.separator)[-1]
                     if protein not in self.trajectory_files:
                         self.trajectory_files[protein] = {}
+                    if protein not in self.equilibration['trajectory']:
                         self.equilibration['trajectory'][protein] = {}
                     self.trajectory_files[protein][ligand] = pele_read.getTrajectoryFiles(traj_dir+'/'+d)
                     self.equilibration['trajectory'][protein][ligand] = pele_read.getEquilibrationTrajectoryFiles(traj_dir+'/'+d)
@@ -2611,7 +2626,8 @@ class peleAnalysis:
 
         return pele_combinations
 
-    def _readReportData(equilibration=False):
+    def _readReportData(self, pele_combinations, equilibration=False, verbose=False,
+                        force_reading=False, energy_by_residue=False):
         """
         Read report data from PELE simulation report files.
         """
@@ -2637,7 +2653,7 @@ class peleAnalysis:
                 else:
                     report_files = reports_dict[protein][ligand]
 
-            if report_files == None and equilibration:
+            if report_files == None and equilibration and self.csv_equilibration_files == {}:
                 print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
                 continue
 
@@ -2665,7 +2681,10 @@ class peleAnalysis:
             data = data.reset_index()
             data['Protein'] = protein
             data['Ligand'] = ligand
-            data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+            if equilibration:
+                data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+            else:
+                data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
             report_data.append(data)
             if verbose:
                 print('\t in %.2f seconds.' % (time.time()-start))
@@ -2675,7 +2694,7 @@ class peleAnalysis:
 
         # Remove Task column
         if equilibration:
-            self.equilibration_data = pd.concat(equilibration_data)
+            self.equilibration_data = pd.concat(report_data)
             self._saveEquilibrationDataState()
             self.equilibration_data = None
             gc.collect()
