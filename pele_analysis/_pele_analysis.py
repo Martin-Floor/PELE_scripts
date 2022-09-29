@@ -76,19 +76,29 @@ class peleAnalysis:
             raise ValueError('Energy by residue type not valid. valid options are: '+' '.join(energy_by_residue_type))
 
         # Check data folder for paths to csv files
+        if verbose:
+            print('Checking PELE analysis folder: %s' % self.data_folder)
         self._checkDataFolder(trajectories=trajectories)
 
         # Check PELE folder for paths to pele data
+        if verbose:
+            print('Checking PELE simulation folders: %s' % self.pele_folder)
         self._checkPELEFolder(verbose=verbose)
 
         # Copy PELE inputs to analysis folder
+        if verbose:
+            print('Copying PELE input files')
         self._copyPELEInputs()
 
         # Copy PELE topology files to analysis folder
+        if verbose:
+            print('Copying PELE topology files')
         self._copyPELETopology()
 
         # Copy PELE trajectories to analysis folder
         if trajectories:
+            if verbose:
+                print('Copying PELE trajectory files')
             self._copyPELETrajectories()
 
         # Set dictionary with Chain IDs to match mdtraj indexing
