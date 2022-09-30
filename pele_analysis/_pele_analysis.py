@@ -2021,7 +2021,8 @@ class peleAnalysis:
                                                     rmsd_matrix_file=rmsd_matrix_file)
                 return ligand_traj, clusters
 
-    def setUpPELERerun(self, pele_folder, protein_ligands):
+    def setUpPELERerun(self, pele_folder, protein_ligands, restart=False,
+                       continuation=False):
         """
         Generate PELE simulations from original input yamls and PDBs.
 
@@ -2031,11 +2032,15 @@ class peleAnalysis:
             Path to the folder where PELE calcualtions will be located.
         protein_ligands : list
             List of (protein, ligand) tuples for which to set up PELE rerun.
+        restart : bool
+            Should the simulation run in two steps (two input yamls must be present).
+        continuation : bool
+            Do you which to continue a simulation?
         """
 
         # Check input
         if not isinstance(protein_ligands, list):
-            raise ValueError('protein_ligands must be a list of 2-elements tuples')
+            raise ValueError('protein_ligands must be a list of 2-elements tuples: (protein, ligand)')
         else:
             for tup in protein_ligands:
                 if not isinstance(tup, tuple) and len(tup) != 2:
@@ -2054,16 +2059,91 @@ class peleAnalysis:
                 os.mkdir(pele_folder+'/'+pl_name)
 
             # Copy files in input folder
+            input_yaml = None
+            restart_yaml = None
             for f in os.listdir(self.data_folder+'/pele_inputs/'+pl_name):
                 if f.endswith('.yaml') and 'restart' not in f:
                     input_yaml = f
+                elif f.endswith('.yaml') and 'restart' in f:
+                    restart_yaml = f
                 shutil.copyfile(self.data_folder+'/pele_inputs/'+pl_name+'/'+f,
                                 pele_folder+'/'+pl_name+'/'+f)
 
+            # Check debug flag at the input files
+            if restart:
+                input_yaml_path = self.data_folder+'/pele_inputs/'+pl_name+'/'+input_yaml
+                debug = False
+                with open(input_yaml_path) as yf:
+                    lines = yf.readlines()
+                    for l in lines:
+                        if l.startswith('debug:') and l.endswith('true\n'):
+                            debug = True
+
+                # If debug not found add it
+                if not debug:
+                    with open(input_yaml_path, 'w') as yf:
+                        for l in lines:
+                            yf.write(l)
+                        yf.write('debug: true\n')
+
+                # Check for restart flags at restart yaml
+                if restart_yaml != None:
+                    input_yaml_path = self.data_folder+'/pele_inputs/'+pl_name+'/'+restart_yaml
+                    restart_flag = False
+                    with open(input_yaml_path) as yf:
+                        lines = yf.readlines()
+                        for l in lines:
+                            if l.startswith('restart:') and l.endswith('true\n'):
+                                restart_flag = True
+
+                    # If restart not found add it
+                    if not restart_flag:
+                        with open(input_yaml_path, 'w') as yf:
+                            for l in lines:
+                                yf.write(l)
+                            yf.write('restart: true\n')
+
+            if continuation:
+                if restart_yaml == None:
+                    input_yaml_path = self.data_folder+'/pele_inputs/'+pl_name+'/'+input_yaml
+                    debug = False
+                    restart_flag = False
+                    continuation_flag = False
+                    with open(input_yaml_path) as yf:
+                        lines = yf.readlines()
+                        for l in lines:
+                            if l.startswith('debug:') and l.endswith('true\n'):
+                                debug = True
+                            elif l.startswith('restart:') and l.endswith('true\n'):
+                                restart_flag = True
+                            elif l.startswith('adaptive_restart:') and l.endswith('true\n'):
+                                continuation_flag = True
+
+                    # If restart, debug or continuation not found add it
+                    if not restart_flag or not debug or not continuation_flag:
+                        with open('input_restart.yaml', 'w') as yf:
+                            for l in lines:
+                                yf.write(l)
+                            if not debug:
+                                yf.write('debug: true\n')
+                            elif not restart_flag:
+                                yf.write('restart: true\n')
+                            elif not restart_flag:
+                                yf.write('adaptive_restart: true\n')
+
+            # Create command for PELE execution
+            command = 'cd '+pele_folder+'/'+pl_name+'\n'
+            if restart and restart_yaml != None:
+                command += 'python -m pele_platform.main '+input_yaml+'\n'
+                command += 'python -m pele_platform.main '+restart_yaml+'\n'
+            elif continuation and restart_yaml == None:
+                command += 'python -m pele_platform.main input_restart.yaml\n'
+            else:
+                command += 'python -m pele_platform.main '+input_yaml+'\n'
+            command += 'cd ../..'
+            jobs.append(command)
+
         return jobs
-
-
-
 
     def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
                              box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
