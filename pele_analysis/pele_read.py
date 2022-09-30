@@ -238,13 +238,11 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
             for traj in sorted(report_files[epoch]):
                 rd = _readReportFile(report_files[epoch][traj],
                                      equilibration=equilibration,
-                                     ebr_threshold=ebr_threshold)
-                if equilibration:
-                    step = 'Step'
-                else:
-                    step = 'Epoch'
-                rd[step] = epoch
-                rd['Trajectory'] = traj
+                                     ebr_threshold=ebr_threshold,
+                                     protein=protein,
+                                     ligand=ligand,
+                                     epoch=epoch,
+                                     trajectory=traj)
                 report_data.append(rd)
 
         # Check pele data can be read by the library
@@ -261,14 +259,15 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
             print('Failed to read PELE data for %s + %s' % (protein, ligand))
             return
 
-        report_data.set_index([step, 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+        report_data.set_index(['Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
 
         _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration,
                        separator=separator, data_folder_name=data_folder_name)
 
     return report_data
 
-def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1):
+def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein=None,
+                    ligand=None, epoch=None, trajectory=None):
     """
     Reads a single report file as a pandas DataFrame.
 
@@ -324,6 +323,14 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1):
             del report_values[t]
 
         report_values = pd.DataFrame(report_values)
+
+        # Add epoch and trajectory to DF
+        report_values['Protein'] = protein
+        report_values['Ligand'] = ligand
+        report_values['Epoch'] = epoch
+        report_values['Trajectory'] = trajectory
+        report_values.drop(['Step'], axis=1, inplace=True)
+        report_values.drop(['Task'], axis=1, inplace=True)
 
     return report_values
 

@@ -70,6 +70,7 @@ class peleAnalysis:
         self.verbose = verbose
         self.force_reading = force_reading
         self.energy_by_residue = energy_by_residue
+        self.data = None
 
         # System name attributes
         self.proteins = []
@@ -310,7 +311,7 @@ class peleAnalysis:
                                         RMSD = np.concatenate((RMSD, rmsd))
 
                 self.equilibration_data['Protein RMSD'] = RMSD
-                self._saveEquilibrationDataState()
+                self._saveDataState(equilibration=True)
 
         if productive:
             if 'RMSD' in self.data.keys() and not recalculate:
@@ -2445,27 +2446,38 @@ class peleAnalysis:
                         if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
                             os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
 
-    def _saveDataState(self):
-        self.data.to_csv(self.data_folder+'/data.csv')
+    def _saveDataState(self, equilibration=False):
+        if equilibration:
+            self.equilibration_data.to_csv(self.data_folder+'/equilibration_data.csv')
+        else:
+            self.data.to_csv(self.data_folder+'/data.csv')
 
-    def _saveEquilibrationDataState(self):
-        self.equilibration_data.to_csv(self.data_folder+'/equilibration_data.csv')
+    def _recoverDataState(self, remove=False, equilibration=False):
+        if equilibration:
+            csv_file = self.data_folder+'/equilibration_data.csv'
+            data = self.equilibration_data
+        else:
+            csv_file = self.data_folder+'/data.csv'
+            data = self.data
 
-    def _recoverDataState(self, remove=False):
-        csv_file = self.data_folder+'/data.csv'
         if os.path.exists(csv_file):
-            self.data = pd.read_csv(csv_file, index_col=False)
-            self.data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+            data = pd.read_csv(csv_file, index_col=False)
+            data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
             if remove:
                 os.remove(csv_file)
 
-    def _recoverEquilibrationDataState(self, remove=False):
-        csv_file = self.data_folder+'/equilibration_data.csv'
-        if os.path.exists(csv_file):
-            self.equilibration_data = pd.read_csv(csv_file, index_col=False)
-            self.equilibration_data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-            if remove:
-                os.remove(csv_file)
+        if equilibration:
+            self.equilibration_data = data
+        else:
+            self.data = data 
+
+    # def _recoverEquilibrationDataState(self, remove=False):
+    #     csv_file = self.data_folder+'/equilibration_data.csv'
+    #     if os.path.exists(csv_file):
+    #         self.equilibration_data = pd.read_csv(csv_file, index_col=False)
+    #         self.equilibration_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+    #         if remove:
+    #             os.remove(csv_file)
 
     def _saveDictionaryAsJson(self, dictionary, output_file):
         with open(output_file, 'w') as of:
@@ -2685,10 +2697,7 @@ class peleAnalysis:
             if protein not in reports_dict or ligand not in reports_dict[protein]:
                 report_files = None
             else:
-                if equilibration:
-                    report_files = reports_dict[protein][ligand]
-                else:
-                    report_files = reports_dict[protein][ligand]
+                report_files = reports_dict[protein][ligand]
 
             if report_files == {} and equilibration and self.csv_equilibration_files == {}:
                 print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
@@ -2714,15 +2723,8 @@ class peleAnalysis:
                     keep += [k for k in data.keys() if k.startswith('L:1_') and k.endswith(energy_by_residue_type)]
                 data = data[keep]
 
-            # Format dataframe with multi-indexing
-            data = data.reset_index()
-            data['Protein'] = protein
-            data['Ligand'] = ligand
-            if equilibration:
-                data.set_index(['Protein', 'Ligand', 'Step', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-            else:
-                data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
             report_data.append(data)
+
             if self.verbose:
                 print('\t in %.2f seconds.' % (time.time()-start))
 
@@ -2730,18 +2732,16 @@ class peleAnalysis:
             self.equilibration_data = None
             return
 
-        # Merge all dataframes into a single dataframe
-        self.data = pd.concat(report_data)
-
         if equilibration:
+            # Merge all dataframes into a single dataframe
             self.equilibration_data = pd.concat(report_data)
-            self._saveEquilibrationDataState()
+            self._saveDataState(equilibration=equilibration)
             self.equilibration_data = None
             gc.collect()
-            self._recoverEquilibrationDataState(remove=True)
-        # Remove Task column
+            self._recoverDataState(remove=True, equilibration=equilibration)
         else:
-            self.data.drop(['Task'], axis=1, inplace=True)
+            # Merge all dataframes into a single dataframe
+            self.data = pd.concat(report_data)
             # Save and reload dataframe to avoid memory fragmentation
             self._saveDataState()
             self.data = None
