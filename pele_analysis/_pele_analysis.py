@@ -128,7 +128,8 @@ class peleAnalysis:
         self.proteins = sorted(self.proteins)
         self.ligands = sorted(self.ligands)
 
-    def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False):
+    def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False,
+                           verbose=False):
         """
         Calculate distances between pairs of atoms for each pele (protein+ligand)
         simulation. The atom pairs are given as a dictionary with the following format:
@@ -144,6 +145,8 @@ class peleAnalysis:
             Atom pairs for each protein + ligand entry.
         equilibration : bool
             Calculate distances for the equilibration steps also
+        verbose : bool
+            Display function messages
         overwrite : bool
             Force recalculation of distances.
         """
@@ -162,7 +165,7 @@ class peleAnalysis:
 
                 # Check if distance have been previously calculated
                 if os.path.exists(distance_file) and not overwrite:
-                    if self.verbose:
+                    if verbose:
                         print('Distance file for %s + %s was found. Reading distances from there...' % (protein, ligand))
                     distances[protein][ligand] = pd.read_csv(distance_file, index_col=False)
                     distances[protein][ligand] = distances[protein][ligand].loc[:, ~distances[protein][ligand].columns.str.contains('^Unnamed')]
@@ -174,7 +177,7 @@ class peleAnalysis:
                     distances[protein][ligand]['Epoch'] = []
                     distances[protein][ligand]['Trajectory'] = []
                     distances[protein][ligand]['Accepted Pele Steps'] = []
-                    if self.verbose:
+                    if verbose:
                         print('Calculating distances for %s + %s ' % (protein, ligand))
 
                     # Load one trajectory at the time to save memory
@@ -2699,6 +2702,7 @@ class peleAnalysis:
                                              separator=self.separator,
                                              equilibration=equilibration,
                                              data_folder_name=self.data_folder)
+
             # Skip of dataframe is None
             if isinstance(data, type(None)):
                 continue
@@ -2729,15 +2733,15 @@ class peleAnalysis:
         # Merge all dataframes into a single dataframe
         self.data = pd.concat(report_data)
 
-        # Remove Task column
         if equilibration:
             self.equilibration_data = pd.concat(report_data)
             self._saveEquilibrationDataState()
             self.equilibration_data = None
             gc.collect()
             self._recoverEquilibrationDataState(remove=True)
+        # Remove Task column
         else:
-            self.data.drop(['Task'], axis=1)
+            self.data.drop(['Task'], axis=1, inplace=True)
             # Save and reload dataframe to avoid memory fragmentation
             self._saveDataState()
             self.data = None
@@ -2824,7 +2828,7 @@ class peleAnalysis:
             if self.verbose:
                 print('Getting paths to PELE files')
         else:
-            print('Pele directory not found. Checking %s folder...' % self.data_folder)
+            print('Pele directory %s not found. Checking %s folder...' % (self.pele_folder, self.data_folder))
             return
 
         # Check pele_folder for PELE runs.
