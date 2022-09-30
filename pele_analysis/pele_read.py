@@ -329,7 +329,6 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
         report_values['Ligand'] = ligand
         report_values['Epoch'] = epoch
         report_values['Trajectory'] = trajectory
-        report_values.drop(['Step'], axis=1, inplace=True)
         report_values.drop(['Task'], axis=1, inplace=True)
 
     return report_values

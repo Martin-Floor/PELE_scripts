@@ -96,6 +96,11 @@ class peleAnalysis:
             print('Copying PELE input files')
         self._copyPELEInputs()
 
+        # Copy PELE configuration files to analysis folder
+        if self.verbose:
+            print('Copying PELE and Adaptive configuration files')
+        self._copyPELEConfiguration()
+
         # Copy PELE topology files to analysis folder
         if self.verbose:
             print('Copying PELE topology files')
@@ -2469,7 +2474,7 @@ class peleAnalysis:
         if equilibration:
             self.equilibration_data = data
         else:
-            self.data = data 
+            self.data = data
 
     # def _recoverEquilibrationDataState(self, remove=False):
     #     csv_file = self.data_folder+'/equilibration_data.csv'
@@ -2649,6 +2654,9 @@ class peleAnalysis:
             # Create PELE input folders
             os.mkdir(self.data_folder+'/pele_inputs')
 
+            # Create PELE configuration folders
+            os.mkdir(self.data_folder+'/pele_configuration')
+
             # Create PELE input folders
             os.mkdir(self.data_folder+'/pele_trajectories')
 
@@ -2763,6 +2771,18 @@ class peleAnalysis:
                     if f.endswith('.pdb'):
                         shutil.copyfile(orig, dest)
                     elif f.endswith('.yaml'):
+                        shutil.copyfile(orig, dest)
+
+    def _copyPELEConfiguration(self):
+        for protein in self.pele_directories:
+            for ligand in self.pele_directories[protein]:
+                dir = self.data_folder+'/pele_configuration/'+protein+self.separator+ligand
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+                for f in os.listdir(self.pele_directories[protein][ligand]+'/'+self.pele_output_folder):
+                    orig = self.pele_directories[protein][ligand]+'/'+self.pele_output_folder+'/'+f
+                    dest = self.data_folder+'/pele_configuration/'+protein+self.separator+ligand+'/'+f
+                    if f.endswith('.conf'):
                         shutil.copyfile(orig, dest)
 
     def _copyPELETopology(self):
