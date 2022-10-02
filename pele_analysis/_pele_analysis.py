@@ -2715,7 +2715,8 @@ class peleAnalysis:
             os.mkdir(self.data_folder+'/pele_configuration')
 
             # Create PELE input folders
-            os.mkdir(self.data_folder+'/pele_trajectories')
+            if trajectories:
+                os.mkdir(self.data_folder+'/pele_trajectories')
 
             # Create PELE input folders
             os.mkdir(self.data_folder+'/pele_topologies')
@@ -2861,6 +2862,10 @@ class peleAnalysis:
         """
         Copy PELE output trajectories to analysis folder.
         """
+
+        if not os.path.exists(self.data_folder+'/pele_trajectories')
+            os.mkdir(self.data_folder+'/pele_trajectories')
+
         # Copy PELE trajectories
         for protein in self.trajectory_files:
             for ligand in self.trajectory_files[protein]:
