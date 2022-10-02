@@ -2863,7 +2863,7 @@ class peleAnalysis:
         Copy PELE output trajectories to analysis folder.
         """
 
-        if not os.path.exists(self.data_folder+'/pele_trajectories')
+        if not os.path.exists(self.data_folder+'/pele_trajectories'):
             os.mkdir(self.data_folder+'/pele_trajectories')
 
         # Copy PELE trajectories
