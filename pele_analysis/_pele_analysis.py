@@ -33,7 +33,7 @@ class peleAnalysis:
 
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
-                 data_folder_name=None, trajectories=True):
+                 data_folder_name=None, trajectories=False):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -418,6 +418,56 @@ class peleAnalysis:
                                   equilibration=equilibration,
                                   productive=productive)
 
+    def plotAcceptanceProbability(self):
+        """
+        Plot the accepted steps by trajectory together with the overall acceptance
+        probability.
+        """
+
+        def getLigands(Protein, equilibration=False):
+            protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
+            ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
+            interact(plotAcceptance, Protein=fixed(Protein), Ligand=ligands,
+                     equilibration=fixed(equilibration))
+
+        def plotAcceptance(Protein, Ligand, equilibration=False):
+
+            if equilibration:
+                data = self.equilibration_data
+            else:
+                data = self.data
+
+            protein_series = data[data.index.get_level_values('Protein') == Protein]
+            ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
+            plt.figure(dpi=300, figsize=(2,8))
+            plt.title(Protein+'-'+Ligand, size=5)
+            acc_prob = {}
+            n_traj = 0
+            for t in ligand_series.index.levels[3]:
+                n_traj += 1
+                traj_series = ligand_series[ligand_series.index.get_level_values('Trajectory') == t]
+                steps = max(traj_series['Step'])
+                x = list(range(0,steps))
+                y = [t if v in traj_series['Step'].to_list() else t-0.5 for v in x]
+                for s,a in zip(x,y):
+                    acc_prob.setdefault(s, 0)
+                    if not str(a).endswith('.5'):
+                        acc_prob[s] += 1
+                plt.plot(x,y, lw=0.5, c='k')
+
+            acc_steps = [s for s in acc_prob]
+            acc_prob = [(acc_prob[s]/n_traj)+n_traj+1 for s in acc_prob]
+            plt.plot(acc_steps,acc_prob, lw=0.5, c='r')
+            plt.axhline(n_traj+1, lw=0.1, c='k', ls='--')
+            plt.axhline(n_traj+2, lw=0.1, c='k', ls='--')
+            plt.xticks([0, max(acc_steps)], [1,max(acc_steps)+1], size=4)
+            plt.yticks([*range(1,n_traj+1)]+[n_traj+1.5], ['T'+str(t) for t in range(1,n_traj+1)]+['Acc. Prob.'], size=4)
+            plt.ylim(0, n_traj+3)
+            plt.xlabel('MC step', size=5)
+            plt.ylabel('Trajectory', size=5)
+
+        interact(getLigands, Protein=sorted(self.proteins), equilibration=False)
+
     def plotSimulationProteinRMSD(self, equilibration=True, productive=True):
         """
         Plot the progression of the protein atoms RMSD in the simulation data.
@@ -605,7 +655,7 @@ class peleAnalysis:
             color_columns = [k for k in color_columns if not k.startswith('metric_')]
             color_columns = [None, 'Epoch']+color_columns
 
-            del color_columns[color_columns.index('Task')]
+            # del color_columns[color_columns.index('Task')]
             del color_columns[color_columns.index('Binding Energy')]
 
             if filter_by_metric:# Add checks for the given pele data pandas df
@@ -671,7 +721,7 @@ class peleAnalysis:
                 interact(_plotDistributionByLigand, Ligand=self.ligands, Column=columns)
 
         columns = [k for k in self.data.keys() if ':' not in k and 'distance' not in k]
-        del columns[columns.index('Task')]
+        # del columns[columns.index('Task')]
         del columns[columns.index('Step')]
 
         interact(selectLevel, By_protein=True, By_ligand=False)
@@ -1354,16 +1404,15 @@ class peleAnalysis:
         changed = False
         for name in catalytic_labels:
             if 'metric_'+name in self.data.keys() and not overwrite:
-                print('Combined metric %s already added. Give overwrite=True to recombine' % name)
+                print('Combined metric %s already added. Give overwrite=True to combine again the distances.' % name)
             else:
                 changed = True
                 values = []
-                for protein in sorted(self.csv_files):
+                for protein, ligand in sorted(self.pele_combinations):
                     protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
-                    for ligand in sorted(self.csv_files[protein]):
-                        ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
-                        distances = catalytic_labels[name][protein][ligand]
-                        values += ligand_series[distances].min(axis=1).tolist()
+                    ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
+                    distances = catalytic_labels[name][protein][ligand]
+                    values += ligand_series[distances].min(axis=1).tolist()
                 self.data['metric_'+name] = values
 
         if changed:
@@ -1708,7 +1757,7 @@ class peleAnalysis:
 
         return pele_data
 
-    def extractPELEPoses(self, pele_data, output_folder, separator='-', keep_chain_names=True):
+    def extractPELEPoses(self, pele_data, output_folder, separator=None, keep_chain_names=True):
         """
         Extract pele poses present in a pele dataframe. The PELE DataFrame
         contains the same structure as the self.data dataframe, attribute of
@@ -1724,6 +1773,9 @@ class peleAnalysis:
             Symbol used to separate protein, ligand, epoch, trajectory and pele step for each pose filename.
         """
 
+        if separator == None:
+            separator = self.separator
+
         # Create output folder
         if not os.path.exists(output_folder):
             os.mkdir(output_folder)
@@ -1737,7 +1789,7 @@ class peleAnalysis:
         # Check the separator is not in protein or ligand names
         for protein in self.proteins:
             if separator in protein:
-                raise ValueError('The separator %s was found in protein name %s. Please use a different separator symbol.' % (separator, model))
+                raise ValueError('The separator %s was found in protein name %s. Please use a different separator symbol.' % (separator, protein))
 
             protein_data = pele_data[pele_data.index.get_level_values('Protein') == protein]
 
@@ -1984,6 +2036,7 @@ class peleAnalysis:
             print('Ligand trajectory for %s and %s found. Reading it from file.' % (protein, ligand))
             ligand_traj = md.load(ligand_traj_path, top=ligand_top_path)
             traj_dict = self._loadDictionaryFromJson(ligand_traj_dict_path)
+            traj_dict = {int(k):v for k,v in traj_dict.items()} # Convert dict keys to int
 
         if return_dictionary:
             return ligand_traj, traj_dict
@@ -2005,11 +2058,6 @@ class peleAnalysis:
             Whether to recalculate the ligand trajectory (see getLigandTrajectory()).
         """
 
-        if not os.path.isdir(self.pele_folder):
-            raise ValueError('Pele folder not found. Cannot acces trajectories.')
-
-
-
         clustering_dir = self.data_folder+'/clustering'
         if not os.path.exists(clustering_dir):
             os.mkdir(clustering_dir)
@@ -2017,18 +2065,32 @@ class peleAnalysis:
         # Iterate by protein
         for protein in sorted(self.trajectory_files):
 
+            protein_series = self.getDataSeries(self.data, protein, 'Protein')
+
             # Iterate by ligand
             for ligand in sorted(self.trajectory_files[protein]):
 
-                # Create or read ligand trajectory
-                ligand_traj, ligand_traj_dict = self.getLigandTrajectory(protein, ligand, overwrite=overwrite,
-                                                                         return_dictionary=True)
+                ligand_series = self.getDataSeries(self.data, ligand, 'Ligand')
 
-                # Start RMSD clustering
-                rmsd_matrix_file = ligand_traj_dir+'/'+protein+self.separator+ligand+'.npy'
-                clusters = clustering.clusterByRMSD(ligand_traj, threshold=rmsd_threshold/10.0,
-                                                    rmsd_matrix_file=rmsd_matrix_file)
-                return ligand_traj, clusters
+                # Create or read ligand trajectory
+                ligand_traj, traj2pose = self.getLigandTrajectoryAsOneBundle(protein, ligand,
+                                                 overwrite=overwrite,return_dictionary=True)
+                pose2traj = {tuple(v):k for k,v in traj2pose.items()}
+
+                # Get best energy pose
+                best_index = ligand_series.nsmallest(1, 'Binding Energy').index[0][-3:]
+                be_traj = ligand_traj[pose2traj[best_index]]
+
+                # Calculate RMSD
+                rmsd = np.array((np.sqrt(3*np.mean((ligand_traj.xyz - be_traj.xyz)**2, axis=(1,2)))))
+                assert rmsd[pose2traj[best_index]]==0.0
+
+                # Assign frames to cluster
+                cluster = np.where(rmsd<rmsd_threshold)[0]
+                print(cluster.shape)
+
+                break
+            break
 
     def setUpPELERerun(self, pele_folder, protein_ligands, restart=False,
                        continuation=False):
@@ -2476,13 +2538,8 @@ class peleAnalysis:
         else:
             self.data = data
 
-    # def _recoverEquilibrationDataState(self, remove=False):
-    #     csv_file = self.data_folder+'/equilibration_data.csv'
-    #     if os.path.exists(csv_file):
-    #         self.equilibration_data = pd.read_csv(csv_file, index_col=False)
-    #         self.equilibration_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-    #         if remove:
-    #             os.remove(csv_file)
+    def getDataSeries(self, data, value, column):
+        return data[data.index.get_level_values(column) == value]
 
     def _saveDictionaryAsJson(self, dictionary, output_file):
         with open(output_file, 'w') as of:
