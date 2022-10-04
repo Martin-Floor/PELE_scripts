@@ -507,7 +507,7 @@ class peleAnalysis:
             plt.ylim(ylim)
         plt.show()
 
-    def boxPlotProteinSimulation(self, protein, column):
+    def boxPlotProteinSimulation(self, protein, column, ylim=None):
         """
         Creates a box plot for the selected protein using the specified column values
         for all ligands present.
@@ -533,7 +533,7 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def boxPlotLigandSimulation(self, ligand, column):
+    def boxPlotLigandSimulation(self, ligand, column, ylim=None):
         """
         Creates a box plot for the selected ligand using the specified column values
         for all proteins present.
@@ -656,19 +656,19 @@ class peleAnalysis:
         interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line),
                  by_metric=False, filter_by_metric=False)
 
-    def plotDistributions(self):
+    def plotDistributions(self, ylim = None):
         """
         Plot distribution of different values in the simulation in a by-protein basis.
         """
-        def _plotDistributionByProtein(Protein, Column):
-            self.boxPlotProteinSimulation(Protein, Column)
-        def _plotDistributionByLigand(Ligand, Column):
-            self.boxPlotLigandSimulation(Ligand, Column)
+        def _plotDistributionByProtein(Protein, Column, ylim = None):
+            self.boxPlotProteinSimulation(Protein, Column, ylim = fixed(ylim))
+        def _plotDistributionByLigand(Ligand, Column, ylim = None):
+            self.boxPlotLigandSimulation(Ligand, Column, ylim = fixed(ylim))
         def selectLevel(By_protein, By_ligand):
             if By_protein:
-                interact(_plotDistributionByProtein, Protein=self.proteins, Column=columns)
+                interact(_plotDistributionByProtein, Protein=self.proteins, Column=columns, ylim = fixed(ylim))
             if By_ligand:
-                interact(_plotDistributionByLigand, Ligand=self.ligands, Column=columns)
+                interact(_plotDistributionByLigand, Ligand=self.ligands, Column=columns, ylim = fixed(ylim))
 
         columns = [k for k in self.data.keys() if ':' not in k and 'distance' not in k]
         del columns[columns.index('Task')]
