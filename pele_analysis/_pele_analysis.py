@@ -16,6 +16,8 @@ from Bio.PDB.PDBExceptions import PDBConstructionWarning
 import warnings
 warnings.simplefilter('ignore', PDBConstructionWarning)
 import json
+import io
+from pkg_resources import resource_stream, Requirement, resource_listdir
 
 from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown, Checkbox
 import time
@@ -1185,7 +1187,7 @@ class peleAnalysis:
 
         ligand_ddm = Dropdown(options=self.ligands+['by_protein'])
 
-        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, pele_data=pele_data,
+        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, pele_data=fixed(pele_data),
                  dA=dA, Ec=Ec, Enc=Enc, models_file=fixed(models_file), lig_label_rot=fixed(lig_label_rot), **metrics_sliders)
 
     def visualiseBestPoses(self, pele_data=None, initial_threshold=3.5):
@@ -2220,7 +2222,7 @@ class peleAnalysis:
                              box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
                              separator='-', use_peleffy=True, usesrun=True, energy_by_residue=False, ninety_degrees_version=False,
                              analysis=False, energy_by_residue_type='all', peptide=False, equilibration_mode='equilibrationLastSnapshot',
-                             spawning='independent', continuation=False, equilibration=True, skip_models=None, seed=12345):
+                             spawning='independent', continuation=False, extend_iterations=False, equilibration=True, skip_models=None, seed=12345):
         """
         Generates a PELE calculation for extracted poses. The function reads all the
         protein ligand poses and creates input for a PELE platform set up run.
@@ -2458,7 +2460,13 @@ class peleAnalysis:
                                     oyml.write('restart: true\n')
                                     oyml.write('adaptive_restart: true\n')
 
+                        if extend_iterations:
+                            _copyScriptFile(pele_folder, 'extendAdaptiveIteartions.py')
+                            extend_script_name = '._extendAdaptiveIteartions.py'
+                            command += 'python ../'+extend_script_name+' output\n'
+
                         command += 'python -m pele_platform.main input_restart.yaml\n'
+
                     elif energy_by_residue:
                         command += 'python ../'+ebr_script_name+' output --energy_type '+energy_by_residue_type
                         if isinstance(ligand_energy_groups, dict):
@@ -2485,6 +2493,8 @@ class peleAnalysis:
                                         l = 'restart: true\n'
                                     oyml.write(l)
                         command += 'python -m pele_platform.main input_restart.yaml\n'
+                    elif extend_iterations and not continuation:
+                        raise ValueEror('extend_iterations must be used together with the continuation keyword')
                     command += 'cd ../..'
                     jobs.append(command)
 
@@ -3102,3 +3112,33 @@ class peleAnalysis:
                         ams = am.split('-')
                         atom_indexes[protein][ligand][(ams[0], int(ams[1]), ams[2])] = self.atom_indexes[protein][ligand][am]
             self.atom_indexes = atom_indexes
+
+def _copyScriptFile(output_folder, script_name, no_py=False, subfolder=None, hidden=True):
+    """
+    Copy a script file from the prepare_proteins package.
+
+    Parameters
+    ==========
+
+    """
+    # Get script
+    path = "pele_analysis/scripts"
+    if subfolder != None:
+        path = path+'/'+subfolder
+
+    script_file = resource_stream(Requirement.parse("pele_analysis"),
+                                     path+'/'+script_name)
+    script_file = io.TextIOWrapper(script_file)
+
+    # Write control script to output folder
+    if no_py == True:
+        script_name = script_name[:-3]
+
+    if hidden:
+        output_path = output_folder+'/._'+script_name
+    else:
+        output_path = output_folder+'/'+script_name
+
+    with open(output_path, 'w') as sof:
+        for l in script_file:
+            sof.write(l)
