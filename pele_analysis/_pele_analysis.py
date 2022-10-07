@@ -2538,8 +2538,9 @@ class peleAnalysis:
             data = self.data
 
         if os.path.exists(csv_file):
-            data = pd.read_csv(csv_file, index_col=False)
+            data = pd.read_csv(csv_file)
             data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+            data = data.loc[:, ~data.columns.str.contains('^Unnamed')]
             if remove:
                 os.remove(csv_file)
 
@@ -2818,6 +2819,7 @@ class peleAnalysis:
         else:
             # Merge all dataframes into a single dataframe
             self.data = pd.concat(report_data)
+
             # Save and reload dataframe to avoid memory fragmentation
             self._saveDataState()
             self.data = None
