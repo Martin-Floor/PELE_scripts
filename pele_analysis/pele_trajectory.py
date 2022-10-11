@@ -1,5 +1,4 @@
 import mdtraj as md
-import nglview as nv
 import numpy as np
 import os
 
@@ -48,6 +47,10 @@ def showTrajectory(trajectory, residues=[]):
     residues : list
         List of residue indexes to depict.
     """
+    try:
+        import nglview as nv
+    except ImportError as e:
+        raise ValueError('nglview module not avaiable. Please install it to use this function.')
 
     show = nv.show_mdtraj(trajectory)
     show.clear_representations()

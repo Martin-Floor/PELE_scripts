@@ -4,6 +4,7 @@ from . import clustering
 
 import os
 import shutil
+import copy
 
 import pandas as pd
 import matplotlib as mpl
@@ -1905,8 +1906,12 @@ class peleAnalysis:
         # Append to ligand-only trajectory
         ligand_atoms = reference.topology.select('resname '+self.ligand_names[ligand])
 
-        # Store topology as PDB
-        reference.atom_slice(ligand_atoms).save(ligand_top_path)
+        if not os.path.exists(ligand_top_path):
+            lig_ref = reference.atom_slice(ligand_atoms)
+            # Store topology as PDB
+            for residue in lig_ref.topology.residues:
+                residue.resSeq = 1
+            lig_ref.save(ligand_top_path)
 
         # Read or save ligand trajectories by PELE trajectory
         ligand_traj = {}
@@ -1949,11 +1954,11 @@ class peleAnalysis:
 
         if return_dictionary:
             if return_paths:
-                return ligand_traj_paths, traj_dict
+                return ligand_traj_paths, ligand_top_path, traj_dict
             else:
                 return ligand_traj, traj_dict
         elif return_paths:
-                return ligand_traj_paths
+                return ligand_traj_paths, ligand_top_path
         else:
             return ligand_traj
 
@@ -1978,8 +1983,6 @@ class peleAnalysis:
 
         if not os.path.isdir(self.pele_folder):
             raise ValueError('Pele folder not found. Cannot acces trajectories.')
-
-
 
         ligand_traj_dir = self.data_folder+'/ligand_traj'
         if not os.path.exists(ligand_traj_dir):
@@ -2007,11 +2010,12 @@ class peleAnalysis:
             # Append to ligand-only trajectory
             ligand_atoms = reference.topology.select('resname '+self.ligand_names[ligand])
             i = 0
+            sum = 0
             for epoch in sorted(trajectory_files):
                 for t in sorted(trajectory_files[epoch]):
                     # Load trajectory
                     traj = md.load(trajectory_files[epoch][t], top=topology_file)
-
+                    sum += traj.n_frames
                     # Align trajectory to protein atoms only
                     protein_atoms = traj.topology.select('protein')
                     traj.superpose(reference, atom_indices=protein_atoms)
@@ -2038,14 +2042,14 @@ class peleAnalysis:
             print('Ligand trajectory for %s and %s found. Reading it from file.' % (protein, ligand))
             ligand_traj = md.load(ligand_traj_path, top=ligand_top_path)
             traj_dict = self._loadDictionaryFromJson(ligand_traj_dict_path)
-            traj_dict = {int(k):v for k,v in traj_dict.items()} # Convert dict keys to int
+            traj_dict = {int(k):tuple(v) for k,v in traj_dict.items()} # Convert dict keys to int
 
         if return_dictionary:
             return ligand_traj, traj_dict
         else:
             return ligand_traj
 
-    def computeLigandRMSDClusters(self, rmsd_threshold=3, overwrite=False):
+    def computeLigandRMSDClusters(self, rmsd_threshold=5, overwrite=False):
         """
         Cluster ligand conformations by RMSD from a ligand-only trajectory aligned
         to the protein framework. Clustering belonging is added to the pele data
@@ -2060,11 +2064,9 @@ class peleAnalysis:
             Whether to recalculate the ligand trajectory (see getLigandTrajectory()).
         """
 
-        clustering_dir = self.data_folder+'/clustering'
-        if not os.path.exists(clustering_dir):
-            os.mkdir(clustering_dir)
-
         # Iterate by protein
+        rmsd_column = []
+        cluster_data = []
         for protein in sorted(self.trajectory_files):
 
             protein_series = self.getDataSeries(self.data, protein, 'Protein')
@@ -2072,27 +2074,66 @@ class peleAnalysis:
             # Iterate by ligand
             for ligand in sorted(self.trajectory_files[protein]):
 
-                ligand_series = self.getDataSeries(self.data, ligand, 'Ligand')
+                ligand_series = self.getDataSeries(protein_series, ligand, 'Ligand')
 
                 # Create or read ligand trajectory
                 ligand_traj, traj2pose = self.getLigandTrajectoryAsOneBundle(protein, ligand,
-                                                 overwrite=overwrite,return_dictionary=True)
-                pose2traj = {tuple(v):k for k,v in traj2pose.items()}
+                                                 overwrite=overwrite, return_dictionary=True)
+                # pose2traj = {tuple(v):k for k,v in traj2pose.items()}
 
-                # Get best energy pose
-                best_index = ligand_series.nsmallest(1, 'Binding Energy').index[0][-3:]
-                be_traj = ligand_traj[pose2traj[best_index]]
+                be = ligand_series['Binding Energy'].to_list()
 
-                # Calculate RMSD
-                rmsd = np.array((np.sqrt(3*np.mean((ligand_traj.xyz - be_traj.xyz)**2, axis=(1,2)))))
-                assert rmsd[pose2traj[best_index]]==0.0
+                ite_traj = copy.copy(ligand_traj)
 
-                # Assign frames to cluster
-                cluster = np.where(rmsd<rmsd_threshold)[0]
-                print(cluster.shape)
+                cluster_num = 0
+                clusters = {}
+                while not len(ite_traj) == 0:
+                    cluster_num += 1
 
-                break
-            break
+                    # Get best energy pose
+                    best_index = np.argmin(be)
+                    be_traj = ite_traj[best_index]
+
+                    # Calculate RMSD
+                    rmsd = np.array((np.sqrt(3*np.mean((ite_traj.xyz - be_traj.xyz)**2, axis=(1,2)))))
+                    if ligand_traj.n_frames == rmsd.shape[0]:
+                        rmsd_column += list(rmsd*10.0)
+
+                    assert rmsd[best_index] == 0.0
+
+                    # Assign frames to cluster
+                    cluster = np.where(rmsd<rmsd_threshold/10)[0]
+
+                    ## Map cluster data to pose indexes
+                    for index in cluster:
+                        if traj2pose[index] in clusters:
+                            raise ValueError('!')
+                        clusters[traj2pose[index]] = cluster_num
+
+                    # Update traj2pose dict to map new traj indexes
+                    traj2posetmp = {}
+                    count = 0
+                    for i in range(ite_traj.n_frames):
+                        if i not in cluster:
+                            traj2posetmp[count] = traj2pose[i]
+                            count += 1
+                    traj2pose = traj2posetmp
+
+                    # Slice be list and trajectory
+                    be = [be[i] for i in range(ite_traj.n_frames) if i not in cluster]
+                    mask_cluster = np.array([(i in cluster) for i in range(len(ite_traj))])
+                    ite_traj = ite_traj[~mask_cluster]
+
+                for index in ligand_series.index:
+                    cluster_data.append(clusters[index[-3:]])
+
+        self.data['Ligand RMSD'] = rmsd_column
+        self.data['Ligand Clusters'] = cluster_data
+
+    def setLigandMSMClusters(self):
+        from ._msm_clustering import ligand_msm
+        self.ligand_msm = ligand_msm(self)
+        return self.ligand_msm
 
     def setUpPELERerun(self, pele_folder, protein_ligands, restart=False,
                        continuation=False):
