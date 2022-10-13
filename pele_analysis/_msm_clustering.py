@@ -2,7 +2,10 @@ try:
     import pyemma
     import mdtraj as md
     import numpy as np
+    import matplotlib
     import matplotlib.pyplot as plt
+    import itertools
+    from scipy.ndimage import gaussian_filter
 except ImportError as e:
     raise ValueError('pyemma python module not avaiable. Please install it to use this function.')
 
@@ -22,10 +25,12 @@ class ligand_msm:
         self.ligand_atoms = {}
         self.features = {}
         self.data = {}
-        self.all_data = {}
-        self.tica = {}
         self.tica_output = {}
         self.tica_concatenated = {}
+        self.all_data = {}
+        self.all_tica = {}
+        self.all_tica_output = {}
+        self.all_tica_concatenated = {}
 
         # Get individual ligand-only trajectories
         print('Getting individual ligand trajectories')
@@ -72,17 +77,28 @@ class ligand_msm:
     def calculateTICA(self, ligand, lag_time):
         """
         """
-        self.tica[ligand] = pyemma.coordinates.tica(self.all_data[ligand], lag=lag_time)
-        self.tica_output[ligand] = self.tica[ligand].get_output()
-        self.tica_concatenated[ligand] = np.concatenate(self.tica_output[ligand])
-        ndim = self.tica_concatenated[ligand].shape[1]
+
+        # Create TICA based on all ligand simulations
+        self.all_tica[ligand] = pyemma.coordinates.tica(self.all_data[ligand], lag=lag_time)
+        self.all_tica_output[ligand] = self.all_tica[ligand].get_output()
+        self.all_tica_concatenated[ligand] = np.concatenate(self.all_tica_output[ligand])
+        self.ndims = self.all_tica_concatenated[ligand].shape[1]
+
+        # Transorm individual protein+ligand trajectories into TICA mammping
+        if ligand not in self.tica_output:
+            self.tica_output[ligand] = {}
+        if ligand not in self.tica_concatenated:
+            self.tica_concatenated[ligand] = {}
+        for protein in self.data[ligand]:
+            self.tica_output[ligand][protein] = self.all_tica[ligand].transform(self.data[ligand][protein])
+            self.tica_concatenated[ligand][protein] = np.concatenate(self.tica_output[ligand][protein])
 
     def plotLagTimeVsTICADim(self, ligand, max_lag_time):
         lag_times = []
         dims = []
         for lt in range(1, max_lag_time+1):
             self.calculateTICA(ligand,lt)
-            ndim = self.tica_concatenated[ligand].shape[1]
+            ndim = self.all_tica_concatenated[ligand].shape[1]
             lag_times.append(lt)
             dims.append(ndim)
 
@@ -91,5 +107,100 @@ class ligand_msm:
         plt.plot(Xa,dims)
         plt.xlabel('Lag time [ns]', fontsize=12)
         plt.ylabel('Nbr. of dimensions holding\n95% of the kinetic variance', fontsize=12)
-        #plt.savefig('ticadim_vs_lagtime.svg')
-        print(*zip(Xa,dims))
+
+    def plotTICADistribution(self, ligand, max_tica=10):
+        """
+        """
+        fig, axes = plt.subplots(1, 1, figsize=(12, max_tica))
+        pyemma.plots.plot_feature_histograms(
+            self.all_tica_concatenated[ligand][:,:max_tica],
+            ax=axes,
+            feature_labels=['IC'+str(i) for i in range(1, max_tica+1)],
+            ylog=True)
+        fig.tight_layout()
+
+    def plotTICADensity(self, ligand, ndims=4):
+        """
+        """
+        IC = {}
+        for i in range(ndims):
+            IC[i] = self.all_tica_concatenated[ligand][:, i]
+
+        combinations = list(itertools.combinations(range(ndims), r=2))
+        fig, axes = plt.subplots(len(combinations), figsize=(7, 5*len(combinations)), sharey=True, sharex=True)
+        for i,c in enumerate(combinations):
+            if len(combinations) <= 1:
+                pyemma.plots.plot_density(*np.array([IC[c[0]], IC[c[1]]]), ax=axes, logscale=True)
+                axes.set_xlabel('IC '+str(c[0]+1))
+                axes.set_ylabel('IC '+str(c[1]+1))
+            else:
+                pyemma.plots.plot_density(*np.array([IC[c[0]], IC[c[1]]]), ax=axes[i], logscale=True)
+                axes[i].set_xlabel('IC '+str(c[0]+1))
+                axes[i].set_ylabel('IC '+str(c[1]+1))
+
+    def plotFreeEnergy(self, ligand, protein):
+        """
+        """
+        if protein == 'all':
+            _plot_Nice_PES(self.all_tica_concatenated[ligand], bins=100, size=2, sigma=1.0)
+        else:
+            _plot_Nice_PES(self.tica_concatenated[ligand][protein], bins=100, size=2, sigma=1.0)
+
+def _plot_Nice_PES(input_data, bins=90, sigma=0.99, title=False, size = 1):
+
+    matplotlib.style.use("seaborn-paper")
+
+    plt.figure(figsize=(4*size, 3.3*size))
+
+    fig, ax = plt.subplots()
+
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+
+    alldata=np.vstack(input_data)
+
+    min1=np.min(alldata[:,0])
+    max1=np.max(alldata[:,0])
+    min2=np.min(alldata[:,1])
+    max2=np.max(alldata[:,1])
+
+    tickspacing1=1.0
+    tickspacing2=1.0
+
+    z,x,y = np.histogram2d(alldata[:,0], alldata[:,1], bins=bins)
+    z += 0.1
+
+    # compute free energies
+    F = -np.log(z)
+
+    # contour plot
+    extent = [x[0], x[-1], y[0], y[-1]]
+
+    plt.xticks([])
+    plt.yticks([])
+
+    data = gaussian_filter((F.T)*0.592-np.min(F.T)*0.592, sigma)
+
+    levels=np.linspace(0, np.max(data)-0.5, num=9)
+
+    plt.contour(data, colors='black', linestyles='solid', alpha=0.7,
+                cmap=None, levels=levels, extent=extent)
+
+    plt.contourf(data, alpha=0.5, cmap='jet', levels=levels, extent=extent)
+    plt.xlabel('IC 1', fontsize=10*size)
+    plt.ylabel('IC 2', fontsize=10*size)
+
+    if title:
+        plt.title(title, fontsize = 20*size, y=1.02)
+
+    plt.subplots_adjust(bottom=0.1, right=0.8, top=0.8)
+
+    cax = plt.axes([0.81, 0.1, 0.02, 0.7])
+
+    plt.colorbar(cax=cax, format='%.1f').set_label('Free energy [kcal/mol]',
+                                                   fontsize=10*size,
+                                                   labelpad=5,
+                                                   y=0.5)
+    cax.axes.tick_params(labelsize=10*size)
