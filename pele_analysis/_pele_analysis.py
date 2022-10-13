@@ -2887,6 +2887,14 @@ class peleAnalysis:
     def _copyPELEConfiguration(self):
         for protein in self.pele_directories:
             for ligand in self.pele_directories[protein]:
+
+                output_dir = self.pele_directories[protein][ligand]+'/'+self.pele_output_folder+'/output'
+
+                # Check if output folder exists
+                if not os.path.exists(output_dir):
+                    print('Output folder not found for %s-%s PELE calculation.' % (protein, ligand))
+                    continue
+
                 dir = self.data_folder+'/pele_configuration/'+protein+self.separator+ligand
                 if not os.path.exists(dir):
                     os.mkdir(dir)
@@ -3007,6 +3015,7 @@ class peleAnalysis:
 
                 # Get paths to PELE folders
                 else:
+
                     self.report_files[protein][ligand] = pele_read.getReportFiles(output_dir)
                     self.equilibration['report'][protein][ligand] = pele_read.getEquilibrationReportFiles(output_dir)
 
