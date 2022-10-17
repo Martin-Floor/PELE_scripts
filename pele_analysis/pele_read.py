@@ -324,6 +324,9 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
 
         report_values = pd.DataFrame(report_values)
 
+        if report_values.empty:
+            return None
+
         # Add epoch and trajectory to DF
         report_values['Protein'] = protein
         report_values['Ligand'] = ligand
