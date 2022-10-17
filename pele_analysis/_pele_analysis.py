@@ -1,6 +1,5 @@
 from . import pele_read
 from . import pele_trajectory
-from . import clustering
 
 import os
 import shutil
