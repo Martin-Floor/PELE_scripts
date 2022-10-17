@@ -491,7 +491,7 @@ class peleAnalysis:
                                   productive=productive)
 
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None,
-                                        ylim=None, metrics=None):
+                                        xlim=None, ylim=None, metrics=None):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns.
@@ -555,6 +555,8 @@ class peleAnalysis:
 
         plt.xlabel(x)
         plt.ylabel(y)
+        if xlim != None:
+            plt.xlim(xlim)
         if ylim != None:
             plt.ylim(ylim)
         plt.show()
@@ -611,7 +613,7 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def bindingEnergyLandscape(self, vertical_line=None, ylim=None):
+    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None):
         """
         Plot binding energy as interactive plot.
         """
@@ -697,10 +699,10 @@ class peleAnalysis:
         def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, **metrics_sliders):
 
             if isinstance(metrics_sliders, type(None)):
-                self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', ylim=ylim,
+                self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column=Color)
             else:
-                self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', ylim=ylim,
+                self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column=Color,
                                                      metrics=metrics_sliders)
 
