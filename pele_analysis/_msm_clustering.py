@@ -1,14 +1,15 @@
 try:
     import pyemma
-    import mdtraj as md
-    import numpy as np
-    import matplotlib
-    import matplotlib.pyplot as plt
-    import itertools
-    from scipy.ndimage import gaussian_filter
 except ImportError as e:
     raise ValueError('pyemma python module not avaiable. Please install it to use this function.')
 
+import mdtraj as md
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import itertools
+from scipy.ndimage import gaussian_filter
+from ipywidgets import interact, fixed #FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown, Checkbox
 
 class ligand_msm:
 
@@ -31,6 +32,7 @@ class ligand_msm:
         self.all_tica = {}
         self.all_tica_output = {}
         self.all_tica_concatenated = {}
+        self.metric_features = {}
 
         # Get individual ligand-only trajectories
         print('Getting individual ligand trajectories')
@@ -54,12 +56,38 @@ class ligand_msm:
     def addFeature(self, feature, ligand):
         """
         """
-        implemented_features = ['positions']
+        implemented_features = ['positions', 'metrics']
+
         if feature not in implemented_features:
             raise ValueError('Feature %s not implemented. try: %s' % (feature, implemented_features))
 
         if feature == 'positions':
             self.features[ligand].add_selection(self.features[ligand].select('all'))
+
+        if feature == 'metrics':
+
+            # Add metric features to ligand
+            if ligand not in self.metric_features:
+                self.metric_features[ligand] = {}
+
+            # Get metrics
+            metrics = []
+            for m in self.pele_analysis.data.keys():
+                if m.startswith('metric_'):
+                    metrics.append(m)
+
+            # Get metrics data
+            ligand_data = self.pele_analysis.data[self.pele_analysis.data.index.get_level_values('Ligand') == ligand]
+            for protein in self.pele_analysis.proteins:
+
+                # Add metric features to ligand
+                if protein not in self.metric_features[ligand]:
+                    self.metric_features[ligand][protein] = []
+
+                protein_data = ligand_data[ligand_data.index.get_level_values('Protein') == protein]
+                for trajectory in ligand_data.index.levels[3]:
+                    trajectory_data = protein_data[protein_data.index.get_level_values('Trajectory') == trajectory]
+                    self.metric_features[ligand][protein].append(trajectory_data[metrics].to_numpy())
 
     def getFeaturesData(self, ligand):
         """
@@ -71,8 +99,20 @@ class ligand_msm:
             self.all_data[ligand] = []
 
         for protein in self.pele_analysis.proteins:
+
             self.data[ligand][protein] = pyemma.coordinates.load(self.trajectories[(protein, ligand)], features=self.features[ligand])
             self.all_data[ligand] += self.data[ligand][protein]
+
+            # Add metric features
+            if ligand in self.metric_features:
+                for t in range(len(self.metric_features[ligand][protein])):
+
+                    assert self.metric_features[ligand][protein][t].shape[0] == self.data[ligand][protein][t].shape[0]
+
+                    cct = np.concatenate([self.data[ligand][protein][t],
+                                    self.metric_features[ligand][protein][t]],
+                                    axis=0)
+                    print(cct.shape)
 
     def calculateTICA(self, ligand, lag_time):
         """
@@ -138,13 +178,32 @@ class ligand_msm:
                 axes[i].set_xlabel('IC '+str(c[0]+1))
                 axes[i].set_ylabel('IC '+str(c[1]+1))
 
-    def plotFreeEnergy(self, ligand, protein):
+    def plotFreeEnergy(self):
         """
         """
-        if protein == 'all':
-            _plot_Nice_PES(self.all_tica_concatenated[ligand], bins=100, size=2, sigma=1.0)
-        else:
-            _plot_Nice_PES(self.tica_concatenated[ligand][protein], bins=100, size=2, sigma=1.0)
+
+        def getLigands(Protein):
+            ligands = []
+            for protein, ligand in self.pele_analysis.pele_combinations:
+                if Protein == 'all':
+                    ligands.append(ligand)
+                else:
+                    if protein == Protein:
+                        ligands.append(ligand)
+
+            if Protein == 'all':
+                ligands = list(set(ligands))
+
+            interact(_plotBindingEnergy, Protein=fixed(Protein), Ligand=ligands)
+
+        def _plotBindingEnergy(Protein, Ligand):
+            if Protein == 'all':
+                _plot_Nice_PES(self.all_tica_concatenated[Ligand], bins=100, size=2, sigma=1.0)
+            else:
+                _plot_Nice_PES(self.tica_concatenated[Ligand][Protein], bins=100, size=2, sigma=1.0)
+
+        interact(getLigands, Protein=sorted(self.pele_analysis.proteins)+['all'])
+
 
 def _plot_Nice_PES(input_data, bins=90, sigma=0.99, title=False, size = 1):
 
