@@ -491,7 +491,7 @@ class peleAnalysis:
                                   productive=productive)
 
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None,
-                                        xlim=None, ylim=None, metrics=None):
+                                        xlim=None, ylim=None, metrics=None, title=None):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns.
@@ -555,11 +555,12 @@ class peleAnalysis:
 
         plt.xlabel(x)
         plt.ylabel(y)
+        if title != None:
+            plt.title(title)
         if xlim != None:
             plt.xlim(xlim)
         if ylim != None:
             plt.ylim(ylim)
-        plt.show()
 
     def boxPlotProteinSimulation(self, protein, column):
         """
@@ -1060,9 +1061,9 @@ class peleAnalysis:
         interact(_bindingFreeEnergyMatrix, KT=KT_slider)
 
     def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=50,
-                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30, pele_data=None):
+                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30, pele_data=None, KT=0.593):
 
-        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json',
+        def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json',
                                      lig_label_rot=50, pele_data=None, **metrics):
 
             if isinstance(pele_data, type(None)):
@@ -1168,7 +1169,7 @@ class peleAnalysis:
             metrics_sliders[m] = m_slider
 
         KT_slider = FloatSlider(
-                        value=0.593,
+                        value=KT,
                         min=0.593,
                         max=1000.0,
                         step=0.1,
@@ -1180,9 +1181,9 @@ class peleAnalysis:
                         readout_format='.1f',
                     )
 
-        dA = Checkbox(value=True,
+        dA = Checkbox(value=False,
                      description='$\delta A$')
-        Ec = Checkbox(value=False,
+        Ec = Checkbox(value=True,
                      description='$E_{B}^{C}$')
         Enc = Checkbox(value=False,
                      description='$E_{B}^{NC}$')
