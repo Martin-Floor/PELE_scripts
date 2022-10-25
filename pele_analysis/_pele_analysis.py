@@ -201,20 +201,49 @@ class peleAnalysis:
                     pair_lengths = []
                     for pair in atom_pairs[protein][ligand]:
                         if len(pair) >= 2:
+                            # Check if atoms are in the protein+ligand PELE topology
+                            if pair[0] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                            if pair[1] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+
+                            # Get the atom indexes
                             i1 = self.atom_indexes[protein][ligand][pair[0]]
                             i2 = self.atom_indexes[protein][ligand][pair[1]]
+
                             if len(pair) == 2:
                                 pairs.append((i1, i2))
                                 dist_label[(pair[0], pair[1])] = 'distance_'
+
                         if len(pair) >= 3:
+                            # Check if atoms are in the protein+ligand PELE topology
+                            if pair[0] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                            if pair[1] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                            if pair[2] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
+
                             i3 = self.atom_indexes[protein][ligand][pair[2]]
                             if len(pair) == 3:
                                 pairs.append((pair[0], pair[1], pair[2]))
                                 dist_label[(i1, i2, i3)] = 'angle_'
+
                         if len(pair) == 4:
+                            # Check if atoms are in the protein+ligand PELE topology
+                            if pair[0] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                            if pair[1] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                            if pair[2] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
+                            if pair[3] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[3], protein, ligand))
+
                             i4 = self.atom_indexes[protein][ligand][pair[3]]
                             pairs.append((i1, i2, i3, i4))
                             dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'torsion_'
+
                         pair_lengths.append(len(pair))
 
                     pair_lengths = set(pair_lengths)
@@ -233,8 +262,16 @@ class peleAnalysis:
                     # Compute distances and them to the dicionary
                     for epoch in sorted(trajectory_files):
                         for t in sorted(trajectory_files[epoch]):
+
+                            print(trajectory_files[epoch][t])
                             # Load trajectory
-                            traj = md.load(trajectory_files[epoch][t], top=topology_file)
+                            try:
+                                traj = md.load(trajectory_files[epoch][t], top=topology_file)
+                            except:
+                                message = 'Problems with trajectory %s of epoch %s ' % (epoch, t)
+                                message += 'of protein %s and ligand %s' % (protein, ligand)
+                                raise ValueError(message)
+
                             # Calculate distances
                             if pair_lengths == 2:
                                 d = md.compute_distances(traj, pairs)*10
@@ -1140,7 +1177,9 @@ class peleAnalysis:
                     json.dump(protein_labels, of)
 
             plt.xlabel('Ligands', fontsize=12)
-            plt.xticks(range(len(self.ligands)), self.ligands, rotation=lig_label_rot)
+            ax = plt.gca()
+            ax.set_xticklabels(self.ligands, rotation=lig_label_rot)
+            plt.xticks(np.arange(0,len(self.ligands)), self.ligands, rotation=lig_label_rot)
             plt.ylabel('Proteins', fontsize=12)
             plt.yticks(range(len(self.proteins)), protein_labels)
 
@@ -2263,9 +2302,10 @@ class peleAnalysis:
 
     def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
                              box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
-                             separator='-', use_peleffy=True, usesrun=True, energy_by_residue=False, ninety_degrees_version=False,
+                             separator='-', use_peleffy=True, usesrun=True, energy_by_residue=False, ebr_new_flag=False, ninety_degrees_version=False,
                              analysis=False, energy_by_residue_type='all', peptide=False, equilibration_mode='equilibrationLastSnapshot',
-                             spawning='independent', continuation=False, extend_iterations=False, equilibration=True, skip_models=None, seed=12345):
+                             spawning='independent', continuation=False, equilibration=True, skip_models=None, skip_ligands=None,
+                             extend_iterations=False, only_models=None, only_ligands=None, ligand_templates=None, seed=12345):
         """
         Generates a PELE calculation for extracted poses. The function reads all the
         protein ligand poses and creates input for a PELE platform set up run.
@@ -2282,6 +2322,15 @@ class peleAnalysis:
             Additional groups to consider when doing energy by residue reports.
         Missing!
         """
+
+        spawnings = ['independent', 'inverselyProportional', 'epsilon', 'variableEpsilon',
+                     'independentMetric', 'UCB', 'FAST', 'ProbabilityMSM', 'MetastabilityMSM',
+                     'IndependentMSM']
+
+        if spawning not in spawnings:
+            message = 'Spawning method %s not found.' % spawning
+            message = 'Allowed options are: '+str(spawnings)
+            raise ValuError(message)
 
         # Create PELE job folder
         if not os.path.exists(pele_folder):
@@ -2303,6 +2352,21 @@ class peleAnalysis:
                     # Skip given protein models
                     if skip_models != None:
                         if protein in skip_models:
+                            continue
+
+                    # Skip given ligand models
+                    if skip_ligands != None:
+                        if ligand in skip_ligands:
+                            continue
+
+                    # Skip proteins not in only_proteins list
+                    if only_models != None:
+                        if protein not in only_models:
+                            continue
+
+                    # Skip proteins not in only_ligands list
+                    if only_ligands != None:
+                        if ligand not in only_ligands:
                             continue
 
                     # Create PELE job folder for each docking
@@ -2338,18 +2402,40 @@ class peleAnalysis:
                         models[(protein,ligand)] = []
                     models[(protein,ligand)].append(f)
 
+                # If templates are given for ligands
+                templates = {}
+                if ligand_templates != None:
+
+                    # Create templates folder
+                    if not os.path.exists(pele_folder+'/templates'):
+                        os.mkdir(pele_folder+'/templates')
+
+                    for ligand in os.listdir(ligand_templates):
+
+                        if not os.path.isdir(ligand_templates+'/'+ligand):
+                            continue
+
+                        # Create ligand template folder
+                        if not os.path.exists(pele_folder+'/templates/'+ligand):
+                            os.mkdir(pele_folder+'/templates/'+ligand)
+
+                        templates[ligand] = []
+                        for f in os.listdir(ligand_templates+'/'+ligand):
+                            if f.endswith('.rot.assign') or f.endswith('z'):
+
+                                # Copy template files
+                                shutil.copyfile(ligand_templates+'/'+ligand+'/'+f,
+                                                pele_folder+'/templates/'+ligand+'/'+f)
+
+                                templates[ligand].append(f)
+
                 # Create YAML file
                 for model in models:
                     protein, ligand = model
                     keywords = ['system', 'chain', 'resname', 'steps', 'iterations', 'atom_dist', 'analyse',
                                 'cpus', 'equilibration', 'equilibration_steps', 'traj', 'working_folder',
                                 'usesrun', 'use_peleffy', 'debug', 'box_radius', 'box_center', 'equilibration_mode',
-                                'seed']
-
-                    # Skip given protein models
-                    if skip_models != None:
-                        if model in skip_models:
-                            continue
+                                'seed' ,'spawning']
 
                     # Get distances from PELE data
                     if distances == None:
@@ -2367,6 +2453,7 @@ class peleAnalysis:
                         at2 = self._atomStringToTuple(d[1])
                         distances[protein][ligand].append((at1, at2))
 
+                    # Write input yaml
                     with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml', 'w') as iyf:
                         if energy_by_residue:
                             # Use new PELE version with implemented energy_by_residue
@@ -2415,6 +2502,13 @@ class peleAnalysis:
                             iyf.write("analyse: true\n")
                         else:
                             iyf.write("analyse: false\n")
+
+                        if ligand in templates:
+                            iyf.write("templates:\n")
+                            iyf.write(' - "LIGAND_TEMPLATE_PATH_ROT"\n')
+                            iyf.write(' - "LIGAND_TEMPLATE_PATH_Z"\n')
+                            iyf.write("skip_ligand_prep:\n")
+                            iyf.write(' - "'+ligand_pdb_name[ligand]+'"\n')
 
                         iyf.write("box_radius: "+str(box_radius)+"\n")
                         if isinstance(box_centers, type(None)) and peptide:
@@ -2484,6 +2578,21 @@ class peleAnalysis:
 
                     # Create command
                     command = 'cd '+pele_folder+'/'+protein+'_'+ligand+'\n'
+
+                    # Add commands to write template folder absolute paths
+                    if ligand in templates:
+                        command += "export CWD=$(pwd)\n"
+                        command += 'cd ../templates\n'
+                        command += 'export TMPLT_DIR=$(pwd)\n'
+                        command += 'cd $CWD\n'
+                        for tf in templates[ligand]:
+                            if tf.endswith('.assign'):
+                                if continuation:
+                                    yaml_file = 'input_restart.yaml'
+                                else:
+                                    yaml_file = 'input.yaml'
+                                command += "sed -i s,LIGAND_TEMPLATE_PATH_ROT,$TMPLT_DIR/"+tf+",g "+yaml_file+"\n"
+                                command += "sed -i s,LIGAND_TEMPLATE_PATH_Z,$TMPLT_DIR/"+tf+",g "+yaml_file+"\n"
                     if not continuation:
                         command += 'python -m pele_platform.main input.yaml\n'
                     if continuation:
@@ -2515,6 +2624,8 @@ class peleAnalysis:
                         if isinstance(ligand_energy_groups, dict):
                             command += ' --ligand_energy_groups ligand_energy_groups.json'
                             command += ' --ligand_index '+str(ligand_index)
+                        if ebr_new_flag:
+                            command += ' --new_version '
                         if peptide:
                             command += ' --peptide \n'
                             command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
@@ -3057,7 +3168,6 @@ class peleAnalysis:
         self.structure = {}
         self.ligand_structure = {}
         self.md_topology = {}
-
 
         if not os.path.exists(self.data_folder+'/chains_ids.json') or not os.path.exists(self.data_folder+'/atom_indexes.json') or self.force_reading:
             for protein in self.report_files:
