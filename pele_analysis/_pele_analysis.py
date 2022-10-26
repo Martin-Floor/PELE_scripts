@@ -2338,10 +2338,10 @@ class peleAnalysis:
                             continue
 
                     # Create PELE job folder for each docking
-                    if not os.path.exists(pele_folder+'/'+protein+'_'+ligand):
-                        os.mkdir(pele_folder+'/'+protein+'_'+ligand)
+                    if not os.path.exists(pele_folder+'/'+protein+separator+ligand):
+                        os.mkdir(pele_folder+'/'+protein+separator+ligand)
 
-                    structure = self._readPDB(protein+'_'+ligand, models_folder+'/'+d+'/'+f)
+                    structure = self._readPDB(protein+separator+ligand, models_folder+'/'+d+'/'+f)
 
                     # Change water names if any
                     for residue in structure.get_residues():
@@ -2364,7 +2364,7 @@ class peleAnalysis:
                                 residue.add(atom)
                                 chain.add(residue)
 
-                    self._saveStructureToPDB(structure, pele_folder+'/'+protein+'_'+ligand+'/'+f)
+                    self._saveStructureToPDB(structure, pele_folder+'/'+protein+separator+ligand+'/'+f)
 
                     if (protein, ligand) not in models:
                         models[(protein,ligand)] = []
@@ -2422,7 +2422,7 @@ class peleAnalysis:
                         distances[protein][ligand].append((at1, at2))
 
                     # Write input yaml
-                    with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml', 'w') as iyf:
+                    with open(pele_folder+'/'+protein+separator+ligand+'/'+'input.yaml', 'w') as iyf:
                         if energy_by_residue:
                             # Use new PELE version with implemented energy_by_residue
                             iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/bin/PELE-1.7.2_mpi"\n')
@@ -2537,7 +2537,7 @@ class peleAnalysis:
                         if not isinstance(ligand_energy_groups, type(None)):
                             if not isinstance(ligand_energy_groups, dict):
                                 raise ValuError('ligand_energy_groups, must be given as a dictionary')
-                            with open(pele_folder+'/'+protein+'_'+ligand+'/ligand_energy_groups.json', 'w') as jf:
+                            with open(pele_folder+'/'+protein+separator+ligand+'/ligand_energy_groups.json', 'w') as jf:
                                 json.dump(ligand_energy_groups[ligand], jf)
 
                     if peptide:
@@ -2545,29 +2545,30 @@ class peleAnalysis:
                         peptide_script_name = '._modifyPelePlatformForPeptide.py'
 
                     # Create command
-                    command = 'cd '+pele_folder+'/'+protein+'_'+ligand+'\n'
+                    command = 'cd '+pele_folder+'/'+separator+'\n'
 
                     # Add commands to write template folder absolute paths
                     if ligand in templates:
                         command += "export CWD=$(pwd)\n"
                         command += 'cd ../templates\n'
-                        command += 'export TMPLT_DIR=$(pwd)\n'
+                        command += 'export TMPLT_DIR=$(pwd)/'+ligand+'\n'
                         command += 'cd $CWD\n'
                         for tf in templates[ligand]:
+                            if continuation:
+                                yaml_file = 'input_restart.yaml'
+                            else:
+                                yaml_file = 'input.yaml'
                             if tf.endswith('.assign'):
-                                if continuation:
-                                    yaml_file = 'input_restart.yaml'
-                                else:
-                                    yaml_file = 'input.yaml'
                                 command += "sed -i s,LIGAND_TEMPLATE_PATH_ROT,$TMPLT_DIR/"+tf+",g "+yaml_file+"\n"
+                            elif tf.endswith('z'):
                                 command += "sed -i s,LIGAND_TEMPLATE_PATH_Z,$TMPLT_DIR/"+tf+",g "+yaml_file+"\n"
                     if not continuation:
                         command += 'python -m pele_platform.main input.yaml\n'
                     if continuation:
                         debug_line = False
                         restart_line = False
-                        with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input_restart.yaml', 'w') as oyml:
-                            with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml') as iyml:
+                        with open(pele_folder+'/'+separator+'/'+'input_restart.yaml', 'w') as oyml:
+                            with open(pele_folder+'/'+separator+'/'+'input.yaml') as iyml:
                                 for l in iyml:
                                     if 'debug: true' in l:
                                         debug_line = True
@@ -2599,8 +2600,8 @@ class peleAnalysis:
                             command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
                         else:
                             command += '\n'
-                        with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input_restart.yaml', 'w') as oyml:
-                            with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml') as iyml:
+                        with open(pele_folder+'/'+separator+'/'+'input_restart.yaml', 'w') as oyml:
+                            with open(pele_folder+'/'+separator+'/'+'input.yaml') as iyml:
                                 for l in iyml:
                                     if 'debug: true' in l:
                                         l = 'restart: true\n'
@@ -2608,8 +2609,8 @@ class peleAnalysis:
                         command += 'python -m pele_platform.main input_restart.yaml\n'
                     elif peptide:
                         command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
-                        with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input_restart.yaml', 'w') as oyml:
-                            with open(pele_folder+'/'+protein+'_'+ligand+'/'+'input.yaml') as iyml:
+                        with open(pele_folder+'/'+separator+'/'+'input_restart.yaml', 'w') as oyml:
+                            with open(pele_folder+'/'+separator+'/'+'input.yaml') as iyml:
                                 for l in iyml:
                                     if 'debug: true' in l:
                                         l = 'restart: true\n'
