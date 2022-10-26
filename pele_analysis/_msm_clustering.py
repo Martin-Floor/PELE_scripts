@@ -101,7 +101,6 @@ class ligand_msm:
         for protein in self.pele_analysis.proteins:
 
             self.data[ligand][protein] = pyemma.coordinates.load(self.trajectories[(protein, ligand)], features=self.features[ligand])
-            self.all_data[ligand] += self.data[ligand][protein]
 
             # Add metric features
             if ligand in self.metric_features:
@@ -109,10 +108,10 @@ class ligand_msm:
 
                     assert self.metric_features[ligand][protein][t].shape[0] == self.data[ligand][protein][t].shape[0]
 
-                    cct = np.concatenate([self.data[ligand][protein][t],
-                                    self.metric_features[ligand][protein][t]],
-                                    axis=0)
-                    print(cct.shape)
+                    self.data[ligand][protein][t] = np.concatenate([self.data[ligand][protein][t],
+                                                    self.metric_features[ligand][protein][t]],
+                                                    axis=1)
+            self.all_data[ligand] += self.data[ligand][protein]
 
     def calculateTICA(self, ligand, lag_time):
         """
@@ -178,11 +177,22 @@ class ligand_msm:
                 axes[i].set_xlabel('IC '+str(c[0]+1))
                 axes[i].set_ylabel('IC '+str(c[1]+1))
 
-    def plotFreeEnergy(self):
+    def getMetricData(self, ligand, protein, metric):
+
+        metric_data = []
+        ligand_data = self.pele_analysis.data[self.pele_analysis.data.index.get_level_values('Ligand') == ligand]
+        protein_data = ligand_data[ligand_data.index.get_level_values('Protein') == protein]
+        for trajectory in ligand_data.index.levels[3]:
+            trajectory_data = protein_data[protein_data.index.get_level_values('Trajectory') == trajectory]
+            metric_data.append(trajectory_data[metric].to_numpy())
+
+        return metric_data
+
+    def plotFreeEnergy(self, max_tica=10, metric_line=None):
         """
         """
 
-        def getLigands(Protein):
+        def getLigands(Protein, max_tica=10, metric_line=None):
             ligands = []
             for protein, ligand in self.pele_analysis.pele_combinations:
                 if Protein == 'all':
@@ -194,18 +204,50 @@ class ligand_msm:
             if Protein == 'all':
                 ligands = list(set(ligands))
 
-            interact(_plotBindingEnergy, Protein=fixed(Protein), Ligand=ligands)
+            interact(getCoordinates, Protein=fixed(Protein), Ligand=ligands, max_tica=fixed(max_tica),
+                    metric_line=fixed(metric_line))
 
-        def _plotBindingEnergy(Protein, Ligand):
-            if Protein == 'all':
-                _plot_Nice_PES(self.all_tica_concatenated[Ligand], bins=100, size=2, sigma=1.0)
-            else:
-                _plot_Nice_PES(self.tica_concatenated[Ligand][Protein], bins=100, size=2, sigma=1.0)
+        def getCoordinates(Protein, Ligand, max_tica=10, metric_line=None):
 
-        interact(getLigands, Protein=sorted(self.pele_analysis.proteins)+['all'])
+            dimmensions = []
+            # Add metrics
+            for m in self.pele_analysis.data.keys():
+                if m.startswith('metric_'):
+                    dimmensions.append(m)
 
+            # Add TICA dimmensions
+            for i in range(max_tica):
+                dimmensions.append('IC'+str(i+1))
 
-def _plot_Nice_PES(input_data, bins=90, sigma=0.99, title=False, size = 1):
+            interact(_plotBindingEnergy, Protein=fixed(Protein), Ligand=fixed(Ligand), X=dimmensions, Y=dimmensions,
+                     metric_line=fixed(metric_line))
+
+        def _plotBindingEnergy(Protein, Ligand, X='IC1', Y='IC2', metric_line=None):
+
+            if X.startswith('IC'):
+                index = int(X.replace('IC', ''))-1
+                input_data1 = self.tica_concatenated[Ligand][Protein][:, index]
+                x_metric_line = None
+            elif X.startswith('metric_'):
+                input_data1 = np.concatenate(self.getMetricData(Ligand, Protein, X))
+                x_metric_line = metric_line
+
+            if Y.startswith('IC'):
+                index = int(Y.replace('IC', ''))-1
+                input_data2 = self.tica_concatenated[Ligand][Protein][:, index]
+                y_metric_line = None
+            elif Y.startswith('metric_'):
+                input_data2 = np.concatenate(self.getMetricData(Ligand, Protein, Y))
+                y_metric_line = metric_line
+
+            _plot_Nice_PES(input_data1, input_data2, xlabel=X, ylabel=Y, bins=100, size=2, sigma=1.0,
+                           x_metric_line=x_metric_line, y_metric_line=y_metric_line)
+
+        interact(getLigands, Protein=sorted(self.pele_analysis.proteins)+['all'], max_tica=fixed(max_tica),
+                 metric_line=fixed(metric_line))
+
+def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, sigma=0.99, title=False, size=1,
+                   x_metric_line=None, y_metric_line=None):
 
     matplotlib.style.use("seaborn-paper")
 
@@ -218,17 +260,18 @@ def _plot_Nice_PES(input_data, bins=90, sigma=0.99, title=False, size = 1):
     ax.spines['left'].set_visible(False)
     ax.spines['bottom'].set_visible(False)
 
-    alldata=np.vstack(input_data)
+    # alldata1=np.vstack(input_data1)
+    # alldata2=np.vstack(input_data2)
 
-    min1=np.min(alldata[:,0])
-    max1=np.max(alldata[:,0])
-    min2=np.min(alldata[:,1])
-    max2=np.max(alldata[:,1])
+    min1=np.min(input_data1)
+    max1=np.max(input_data1)
+    min2=np.min(input_data2)
+    max2=np.max(input_data2)
 
     tickspacing1=1.0
     tickspacing2=1.0
 
-    z,x,y = np.histogram2d(alldata[:,0], alldata[:,1], bins=bins)
+    z,x,y = np.histogram2d(input_data1, input_data2, bins=bins)
     z += 0.1
 
     # compute free energies
@@ -248,8 +291,13 @@ def _plot_Nice_PES(input_data, bins=90, sigma=0.99, title=False, size = 1):
                 cmap=None, levels=levels, extent=extent)
 
     plt.contourf(data, alpha=0.5, cmap='jet', levels=levels, extent=extent)
-    plt.xlabel('IC 1', fontsize=10*size)
-    plt.ylabel('IC 2', fontsize=10*size)
+    plt.xlabel(xlabel, fontsize=10*size)
+    plt.ylabel(ylabel, fontsize=10*size)
+
+    if x_metric_line != None:
+        plt.axvline(x_metric_line, ls='--', c='k')
+    if y_metric_line != None:
+        plt.axhline(y_metric_line, ls='--', c='k')
 
     if title:
         plt.title(title, fontsize = 20*size, y=1.02)
