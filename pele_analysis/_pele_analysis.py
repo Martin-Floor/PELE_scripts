@@ -201,20 +201,49 @@ class peleAnalysis:
                     pair_lengths = []
                     for pair in atom_pairs[protein][ligand]:
                         if len(pair) >= 2:
+                            # Check if atoms are in the protein+ligand PELE topology
+                            if pair[0] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                            if pair[1] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+
+                            # Get the atom indexes
                             i1 = self.atom_indexes[protein][ligand][pair[0]]
                             i2 = self.atom_indexes[protein][ligand][pair[1]]
+
                             if len(pair) == 2:
                                 pairs.append((i1, i2))
                                 dist_label[(pair[0], pair[1])] = 'distance_'
+
                         if len(pair) >= 3:
+                            # Check if atoms are in the protein+ligand PELE topology
+                            if pair[0] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                            if pair[1] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                            if pair[2] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
+
                             i3 = self.atom_indexes[protein][ligand][pair[2]]
                             if len(pair) == 3:
                                 pairs.append((pair[0], pair[1], pair[2]))
                                 dist_label[(i1, i2, i3)] = 'angle_'
+
                         if len(pair) == 4:
+                            # Check if atoms are in the protein+ligand PELE topology
+                            if pair[0] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                            if pair[1] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                            if pair[2] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
+                            if pair[3] not in self.atom_indexes[protein][ligand]:
+                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[3], protein, ligand))
+
                             i4 = self.atom_indexes[protein][ligand][pair[3]]
                             pairs.append((i1, i2, i3, i4))
                             dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'torsion_'
+
                         pair_lengths.append(len(pair))
 
                     pair_lengths = set(pair_lengths)
@@ -233,6 +262,8 @@ class peleAnalysis:
                     # Compute distances and them to the dicionary
                     for epoch in sorted(trajectory_files):
                         for t in sorted(trajectory_files[epoch]):
+
+                            print(trajectory_files[epoch][t])
                             # Load trajectory
                             try:
                                 traj = md.load(trajectory_files[epoch][t], top=topology_file)
@@ -497,7 +528,7 @@ class peleAnalysis:
                                   productive=productive)
 
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None,
-                                        xlim=None, ylim=None, metrics=None):
+                                        xlim=None, ylim=None, metrics=None, title=None):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns.
@@ -561,11 +592,12 @@ class peleAnalysis:
 
         plt.xlabel(x)
         plt.ylabel(y)
+        if title != None:
+            plt.title(title)
         if xlim != None:
             plt.xlim(xlim)
         if ylim != None:
             plt.ylim(ylim)
-        plt.show()
 
     def boxPlotProteinSimulation(self, protein, column):
         """
@@ -1065,11 +1097,11 @@ class peleAnalysis:
 
         interact(_bindingFreeEnergyMatrix, KT=KT_slider)
 
-    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90,
-                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30, pele_data=None):
+    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=50,
+                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30, pele_data=None, KT=0.593):
 
-        def _bindingFreeEnergyMatrix(KT=0.593, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json',
-                                     lig_label_rot=90, pele_data=None, **metrics):
+        def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json',
+                                     lig_label_rot=50, pele_data=None, **metrics):
 
             if isinstance(pele_data, type(None)):
                 pele_data = self.data
@@ -1176,7 +1208,7 @@ class peleAnalysis:
             metrics_sliders[m] = m_slider
 
         KT_slider = FloatSlider(
-                        value=0.593,
+                        value=KT,
                         min=0.593,
                         max=1000.0,
                         step=0.1,
@@ -1188,9 +1220,9 @@ class peleAnalysis:
                         readout_format='.1f',
                     )
 
-        dA = Checkbox(value=True,
+        dA = Checkbox(value=False,
                      description='$\delta A$')
-        Ec = Checkbox(value=False,
+        Ec = Checkbox(value=True,
                      description='$E_{B}^{C}$')
         Enc = Checkbox(value=False,
                      description='$E_{B}^{NC}$')
