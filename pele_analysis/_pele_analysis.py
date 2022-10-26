@@ -2577,7 +2577,7 @@ class peleAnalysis:
                         peptide_script_name = '._modifyPelePlatformForPeptide.py'
 
                     # Create command
-                    command = 'cd '+pele_folder+'/'+separator+'\n'
+                    command = 'cd '+pele_folder+'/'+protein+separator+ligand+'\n'
 
                     # Add commands to write template folder absolute paths
                     if ligand in templates:
@@ -2599,8 +2599,8 @@ class peleAnalysis:
                     if continuation:
                         debug_line = False
                         restart_line = False
-                        with open(pele_folder+'/'+separator+'/'+'input_restart.yaml', 'w') as oyml:
-                            with open(pele_folder+'/'+separator+'/'+'input.yaml') as iyml:
+                        with open(pele_folder+'/'+protein+separator+ligand+'/'+'input_restart.yaml', 'w') as oyml:
+                            with open(pele_folder+'/'+protein+separator+ligand+'/'+'input.yaml') as iyml:
                                 for l in iyml:
                                     if 'debug: true' in l:
                                         debug_line = True
@@ -2632,8 +2632,8 @@ class peleAnalysis:
                             command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
                         else:
                             command += '\n'
-                        with open(pele_folder+'/'+separator+'/'+'input_restart.yaml', 'w') as oyml:
-                            with open(pele_folder+'/'+separator+'/'+'input.yaml') as iyml:
+                        with open(pele_folder+'/'+protein+separator+ligand+'/'+'input_restart.yaml', 'w') as oyml:
+                            with open(pele_folder+'/'+protein+separator+ligand+'/'+'input.yaml') as iyml:
                                 for l in iyml:
                                     if 'debug: true' in l:
                                         l = 'restart: true\n'
@@ -2641,8 +2641,8 @@ class peleAnalysis:
                         command += 'python -m pele_platform.main input_restart.yaml\n'
                     elif peptide:
                         command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
-                        with open(pele_folder+'/'+separator+'/'+'input_restart.yaml', 'w') as oyml:
-                            with open(pele_folder+'/'+separator+'/'+'input.yaml') as iyml:
+                        with open(pele_folder+'/'+protein+separator+ligand+'/'+'input_restart.yaml', 'w') as oyml:
+                            with open(pele_folder+'/'+protein+separator+ligand+'/'+'input.yaml') as iyml:
                                 for l in iyml:
                                     if 'debug: true' in l:
                                         l = 'restart: true\n'
