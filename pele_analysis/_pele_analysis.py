@@ -799,7 +799,7 @@ class peleAnalysis:
         metrics = [k for k in self.data.keys() if 'metric_' in k]
 
         if len(metrics)==0:
-            raise ValuError('No calatytic metrics have been computed.')
+            raise ValueError('No calatytic metrics have been computed.')
 
         def _plotCatalyticPosesFractionByProtein(Protein, Separate_by_metric=True, **metrics):
 
@@ -936,7 +936,7 @@ class peleAnalysis:
         metrics = [k for k in self.data.keys() if 'metric_' in k]
 
         if len(metrics)==0:
-            raise ValuError('No calatytic metrics have been computed.')
+            raise ValueError('No calatytic metrics have been computed.')
 
         def _plotBindingEnergyByProtein(Protein, Separate_by_metric=True, **metrics):
 
@@ -1829,9 +1829,9 @@ class peleAnalysis:
         io = PDB.PDBIO()
 
         # Extract pele poses with mdtraj
-
-        # Check the separator is not in protein or ligand names
         for protein in self.proteins:
+
+            # Check the separator is not in protein names
             if separator in protein:
                 raise ValueError('The separator %s was found in protein name %s. Please use a different separator symbol.' % (separator, protein))
 
@@ -1839,6 +1839,7 @@ class peleAnalysis:
 
             for ligand in self.ligands:
 
+                # Check the separator is not in ligand name
                 if separator in ligand:
                     raise ValueError('The separator %s was found in ligand name %s. Please use a different separator symbol.' % (separator, ligand))
 
@@ -2300,12 +2301,226 @@ class peleAnalysis:
 
         return jobs
 
+    def getTopologyStructures(self):
+        """
+        Iterate over the topology files loaded as structures.
+        """
+        for protein, ligand in self.pele_combinations:
+            structure = self._readPDB(protein+'-'+ligand, self.topology_files[protein][ligand])
+            yield (protein, ligand), structure
+
+    def getFolderStructures(self, poses_folder, return_paths=False):
+        """
+        Iterate over the PDB files in a folder as Biopython structures. Th folder must be written
+        in the format of the extractPELEPoses() function.
+
+        Parameters
+        ==========
+        poses_folder : str
+            Path to PELE poses extracted with extractPELEPoses() function.
+        """
+
+        for protein in os.listdir(poses_folder):
+            for f in os.listdir(poses_folder+'/'+protein):
+                fs = f.replace('.pdb','').split(self.separator)
+                if fs[0] == protein:
+                    ligand, epoch, trajectory, pele_step = fs[1:5]
+                    if return_paths:
+                        yield (protein, ligand, epoch, trajectory, pele_step), poses_folder+'/'+protein+'/'+f
+                    else:
+                        structure = self._readPDB(protein+self.separator+ligand, poses_folder+'/'+protein+'/'+f)
+                        yield (protein, ligand, epoch, trajectory, pele_step), structure
+
+    def alignCommonPELEPoses(self, pele_poses_folder):
+        """
+        Align poses belonging to the same protein and ligand combination.
+        The poses are located in a folder coming from the extractPELEPoses()
+        function.
+
+        Parameters
+        ==========
+        pele_poses_folder : str
+            Path to a folder were poses were extracted with the function extractPELEPoses()
+        """
+
+        def alignStructures(reference, target):
+            """
+            Align to structures based on their C-Alpha atoms.
+            """
+
+            reference_model = reference[0]
+            target_model = target[0]
+
+            reference_residues = [r for r in reference_model.get_residues() if r.id[0] == ' ']
+            target_residues = [r for r in target_model.get_residues() if r.id[0] == ' ']
+
+            assert len(reference_residues) == len(target_residues)
+
+            reference_atoms = []
+            target_atoms = []
+            for r1, r2 in zip(reference_residues, target_residues):
+                reference_atoms.append(r1['CA'])
+                target_atoms.append(r2['CA'])
+
+            # Super impose
+            super_imposer = PDB.Superimposer()
+            super_imposer.set_atoms(reference_atoms, target_atoms)
+            super_imposer.apply(target_model.get_atoms())
+
+        # Defin Biopython objects
+        io = PDB.PDBIO()
+
+        # Get PDB files paths
+        pdb_paths = {}
+        for index, pdb_path in self.getFolderStructures(pele_poses_folder, return_paths=True):
+            protein = index[0]
+            ligand = index[1]
+            pdb_paths.setdefault((protein, ligand), [])
+            pdb_paths[(protein, ligand)].append(pdb_path)
+
+        # Align PDB models
+        for (protein, ligand) in pdb_paths:
+
+            structures = []
+            pdb_names = []
+            for pdb_path in pdb_paths[(protein, ligand)]:
+                pdb_name = pdb_path.split('/')[-1].replace('.pdb', '')
+                structure = self._readPDB(pdb_name, pdb_path)
+                structures.append(structure)
+                pdb_names.append(pdb_name)
+
+            if len(structures) > 1:
+                reference = structures[0]
+                for pdb, structure in zip(pdb_names[1:], structures[1:]):
+                    alignStructures(reference, structure)
+                    io.set_structure(structure)
+                    io.save(pdb_path)
+
+    def getNewBoxCenters(self, pele_poses_folder, center_atoms, verbose=False):
+        """
+        Gets the new box centers for a group of extracted PELE poses. The new box centers
+        are taken from a dictionary containing an atom-tuple in the format:
+
+            (chain_id, residue_id, atom_name)
+
+        and using as keys the corresponding (protein, ligand) tuples.
+
+        Alternatively, a single 3-element tuple can be given with format:
+
+            (chain_id, residue_name, atom_name)
+
+        to be used with all poses
+
+        When more than one pose is given for the same protein and ligand combination an
+        average center will be calculated, therefore it is recommended that they will
+        be aligned before calculating the new average box center.
+
+        Parameters
+        ==========
+        pele_poses_folder : str
+            Path to a folder were poses were extracted with the function extractPELEPoses()
+        center_atoms : dict or tuple
+            Atoms to be used as coordinate centers for the new box coordinates.
+
+        Returns
+        =======
+        box_centers : dict
+            Dictionary by (protein, ligand) that contains the new box center coordinates
+        """
+
+        # Get new box centers
+        box_centers = {}
+        for index, structure in self.getFolderStructures(pele_poses_folder):
+
+            protein = index[0]
+            ligand = index[1]
+
+            # Create entry for the protein and ligand box centers
+            box_centers.setdefault((protein, ligand), [])
+
+            # Check the format of the given center atoms
+            if isinstance(center_atoms, dict):
+                if (protein, ligand) not in center_atoms:
+                    message = 'The protein and ligand combination %s-%s was not found' % (protein, ligand)
+                    message += ' in the given center_atoms dictionary.'
+                    raise ValueError(message)
+                else:
+                    chain_id, residue_id, atom_name = center_atoms
+                    residue_name = None
+
+            elif isinstance(center_atoms, tuple):
+                chain_id, residue_name, atom_name = center_atoms
+                residue_id = None
+
+            else:
+                raise ValueError('center_atoms must be a dict or tuple!')
+
+            # Get center coordinates
+            bc = None
+            for residue in structure.get_residues():
+
+                res_match = False
+
+                # Check that chain matches
+                chain = residue.get_parent()
+                if chain.id != chain_id:
+                    continue
+
+                # Check that residue matches
+                if residue_name == None:
+                    if residue.resname == residue_name:
+                        res_match = True
+                elif residue_id == None:
+                    if residue.resname == residue_name:
+                        res_match = True
+
+                # Check that the atom matches
+                if res_match:
+                    for atom in residue:
+                        if atom.name == atom_name:
+                            bc = [float(x) for x in atom.coord]
+
+            # Store bc if found
+            if bc != None:
+                box_centers[(protein, ligand)].append(np.array(bc))
+            else:
+                raise ValueError('Atom could not be match for model %s' % index)
+
+        # Check if there are more than one box center
+        for (protein, ligand) in box_centers:
+
+            bc = np.array(box_centers[(protein, ligand)])
+            if len(bc) > 1:
+                if verbose:
+                    message = 'Multiple protein centers from different poses found for '
+                    message += '%s-%s. Calculating an average box center.' % (protein, ligand)
+                    print(message)
+
+                # Getting box center distance matrix
+                M = np.zeros((len(bc), len(bc)))
+                for i in range(len(bc)):
+                    for j in range(len(bc)):
+                        if i > j:
+                            M[i][j] = np.linalg.norm(bc[i]-bc[j])
+                            M[j][i] = M[i][j]
+
+                    # Warn if the the difference between box centers is large
+                    if np.amax(M) > 2.0 and verbose:
+                        print('Warning: box centers differ more than 2.0 angstrom between them!')
+                        print('Is recommended that common poses are aligned before calculating their new box centers.')
+                        print()
+
+                box_centers[(protein, ligand)] = np.average(bc, axis=0)
+
+        return box_centers
+
     def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
                              box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
                              separator='-', use_peleffy=True, usesrun=True, energy_by_residue=False, ebr_new_flag=False, ninety_degrees_version=False,
                              analysis=False, energy_by_residue_type='all', peptide=False, equilibration_mode='equilibrationLastSnapshot',
                              spawning='independent', continuation=False, equilibration=True, skip_models=None, skip_ligands=None,
-                             extend_iterations=False, only_models=None, only_ligands=None, ligand_templates=None, seed=12345):
+                             extend_iterations=False, only_models=None, only_ligands=None, ligand_templates=None, seed=12345, log_file=False,
+                             simulation_type=None):
         """
         Generates a PELE calculation for extracted poses. The function reads all the
         protein ligand poses and creates input for a PELE platform set up run.
@@ -2327,10 +2542,17 @@ class peleAnalysis:
                      'independentMetric', 'UCB', 'FAST', 'ProbabilityMSM', 'MetastabilityMSM',
                      'IndependentMSM']
 
+        simulation_types = ['induced_fit_fast', 'induced_fit_long', 'rescoring', None]
+
         if spawning not in spawnings:
             message = 'Spawning method %s not found.' % spawning
             message = 'Allowed options are: '+str(spawnings)
-            raise ValuError(message)
+            raise ValueError(message)
+
+        if simulation_type not in simulation_types:
+            message = 'Simulation type method %s not found.' % simulation_type
+            message = 'Allowed options are: '+str(simulation_types)
+            raise ValueError(message)
 
         # Create PELE job folder
         if not os.path.exists(pele_folder):
@@ -2465,6 +2687,10 @@ class peleAnalysis:
                             iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/bin/PELE-1.8_mpi"\n')
                             iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/Data"\n')
                             iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/Documents/"\n')
+
+                        if simulation_type != None:
+                            iyf.write(simulation_type+": true\n")
+
                         if len(models[model]) > 1:
                             equilibration_mode = 'equilibrationCluster'
                             iyf.write("system: '*.pdb'\n")
@@ -2512,7 +2738,7 @@ class peleAnalysis:
 
                         iyf.write("box_radius: "+str(box_radius)+"\n")
                         if isinstance(box_centers, type(None)) and peptide:
-                            raise ValuError('You must give per-protein box_centers when docking peptides!')
+                            raise ValueError('You must give per-protein box_centers when docking peptides!')
                         if not isinstance(box_centers, type(None)):
                             if not all(isinstance(x, float) for x in box_centers[model]):
                                 # get coordinates from tuple
@@ -2549,6 +2775,10 @@ class peleAnalysis:
 
                         if seed:
                             iyf.write('seed: '+str(seed)+'\n')
+
+                        if log_file:
+                            iyf.write('log: true\n')
+
                         iyf.write('\n')
                         iyf.write("#Options gathered from "+input_yaml+'\n')
 
@@ -2568,7 +2798,7 @@ class peleAnalysis:
                         ebr_script_name = '._addEnergyByResidueToPELEconf.py'
                         if not isinstance(ligand_energy_groups, type(None)):
                             if not isinstance(ligand_energy_groups, dict):
-                                raise ValuError('ligand_energy_groups, must be given as a dictionary')
+                                raise ValueError('ligand_energy_groups, must be given as a dictionary')
                             with open(pele_folder+'/'+protein+separator+ligand+'/ligand_energy_groups.json', 'w') as jf:
                                 json.dump(ligand_energy_groups[ligand], jf)
 
