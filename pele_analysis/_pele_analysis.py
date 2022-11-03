@@ -35,7 +35,7 @@ class peleAnalysis:
 
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
-                 data_folder_name=None, trajectories=False):
+                 read_equilibration=True, data_folder_name=None, trajectories=False):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -126,11 +126,13 @@ class peleAnalysis:
         # Read PELE simulation report data
         self._readReportData()
 
-        if self.verbose:
-            print('Reading equilibration information from report files from:')
-
-        # Read PELE equilibration report data
-        self._readReportData(equilibration=True)
+        if read_equilibration:
+            if self.verbose:
+                print('Reading equilibration information from report files from:')
+            # Read PELE equilibration report data
+            self._readReportData(equilibration=True)
+        else:
+            print('Skipping equilibration information from report files.')
 
         # Sort protein and ligand names alphabetically for orderly iterations.
         self.proteins = sorted(self.proteins)
