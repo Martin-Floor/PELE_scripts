@@ -537,19 +537,30 @@ class peleAnalysis:
         Parameters
         ==========
         protein : str
-            The target protein
+            The target protein.
         ligand : str
-            The target ligand
+            The target ligand.
         x : str
-            The column name of the data to plot in the x-axis
+            The column name of the data to plot in the x-axis.
         y : str
-            The column name of the data to plot in the y-axis
+            The column name of the data to plot in the y-axis.
         vertical_line : float
-            Position to plot a vertical line
+            Position to plot a vertical line.
         color_column : str
             The column name to use for coloring the plot. Also a color cna be given
             to use uniformly for the points.
-        xlim : str
+        xlim : tuple
+            The limits for the x-range.
+        ylim : tuple
+            The limits for the y-range.
+        metrics : dict
+            A set of metrics for filtering the data points.
+        title : str
+            The plot's title.
+        return_axis : bool
+            Whether to return the axis of this plot.
+        axis : matplotlib.pyplot.axis
+            The axis to use for plotting the data.
         """
 
         protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
@@ -557,12 +568,22 @@ class peleAnalysis:
             raise ValueError('Protein name %s not found in data!' % protein)
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         if ligand_series.empty:
-            raise ValueError('Ligand name %s not found in protein %s data!' % (ligand, protein))
+            raise ValueError("Ligand name %s not found in protein's %s data!" % (ligand, protein))
 
+        # Filter points by metric
+        mask = {}
         if not isinstance(metrics, type(None)):
             for metric in metrics:
-                ligand_series = ligand_series[ligand_series[metric] <= metrics[metric]]
+                mask[(protein, ligand)] = ligand_series[metric] <= metrics[metric]
+                ligand_series = ligand_series[mask[(protein, ligand)]]
 
+        # Add distance data to ligand_series
+        if protein in self.distances:
+            if ligand in self.distances[protein]:
+                for distance in self.distances[protein][ligand]:
+                    ligand_series[distance] = self.distances[protein][ligand][distance]
+
+        # Check if an axis has been given
         new_axis = False
         if axis == None:
             plt.figure(figsize=(10, 8))
@@ -731,10 +752,11 @@ class peleAnalysis:
 
             if not by_metric:
                 distances = []
-                for d in ligand_series:
-                    if 'distance' in d or d == 'RMSD':
-                        if not ligand_series[d].dropna().empty:
-                            distances.append(d)
+                for d in self.distances[Protein][Ligand]:
+                    if 'distance' in d:
+                        distances.append(d)
+                if 'RMSD' in self.data:
+                    distances.append('RMSD')
 
             color_columns = [k for k in ligand_series.keys()]
             color_columns = [k for k in color_columns if ':' not in k]
