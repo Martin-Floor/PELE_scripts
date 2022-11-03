@@ -73,6 +73,7 @@ class peleAnalysis:
         self.force_reading = force_reading
         self.energy_by_residue = energy_by_residue
         self.data = None
+        self.distances = {}
 
         # System name attributes
         self.proteins = []
@@ -165,9 +166,8 @@ class peleAnalysis:
             os.mkdir(self.data_folder+'/distances')
 
         # Iterate all PELE protein + ligand entries
-        distances = {}
         for protein in sorted(self.trajectory_files):
-            distances[protein] = {}
+            self.distances[protein] = {}
             for ligand in sorted(self.trajectory_files[protein]):
 
                 # Define a different distance output file for each pele run
@@ -177,16 +177,16 @@ class peleAnalysis:
                 if os.path.exists(distance_file) and not overwrite:
                     if verbose:
                         print('Distance file for %s + %s was found. Reading distances from there...' % (protein, ligand))
-                    distances[protein][ligand] = pd.read_csv(distance_file, index_col=False)
-                    distances[protein][ligand] = distances[protein][ligand].loc[:, ~distances[protein][ligand].columns.str.contains('^Unnamed')]
-                    distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps'], inplace=True)
+                    self.distances[protein][ligand] = pd.read_csv(distance_file, index_col=False)
+                    self.distances[protein][ligand] = self.distances[protein][ligand].loc[:, ~self.distances[protein][ligand].columns.str.contains('^Unnamed')]
+                    self.distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps'], inplace=True)
                 else:
-                    distances[protein][ligand] = {}
-                    distances[protein][ligand]['Protein'] = []
-                    distances[protein][ligand]['Ligand'] = []
-                    distances[protein][ligand]['Epoch'] = []
-                    distances[protein][ligand]['Trajectory'] = []
-                    distances[protein][ligand]['Accepted Pele Steps'] = []
+                    self.distances[protein][ligand] = {}
+                    self.distances[protein][ligand]['Protein'] = []
+                    self.distances[protein][ligand]['Ligand'] = []
+                    self.distances[protein][ligand]['Epoch'] = []
+                    self.distances[protein][ligand]['Trajectory'] = []
+                    self.distances[protein][ligand]['Accepted Pele Steps'] = []
                     if verbose:
                         print('Calculating distances for %s + %s ' % (protein, ligand))
 
@@ -259,13 +259,12 @@ class peleAnalysis:
 
                     # Create an entry for each distance
                     for label in labels:
-                        distances[protein][ligand][label] = []
+                        self.distances[protein][ligand][label] = []
 
                     # Compute distances and them to the dicionary
                     for epoch in sorted(trajectory_files):
                         for t in sorted(trajectory_files[epoch]):
 
-                            print(trajectory_files[epoch][t])
                             # Load trajectory
                             try:
                                 traj = md.load(trajectory_files[epoch][t], top=topology_file)
@@ -283,32 +282,32 @@ class peleAnalysis:
                                 d = md.compute_dihedrals(traj, pairs)*10
 
                             # Store data
-                            distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
-                            distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
-                            distances[protein][ligand]['Epoch'] += [epoch]*d.shape[0]
-                            distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
-                            distances[protein][ligand]['Accepted Pele Steps'] += list(range(d.shape[0]))
+                            self.distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
+                            self.distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
+                            self.distances[protein][ligand]['Epoch'] += [epoch]*d.shape[0]
+                            self.distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
+                            self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(d.shape[0]))
                             for i,l in enumerate(labels):
-                                distances[protein][ligand][l] += list(d[:,i])
+                                self.distances[protein][ligand][l] += list(d[:,i])
 
                     # Convert distances into dataframe
-                    distances[protein][ligand] = pd.DataFrame(distances[protein][ligand])
+                    self.distances[protein][ligand] = pd.DataFrame(self.distances[protein][ligand])
 
                     # Save distances to CSV file
-                    distances[protein][ligand].to_csv(distance_file)
+                    self.distances[protein][ligand].to_csv(distance_file)
 
                     # Set indexes for DataFrame
-                    distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps'], inplace=True)
+                    self.distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps'], inplace=True)
 
-        # Concatenate individual distances into a single data frame
-        all_distances = []
-        for protein in distances:
-            for ligand in distances[protein]:
-                all_distances.append(distances[protein][ligand])
-        all_distances = pd.concat(all_distances)
-
-    # Add distances to main dataframe
-        self.data = self.data.merge(all_distances, left_index=True, right_index=True)
+    #     # Concatenate individual distances into a single data frame
+    #     all_distances = []
+    #     for protein in distances:
+    #         for ligand in distances[protein]:
+    #             all_distances.append(distances[protein][ligand])
+    #     all_distances = pd.concat(all_distances)
+    #
+    # # Add distances to main dataframe
+    #     self.data = self.data.merge(all_distances, left_index=True, right_index=True)
 
     def getTrajectory(self, protein, ligand, step, trajectory, equilibration=False):
         """
@@ -533,7 +532,24 @@ class peleAnalysis:
                                         xlim=None, ylim=None, metrics=None, title=None):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
-        columns.
+        columns. Data series can be filtered by specific metrics.
+
+        Parameters
+        ==========
+        protein : str
+            The target protein
+        ligand : str
+            The target ligand
+        x : str
+            The column name of the data to plot in the x-axis
+        y : str
+            The column name of the data to plot in the y-axis
+        vertical_line : float
+            Position to plot a vertical line
+        color_column : str
+            The column name to use for coloring the plot. Also a color cna be given
+            to use uniformly for the points.
+        xlim : str
         """
 
         protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
@@ -658,12 +674,11 @@ class peleAnalysis:
         Plot binding energy as interactive plot.
         """
 
-        if not any(column.startswith('distance') for column in self.data.columns):
+        if self.distances == {}:
             if os.path.isdir(self.pele_folder):
                 raise ValueError('There are no distances in pele data. Use calculateDistances to show plot.')
             else:
                 raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
-
 
         def getLigands(Protein, by_metric=True, vertical_line=None, filter_by_metric=False):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
@@ -775,23 +790,18 @@ class peleAnalysis:
         Returns the distance associated to a specific protein and ligand simulation
         """
 
-        if not any(column.startswith('distance') for column in self.data.columns):
-            if os.path.isdir(self.pele_folder):
-                raise ValueError('There are no distances in pele data. Use calculateDistances to obtain them.')
-            else:
-                raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
+        if protein not in self.distances:
+            raise ValueError('There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
+        if ligand not in self.distances[protein]:
+            raise ValueError('There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+        if not os.path.isdir(self.pele_folder):
+            raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
 
-        protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
-        ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
-        if not ligand_series.empty:
-            distances = []
-            for d in ligand_series:
-                if 'distance' in d:
-                    if not ligand_series[d].dropna().empty:
-                        distances.append(d)
-            return distances
-        else:
-            return None
+        distances = []
+        for d in self.distances[protein][ligand]:
+            if 'distance' in d:
+                distances.append(d)
+        return distances
 
     def plotCatalyticPosesFraction(self, initial_threshold=4.5):
         """
@@ -1447,22 +1457,16 @@ class peleAnalysis:
             (for details see above).
         """
 
-        changed = False
         for name in catalytic_labels:
             if 'metric_'+name in self.data.keys() and not overwrite:
                 print('Combined metric %s already added. Give overwrite=True to combine again the distances.' % name)
             else:
-                changed = True
                 values = []
                 for protein, ligand in sorted(self.pele_combinations):
-                    protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
-                    ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
                     distances = catalytic_labels[name][protein][ligand]
-                    values += ligand_series[distances].min(axis=1).tolist()
+                    values += self.distances[protein][ligand][distances].min(axis=1).tolist()
                 self.data['metric_'+name] = values
-
-        if changed:
-            self._saveDataState()
+                self._saveDataState()
 
     def plotEnergyByResidue(self, initial_threshold=4.5):
         """
