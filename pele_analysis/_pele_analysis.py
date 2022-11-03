@@ -528,7 +528,7 @@ class peleAnalysis:
                                   productive=productive)
 
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None,
-                                        xlim=None, ylim=None, metrics=None, title=None):
+                                        xlim=None, ylim=None, metrics=None, title=None, return_axis=False, axis=None, **kwargs):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns.
@@ -545,7 +545,19 @@ class peleAnalysis:
             for metric in metrics:
                 ligand_series = ligand_series[ligand_series[metric] <= metrics[metric]]
 
-        plt.figure(figsize=(10, 8))
+        new_axis = False
+        if axis == None:
+            plt.figure(figsize=(10, 8))
+            axis = plt.gca()
+            new_axis = True
+
+        # Define color columns
+        color_columns = [k for k in ligand_series.keys()]
+        color_columns = [k for k in color_columns if ':' not in k]
+        color_columns = [k for k in color_columns if 'distance' not in k]
+        color_columns = [k for k in color_columns if not k.startswith('metric_')]
+        color_columns.pop(color_columns.index('Step'))
+
         if color_column != None:
 
             ascending = False
@@ -555,7 +567,7 @@ class peleAnalysis:
                 ascending = True
                 colormap='Blues'
 
-            if color_column == 'Epoch':
+            elif color_column == 'Epoch':
                 ascending = True
                 color_values = ligand_series.reset_index()[color_column]
                 cmap = plt.cm.jet
@@ -567,37 +579,53 @@ class peleAnalysis:
                 colormap = mpl.colors.LinearSegmentedColormap.from_list(
                                                 'Custom cmap', cmaplist, cmap.N)
                 color_values = color_values+0.01
-                sc = plt.scatter(ligand_series[x],
+                sc = axis.scatter(ligand_series[x],
                     ligand_series[y],
                     c=color_values,
                     cmap=colormap,
                     norm=norm,
-                    label=protein+self.separator+ligand)
-            else:
+                    label=protein+self.separator+ligand,
+                    **kwargs)
+                if new_axis:
+                    cbar = plt.colorbar(sc, label=color_column)
+            elif color_column in color_columns:
                 ligand_series = ligand_series.sort_values(color_column, ascending=ascending)
                 color_values = ligand_series[color_column]
-                sc = plt.scatter(ligand_series[x],
+                sc = axis.scatter(ligand_series[x],
                     ligand_series[y],
                     c=color_values,
                     cmap=colormap,
-                    label=protein+self.separator+ligand)
-            cbar = plt.colorbar(sc, label=color_column)
+                    label=protein+self.separator+ligand,
+                    **kwargs)
+                if new_axis:
+                    cbar = plt.colorbar(sc, label=color_column)
+            else:
+                sc = axis.scatter(ligand_series[x],
+                    ligand_series[y],
+                    c=color_column,
+                    label=protein+self.separator+ligand,
+                    **kwargs)
+
         else:
-            sc = plt.scatter(ligand_series[x],
+            sc = axis.scatter(ligand_series[x],
                 ligand_series[y],
-                label=protein+self.separator+ligand)
+                label=protein+self.separator+ligand,
+                **kwargs)
 
         if not isinstance(vertical_line, type(None)):
-            plt.axvline(vertical_line, ls='--', lw=0.5)
+            axis.axvline(vertical_line, ls='--', lw=0.5)
 
-        plt.xlabel(x)
-        plt.ylabel(y)
+        axis.set_xlabel(x)
+        axis.set_ylabel(y)
         if title != None:
-            plt.title(title)
+            axis.set_title(title)
         if xlim != None:
-            plt.xlim(xlim)
+            axis.set_xlim(xlim)
         if ylim != None:
-            plt.ylim(ylim)
+            axis.set_ylim(ylim)
+
+        if return_axis:
+            return plt.gca()
 
     def boxPlotProteinSimulation(self, protein, column):
         """
