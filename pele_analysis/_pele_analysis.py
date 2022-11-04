@@ -665,6 +665,8 @@ class peleAnalysis:
 
         if return_axis:
             return plt.gca()
+        else:
+            plt.show()
 
     def boxPlotProteinSimulation(self, protein, column):
         """
@@ -1159,7 +1161,7 @@ class peleAnalysis:
 
         interact(_bindingFreeEnergyMatrix, KT=KT_slider)
 
-    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=50,
+    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90,
                 matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30, pele_data=None, KT=0.593):
 
         def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json',
