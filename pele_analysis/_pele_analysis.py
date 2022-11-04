@@ -2576,7 +2576,7 @@ class peleAnalysis:
                              analysis=False, energy_by_residue_type='all', peptide=False, equilibration_mode='equilibrationLastSnapshot',
                              spawning='independent', continuation=False, equilibration=True, skip_models=None, skip_ligands=None,
                              extend_iterations=False, only_models=None, only_ligands=None, ligand_templates=None, seed=12345, log_file=False,
-                             simulation_type=None):
+                             simulation_type=None, nonbonded_energy=None, nonbonded_energy_type='all', nonbonded_new_flag=False):
         """
         Generates a PELE calculation for extracted poses. The function reads all the
         protein ligand poses and creates input for a PELE platform set up run.
@@ -2733,8 +2733,8 @@ class peleAnalysis:
 
                     # Write input yaml
                     with open(pele_folder+'/'+protein+separator+ligand+'/'+'input.yaml', 'w') as iyf:
-                        if energy_by_residue:
-                            # Use new PELE version with implemented energy_by_residue
+                        if energy_by_residue or nonbonded_energy != None:
+                            # Use new PELE version with implemented local nonbonded energies
                             iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/bin/PELE-1.7.2_mpi"\n')
                             iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Data"\n')
                             iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Documents/"\n')
@@ -2812,7 +2812,7 @@ class peleAnalysis:
                         # energy by residue is not implemented in PELE platform, therefore
                         # a scond script will modify the PELE.conf file to set up the energy
                         # by residue calculation.
-                        if debug or energy_by_residue or peptide:
+                        if debug or energy_by_residue or peptide or nonbonded_energy != None:
                             iyf.write("debug: true\n")
 
                         if distances != None:
@@ -2858,9 +2858,18 @@ class peleAnalysis:
                             with open(pele_folder+'/'+protein+separator+ligand+'/ligand_energy_groups.json', 'w') as jf:
                                 json.dump(ligand_energy_groups[ligand], jf)
 
+                    if nonbonded_energy != None:
+                        _copyScriptFile(pele_folder, 'addAtomNonBondedEnergyToPELEconf.py')
+                        nbe_script_name = '._addAtomNonBondedEnergyToPELEconf.py'
+                        if not isinstance(nonbonded_energy, dict):
+                            raise ValueError('nonbonded_energy, must be given as a dictionary')
+                        with open(pele_folder+'/'+protein+separator+ligand+'/nonbonded_energy_atoms.json', 'w') as jf:
+                            json.dump(nonbonded_energy[protein][ligand], jf)
+
                     if peptide:
                         _copyScriptFile(pele_folder, 'modifyPelePlatformForPeptide.py')
                         peptide_script_name = '._modifyPelePlatformForPeptide.py'
+
 
                     # Create command
                     command = 'cd '+pele_folder+'/'+protein+separator+ligand+'\n'
@@ -2933,10 +2942,30 @@ class peleAnalysis:
                                     if 'debug: true' in l:
                                         l = 'restart: true\n'
                                     oyml.write(l)
-                        command += 'python -m pele_platform.main input_restart.yaml\n'
+                        if nonbonded_energy == None:
+                            command += 'python -m pele_platform.main input_restart.yaml\n'
                     elif extend_iterations and not continuation:
                         raise ValueEror('extend_iterations must be used together with the continuation keyword')
-                    command += 'cd ../..'
+
+                    if nonbonded_energy != None:
+                        command += 'python ../'+nbe_script_name+' output --energy_type '+nonbonded_energy_type
+                        command += ' --target_atoms nonbonded_energy_atoms.json'
+                        protein_chain = [c for c in self.chain_ids[protein][ligand].values() if c != 'L'][0]
+                        command += ' --protein_chain '+protein_chain
+                        if ebr_new_flag or nonbonded_new_flag:
+                            command += ' --new_version'
+                        command += '\n'
+
+                        if not os.path.exists(pele_folder+'/'+protein+separator+ligand+'/'+'input_restart.yaml'):
+                            with open(pele_folder+'/'+protein+separator+ligand+'/'+'input_restart.yaml', 'w') as oyml:
+                                with open(pele_folder+'/'+protein+separator+ligand+'/'+'input.yaml') as iyml:
+                                    for l in iyml:
+                                        if 'debug: true' in l:
+                                            l = 'restart: true\n'
+                                        oyml.write(l)
+                        command += 'python -m pele_platform.main input_restart.yaml\n'
+
+                    command += 'cd ../..\n'
                     jobs.append(command)
 
         return jobs
