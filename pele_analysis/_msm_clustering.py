@@ -188,7 +188,7 @@ class ligand_msm:
 
         return metric_data
 
-    def plotFreeEnergy(self, max_tica=10, metric_line=None):
+    def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100):
         """
         """
 
@@ -240,18 +240,18 @@ class ligand_msm:
                 input_data2 = np.concatenate(self.getMetricData(Ligand, Protein, Y))
                 y_metric_line = metric_line
 
-            _plot_Nice_PES(input_data1, input_data2, xlabel=X, ylabel=Y, bins=100, size=2, sigma=1.0,
+            _plot_Nice_PES(input_data1, input_data2, xlabel=X, ylabel=Y, bins=bins, size=size, sigma=sigma,
                            x_metric_line=x_metric_line, y_metric_line=y_metric_line)
 
         interact(getLigands, Protein=sorted(self.pele_analysis.proteins)+['all'], max_tica=fixed(max_tica),
                  metric_line=fixed(metric_line))
 
 def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, sigma=0.99, title=False, size=1,
-                   x_metric_line=None, y_metric_line=None):
+                   x_metric_line=None, y_metric_line=None, dpi=300):
 
     matplotlib.style.use("seaborn-paper")
 
-    plt.figure(figsize=(4*size, 3.3*size))
+    plt.figure(figsize=(4*size, 3.3*size), dpi=dpi)
 
     fig, ax = plt.subplots()
 
