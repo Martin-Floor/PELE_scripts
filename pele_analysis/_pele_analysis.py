@@ -3173,6 +3173,9 @@ class peleAnalysis:
             # Create PELE input folders
             os.mkdir(self.data_folder+'/pele_topologies')
 
+            # Create PELE distances
+            os.mkdir(self.data_folder+'/distances')
+
     def _getProteinLigandCombinations(self):
         """
         Get existing protein and ligand combinations from the analysis or PELE folders.
@@ -3222,13 +3225,13 @@ class peleAnalysis:
                 continue
 
             # Read report files into panda dataframes
-            data = pele_read.readReportFiles(report_files,
-                                             protein,
-                                             ligand,
-                                             ebr_threshold=0.1,
-                                             separator=self.separator,
-                                             equilibration=equilibration,
-                                             data_folder_name=self.data_folder)
+            data, distance_data = pele_read.readReportFiles(report_files,
+                                                            protein,
+                                                            ligand,
+                                                            ebr_threshold=0.1,
+                                                            separator=self.separator,
+                                                            equilibration=equilibration,
+                                                            data_folder_name=self.data_folder)
 
             # Skip of dataframe is None
             if isinstance(data, type(None)):
@@ -3266,6 +3269,16 @@ class peleAnalysis:
             self.data = None
             gc.collect()
             self._recoverDataState(remove=True)
+
+            # Save distance data
+            self.distances.setdefault(protein,{})
+            self.distances[protein][ligand] = distance_data
+
+            # Define a different distance output file for each pele run
+            distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
+
+            # Save distances to CSV file
+            self.distances[protein][ligand].to_csv(distance_file)
 
     def _copyPELEInputs(self):
         """

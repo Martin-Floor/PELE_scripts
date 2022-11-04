@@ -232,22 +232,33 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
 
     if os.path.exists(csv_file_name) and not force_reading:
         report_data = pd.read_csv(csv_file_name)
+        if equilibration:
+            distance_data = None
+        else:
+            csv_distances_file = data_folder_name+'/distances/'+protein+separator+ligand+'.csv'
+            distance_data = pd.read_csv(csv_distances_file)
     else:
         report_data = []
+        distance_data = []
+
         for epoch in sorted(report_files):
             for traj in sorted(report_files[epoch]):
-                rd = _readReportFile(report_files[epoch][traj],
-                                     equilibration=equilibration,
-                                     ebr_threshold=ebr_threshold,
-                                     protein=protein,
-                                     ligand=ligand,
-                                     epoch=epoch,
-                                     trajectory=traj)
+                rd, dd = _readReportFile(report_files[epoch][traj],
+                                         equilibration=equilibration,
+                                         ebr_threshold=ebr_threshold,
+                                         protein=protein,
+                                         ligand=ligand,
+                                         epoch=epoch,
+                                         trajectory=traj)
+
                 report_data.append(rd)
+                distance_data.append(dd)
 
         # Check pele data can be read by the library
         try:
             report_data = pd.concat(report_data)
+            distance_data = pd.concat(distance_data)
+
         except:
             if equilibration:
                 print('Failed to read PELE equilibration data for %s + %s' % (protein, ligand))
@@ -259,12 +270,13 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
             print('Failed to read PELE data for %s + %s' % (protein, ligand))
             return
 
-        report_data.set_index(['Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+        report_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+        distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
 
         _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration,
                        separator=separator, data_folder_name=data_folder_name)
 
-    return report_data
+    return report_data, distance_data
 
 def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein=None,
                     ligand=None, epoch=None, trajectory=None):
@@ -283,7 +295,9 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
     """
 
     report_values = {}
-    int_terms = ['Step', 'Task', 'Accepted Pele Steps']
+    distance_values = {}
+    all_values = []
+    int_terms = ['Step', 'Accepted Pele Steps']
 
     with open(report_file) as rf:
         for i,l in enumerate(rf):
@@ -301,16 +315,28 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
                     if equilibration:
                         if t.startswith('L:1_'):
                             continue
-                    report_values[t] = []
+
+                    if t in int_terms:
+                        distance_values[t] = []
+                        report_values[t] = []
+                    elif t.startswith('distance_'):
+                        distance_values[t] = []
+                    else:
+                        report_values[t] = []
+                    all_values.append(t)
             else:
-                for t,x in zip(report_values, l.split()):
+                for t,x in zip(all_values, l.split()):
                     if equilibration:
                         if t.startswith('L:1_'):
                             continue
                     if t in int_terms:
                         report_values[t].append(int(x))
+                        distance_values[t].append(int(x))
                     else:
-                        report_values[t].append(float(x))
+                        if t.startswith('distance_'):
+                            distance_values[t].append(float(x))
+                        else:
+                            report_values[t].append(float(x))
 
         # Check for energy by residue data which is below threshold
         to_remove = []
@@ -319,10 +345,12 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
                 if np.abs(np.average(report_values[t])) <= ebr_threshold:
                     to_remove.append(t)
 
+        # Delete ebr data below threshold
         for t in to_remove:
             del report_values[t]
 
         report_values = pd.DataFrame(report_values)
+        distance_values = pd.DataFrame(distance_values)
 
         if report_values.empty:
             return None
@@ -334,7 +362,13 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
         report_values['Trajectory'] = trajectory
         report_values.drop(['Task'], axis=1, inplace=True)
 
-    return report_values
+        # Add epoch and trajectory to distances DF
+        distance_values['Protein'] = protein
+        distance_values['Ligand'] = ligand
+        distance_values['Epoch'] = epoch
+        distance_values['Trajectory'] = trajectory
+
+    return report_values, distance_values
 
 def _saveDataToCSV(dataframe, protein, ligand, equilibration=False, separator='-', data_folder_name='.pele_analysis'):
     if not os.path.exists(data_folder_name):
