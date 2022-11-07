@@ -102,7 +102,7 @@ for atom in target_atoms:
             "atoms": {'ids': [chain+':'+str(resid)+':'+atom_map[atom_name]]},
             },
         'selection_group_2' : {
-            'chains': {'ids': [protein_chain]},
+            'chains': {'names': [protein_chain]},
             }
         }
 
