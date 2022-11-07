@@ -3280,6 +3280,16 @@ class peleAnalysis:
             if self.verbose:
                 print('\t in %.2f seconds.' % (time.time()-start))
 
+            # Save distance data
+            self.distances.setdefault(protein,{})
+            self.distances[protein][ligand] = distance_data
+
+            # Define a different distance output file for each pele run
+            distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
+
+            # Save distances to CSV file
+            self.distances[protein][ligand].to_csv(distance_file)
+
         if report_data == [] and equilibration:
             self.equilibration_data = None
             return
@@ -3300,16 +3310,6 @@ class peleAnalysis:
             self.data = None
             gc.collect()
             self._recoverDataState(remove=True)
-
-            # Save distance data
-            self.distances.setdefault(protein,{})
-            self.distances[protein][ligand] = distance_data
-
-            # Define a different distance output file for each pele run
-            distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
-
-            # Save distances to CSV file
-            self.distances[protein][ligand].to_csv(distance_file)
 
     def _copyPELEInputs(self):
         """
