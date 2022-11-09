@@ -247,7 +247,7 @@ class ligand_msm:
                  metric_line=fixed(metric_line))
 
 def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, sigma=0.99, title=False, size=1,
-                   x_metric_line=None, y_metric_line=None, dpi=300):
+                   x_metric_line=None, y_metric_line=None, dpi=300, title_size=14, cmax=None):
 
     matplotlib.style.use("seaborn-paper")
 
@@ -285,12 +285,16 @@ def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, 
 
     data = gaussian_filter((F.T)*0.592-np.min(F.T)*0.592, sigma)
 
-    levels=np.linspace(0, np.max(data)-0.5, num=9)
+    if cmax != None:
+        levels=np.linspace(0, cmax, num=9)
+    else:
+        levels=np.linspace(0, np.max(data)-0.5, num=9)
 
     plt.contour(data, colors='black', linestyles='solid', alpha=0.7,
                 cmap=None, levels=levels, extent=extent)
 
-    plt.contourf(data, alpha=0.5, cmap='jet', levels=levels, extent=extent)
+    cnt = plt.contourf(data, alpha=0.5, cmap='jet', levels=levels, extent=extent)
+
     plt.xlabel(xlabel, fontsize=10*size)
     plt.ylabel(ylabel, fontsize=10*size)
 
@@ -300,14 +304,15 @@ def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, 
         plt.axhline(y_metric_line, ls='--', c='k')
 
     if title:
-        plt.title(title, fontsize = 20*size, y=1.02)
+        plt.title(title, fontsize = title_size*size, y=1.02)
 
     plt.subplots_adjust(bottom=0.1, right=0.8, top=0.8)
 
     cax = plt.axes([0.81, 0.1, 0.02, 0.7])
 
-    plt.colorbar(cax=cax, format='%.1f').set_label('Free energy [kcal/mol]',
-                                                   fontsize=10*size,
-                                                   labelpad=5,
-                                                   y=0.5)
+    cbar = plt.colorbar(cax=cax, format='%.1f')
+    cbar.set_label('Free energy [kcal/mol]',
+                   fontsize=10*size,
+                   labelpad=5,
+                   y=0.5)
     cax.axes.tick_params(labelsize=10*size)
