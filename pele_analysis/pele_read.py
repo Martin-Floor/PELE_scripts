@@ -264,11 +264,11 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
                 print('Failed to read PELE equilibration data for %s + %s' % (protein, ligand))
             else:
                 print('Failed to read PELE data for %s + %s' % (protein, ligand))
-            return
+            return (None, None)
 
         if report_data.empty:
             print('Failed to read PELE data for %s + %s' % (protein, ligand))
-            return
+            return (None, None)
 
         report_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
         distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
