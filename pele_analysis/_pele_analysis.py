@@ -6,6 +6,7 @@ import shutil
 import copy
 
 import pandas as pd
+pd.options.mode.chained_assignment = None
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import mdtraj as md
@@ -528,8 +529,9 @@ class peleAnalysis:
                                   equilibration=equilibration,
                                   productive=productive)
 
-    def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None,
-                                        xlim=None, ylim=None, metrics=None, title=None, return_axis=False, axis=None, **kwargs):
+    def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None, size=1.0, labels_size=10.0,
+                                        xlim=None, ylim=None, metrics=None, title=None, title_size=14.0, return_axis=False, dpi=300,
+                                        axis=None, xlabel=None, ylabel=None, vertical_line_color='k', **kwargs):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns. Data series can be filtered by specific metrics.
@@ -586,7 +588,7 @@ class peleAnalysis:
         # Check if an axis has been given
         new_axis = False
         if axis == None:
-            plt.figure(figsize=(10, 8))
+            plt.figure(figsize=(4*size, 3.3*size), dpi=dpi)
             axis = plt.gca()
             new_axis = True
 
@@ -652,12 +654,22 @@ class peleAnalysis:
                 **kwargs)
 
         if not isinstance(vertical_line, type(None)):
-            axis.axvline(vertical_line, ls='--', lw=0.5)
+            axis.axvline(vertical_line, c=vertical_line_color, ls='--')
 
-        axis.set_xlabel(x)
-        axis.set_ylabel(y)
+        if xlabel == None:
+            xlabel = x
+        if ylabel == None:
+            ylabel = y
+
+        axis.set_xlabel(xlabel, fontsize=labels_size*size)
+        axis.set_ylabel(ylabel, fontsize=labels_size*size)
+        axis.tick_params(axis='both', labelsize=labels_size*size)
+
+        # plt.subplots_adjust(bottom=0.1, right=0.8, top=0.8)
+        plt.tight_layout()
+
         if title != None:
-            axis.set_title(title)
+            axis.set_title(title, fontsize=title_size*size)
         if xlim != None:
             axis.set_xlim(xlim)
         if ylim != None:
@@ -691,7 +703,7 @@ class peleAnalysis:
         plt.boxplot(X, labels=labels)
         plt.xlabel('Ligands')
         plt.ylabel(column)
-        plt.xticks(rotation=90)
+        plt.xticks(rotation=90, fontsize=size)
         plt.show()
 
     def boxPlotLigandSimulation(self, ligand, column):
@@ -720,7 +732,7 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None):
+    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, color=None):
         """
         Plot binding energy as interactive plot.
         """
@@ -731,13 +743,13 @@ class peleAnalysis:
             else:
                 raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
 
-        def getLigands(Protein, by_metric=True, vertical_line=None, filter_by_metric=False):
+        def getLigands(Protein, by_metric=True, vertical_line=None, filter_by_metric=False, color=None):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
             interact(getDistance, Protein=fixed(Protein), Ligand=ligands, vertical_line=fixed(vertical_line),
-                     by_metric=fixed(by_metric), filter_by_metric=fixed(filter_by_metric))
+                     by_metric=fixed(by_metric), filter_by_metric=fixed(filter_by_metric), color=fixed(color))
 
-        def getDistance(Protein, Ligand, vertical_line=None, by_metric=True, filter_by_metric=False):
+        def getDistance(Protein, Ligand, vertical_line=None, by_metric=True, filter_by_metric=False, color=None):
             protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
 
@@ -760,14 +772,16 @@ class peleAnalysis:
                 if 'RMSD' in self.data:
                     distances.append('RMSD')
 
-            color_columns = [k for k in ligand_series.keys()]
-            color_columns = [k for k in color_columns if ':' not in k]
-            color_columns = [k for k in color_columns if 'distance' not in k]
-            color_columns = [k for k in color_columns if not k.startswith('metric_')]
-            color_columns = [None, 'Epoch']+color_columns
-
-            # del color_columns[color_columns.index('Task')]
-            del color_columns[color_columns.index('Binding Energy')]
+            if color == None:
+                color_columns = [k for k in ligand_series.keys()]
+                color_columns = [k for k in color_columns if ':' not in k]
+                color_columns = [k for k in color_columns if 'distance' not in k]
+                color_columns = [k for k in color_columns if not k.startswith('metric_')]
+                color_columns = [None, 'Epoch']+color_columns
+                del color_columns[color_columns.index('Binding Energy')]
+                color_object = color_columns
+            else:
+                color_object = fixed(color)
 
             if filter_by_metric:# Add checks for the given pele data pandas df
                 metrics = [k for k in ligand_series.keys() if 'metric_' in k]
@@ -792,7 +806,7 @@ class peleAnalysis:
                          Protein=fixed(Protein),
                          Ligand=fixed(Ligand),
                          Distance=distances,
-                         Color=color_columns,
+                         Color=color_object,
                          vertical_line=fixed(vertical_line),
                          **metrics_sliders)
             else:
@@ -800,13 +814,13 @@ class peleAnalysis:
                          Protein=fixed(Protein),
                          Ligand=fixed(Ligand),
                          Distance=distances,
-                         Color=color_columns,
+                         Color=color_object,
                          vertical_line=fixed(vertical_line))
 
         def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, **metrics_sliders):
 
             if isinstance(metrics_sliders, type(None)):
-                self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
+                    self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column=Color)
             else:
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
@@ -815,7 +829,7 @@ class peleAnalysis:
 
 
         interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line),
-                 by_metric=False, filter_by_metric=False)
+                 by_metric=False, filter_by_metric=False, color=fixed(color))
 
     def plotDistributions(self):
         """
