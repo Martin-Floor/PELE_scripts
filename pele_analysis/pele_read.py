@@ -236,7 +236,10 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
             distance_data = None
         else:
             csv_distances_file = data_folder_name+'/distances/'+protein+separator+ligand+'.csv'
-            distance_data = pd.read_csv(csv_distances_file)
+            if os.path.exists(csv_distances_file):
+                distance_data = pd.read_csv(csv_distances_file)
+            else:
+                distance_data = None
     else:
         report_data = []
         distance_data = []
