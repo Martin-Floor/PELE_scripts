@@ -580,10 +580,11 @@ class peleAnalysis:
                 ligand_series = ligand_series[mask[(protein, ligand)]]
 
         # Add distance data to ligand_series
-        if protein in self.distances:
-            if ligand in self.distances[protein]:
-                for distance in self.distances[protein][ligand]:
-                    ligand_series[distance] = self.distances[protein][ligand][distance]
+        if len(ligand_series) != 0:
+            if protein in self.distances:
+                if ligand in self.distances[protein]:
+                    for distance in self.distances[protein][ligand]:
+                        ligand_series[distance] = self.distances[protein][ligand][distance]
 
         # Check if an axis has been given
         new_axis = False
@@ -2633,6 +2634,7 @@ class peleAnalysis:
         # Read docking poses information from models_folder and create pele input
         # folders.
         jobs = []
+        structures = {}
         for d in os.listdir(models_folder):
             if os.path.isdir(models_folder+'/'+d):
                 models = {}
@@ -2668,6 +2670,7 @@ class peleAnalysis:
                         os.mkdir(pele_folder+'/'+protein+separator+ligand)
 
                     structure = self._readPDB(protein+separator+ligand, models_folder+'/'+d+'/'+f)
+                    structures[protein+separator+ligand] = structure
 
                     # Change water names if any
                     for residue in structure.get_residues():
@@ -2814,7 +2817,15 @@ class peleAnalysis:
                         if not isinstance(box_centers, type(None)):
                             if not all(isinstance(x, float) for x in box_centers[model]):
                                 # get coordinates from tuple
-                                raise ValueError('This is not yet implemented!')
+                                structure = structures[protein+separator+ligand]
+                                for chain in structure.get_chains():
+                                    if chain.id == box_centers[(protein,ligand)][0]:
+                                        for r in chain:
+                                            if r.id[1] == box_centers[(protein,ligand)][1]:
+                                                for atom in r:
+                                                    if atom.name == box_centers[(protein,ligand)][2]:
+                                                        coordinates = atom.coord
+                                #raise ValueError('This is not yet implemented!')
                             else:
                                 coordinates = box_centers[model]
 
