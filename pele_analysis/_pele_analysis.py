@@ -584,7 +584,8 @@ class peleAnalysis:
             if protein in self.distances:
                 if ligand in self.distances[protein]:
                     for distance in self.distances[protein][ligand]:
-                        ligand_series[distance] = self.distances[protein][ligand][distance]
+                        if distance.startswith('distance_'):
+                            ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
 
         # Check if an axis has been given
         new_axis = False
@@ -3035,9 +3036,17 @@ class peleAnalysis:
             data = self.data
 
         if os.path.exists(csv_file):
+            # Read CSV file
             data = pd.read_csv(csv_file)
+
+            # Convert protein and ligand columns to strings
+            data = data.astype({'Protein':'string'})
+            data = data.astype({'Ligand':'string'})
+
+            # Set indexes
             data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
             data = data.loc[:, ~data.columns.str.contains('^Unnamed')]
+
             if remove:
                 os.remove(csv_file)
 
@@ -3259,16 +3268,13 @@ class peleAnalysis:
         """
 
         if equilibration:
-            reports_dict= self.equilibration['report']
+            reports_dict = self.equilibration['report']
         else:
             reports_dict = self.report_files
 
         # Iterate PELE folders to read report files
         report_data = []
         for protein, ligand in self.pele_combinations:
-            if self.verbose:
-                print('\t'+protein+self.separator+ligand, end=' ')
-                start = time.time()
 
             # Check whether protein and ligand report files are present
             if protein not in reports_dict or ligand not in reports_dict[protein]:
@@ -3276,9 +3282,13 @@ class peleAnalysis:
             else:
                 report_files = reports_dict[protein][ligand]
 
-            if report_files == {} and equilibration and self.csv_equilibration_files == {}:
+            if report_files == None and equilibration and self.csv_equilibration_files == {}:
                 print('WARNING: No equilibration data found for simulation %s-%s' % (protein, ligand))
                 continue
+
+            if self.verbose:
+                print('\t'+protein+self.separator+ligand, end=' ')
+                start = time.time()
 
             # Read report files into panda dataframes
             data, distance_data = pele_read.readReportFiles(report_files,
