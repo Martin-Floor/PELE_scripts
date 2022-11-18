@@ -247,18 +247,15 @@ class ligand_msm:
                  metric_line=fixed(metric_line))
 
 def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, sigma=0.99, title=False, size=1,
-                   x_metric_line=None, y_metric_line=None, dpi=300, title_size=14, cmax=None):
+                   x_metric_line=None, y_metric_line=None, dpi=300, title_size=14, cmax=None, title_rotation=None,
+                   title_location=None, title_x=0.5, title_y=1.02, show_xticks=False, show_yticks=False,
+                   xlim=None, ylim=None):
 
     matplotlib.style.use("seaborn-paper")
 
     plt.figure(figsize=(4*size, 3.3*size), dpi=dpi)
 
     fig, ax = plt.subplots()
-
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-    ax.spines['left'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
 
     # alldata1=np.vstack(input_data1)
     # alldata2=np.vstack(input_data2)
@@ -267,9 +264,6 @@ def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, 
     max1=np.max(input_data1)
     min2=np.min(input_data2)
     max2=np.max(input_data2)
-
-    tickspacing1=1.0
-    tickspacing2=1.0
 
     z,x,y = np.histogram2d(input_data1, input_data2, bins=bins)
     z += 0.1
@@ -280,8 +274,20 @@ def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, 
     # contour plot
     extent = [x[0], x[-1], y[0], y[-1]]
 
-    plt.xticks([])
-    plt.yticks([])
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+
+    if not show_xticks:
+        plt.xticks([])
+    else:
+        ax.spines['bottom'].set_visible(True)
+
+    if not show_yticks:
+        plt.yticks([])
+    else:
+        ax.spines['left'].set_visible(True)
 
     data = gaussian_filter((F.T)*0.592-np.min(F.T)*0.592, sigma)
 
@@ -298,13 +304,19 @@ def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, 
     plt.xlabel(xlabel, fontsize=10*size)
     plt.ylabel(ylabel, fontsize=10*size)
 
+    if xlim != None:
+        plt.xlim(xlim)
+    if ylim != None:
+        plt.ylim(ylim)
+
     if x_metric_line != None:
         plt.axvline(x_metric_line, ls='--', c='k')
     if y_metric_line != None:
         plt.axhline(y_metric_line, ls='--', c='k')
 
     if title:
-        plt.title(title, fontsize = title_size*size, y=1.02)
+        plt.title(title, fontsize = title_size*size, rotation=title_rotation,
+                  loc=title_location, x=title_x, y=title_y)
 
     plt.subplots_adjust(bottom=0.1, right=0.8, top=0.8)
 
