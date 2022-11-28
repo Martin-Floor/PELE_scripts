@@ -2462,123 +2462,123 @@ class peleAnalysis:
                     io.save(pdb_path)
 
 
-def getNewBoxCenters(self, pele_poses_folder, center_atoms, verbose=False):
-    """
-    Gets the new box centers for a group of extracted PELE poses. The new box centers
-    are taken from a dictionary containing an atom-tuple in the format:
+    def getNewBoxCenters(self, pele_poses_folder, center_atoms, verbose=False):
+        """
+        Gets the new box centers for a group of extracted PELE poses. The new box centers
+        are taken from a dictionary containing an atom-tuple in the format:
 
-        (chain_id, residue_id, atom_name)
+            (chain_id, residue_id, atom_name)
 
-    and using as keys the corresponding (protein, ligand) tuples.
+        and using as keys the corresponding (protein, ligand) tuples.
 
-    Alternatively, a single 3-element tuple can be given with format:
+        Alternatively, a single 3-element tuple can be given with format:
 
-        (chain_id, residue_name, atom_name)
+            (chain_id, residue_name, atom_name)
 
-    to be used with all poses
+        to be used with all poses
 
-    When more than one pose is given for the same protein and ligand combination an
-    average center will be calculated, therefore it is recommended that they will
-    be aligned before calculating the new average box center.
+        When more than one pose is given for the same protein and ligand combination an
+        average center will be calculated, therefore it is recommended that they will
+        be aligned before calculating the new average box center.
 
-    Parameters
-    ==========
-    pele_poses_folder : str
-        Path to a folder were poses were extracted with the function extractPELEPoses()
-    center_atoms : dict or tuple
-        Atoms to be used as coordinate centers for the new box coordinates.
+        Parameters
+        ==========
+        pele_poses_folder : str
+            Path to a folder were poses were extracted with the function extractPELEPoses()
+        center_atoms : dict or tuple
+            Atoms to be used as coordinate centers for the new box coordinates.
 
-    Returns
-    =======
-    box_centers : dict
-        Dictionary by (protein, ligand) that contains the new box center coordinates
-    """
+        Returns
+        =======
+        box_centers : dict
+            Dictionary by (protein, ligand) that contains the new box center coordinates
+        """
 
-    # Get new box centers
-    box_centers = {}
-    for index, structure in self.getFolderStructures(pele_poses_folder):
+        # Get new box centers
+        box_centers = {}
+        for index, structure in self.getFolderStructures(pele_poses_folder):
 
-        protein = index[0]
-        ligand = index[1]
+            protein = index[0]
+            ligand = index[1]
 
-        # Create entry for the protein and ligand box centers
-        box_centers.setdefault((protein, ligand), [])
+            # Create entry for the protein and ligand box centers
+            box_centers.setdefault((protein, ligand), [])
 
-        # Check the format of the given center atoms
-        if isinstance(center_atoms, dict):
-            if (protein, ligand) not in center_atoms:
-                message = 'The protein and ligand combination %s-%s was not found' % (protein, ligand)
-                message += ' in the given center_atoms dictionary.'
-                raise ValueError(message)
+            # Check the format of the given center atoms
+            if isinstance(center_atoms, dict):
+                if (protein, ligand) not in center_atoms:
+                    message = 'The protein and ligand combination %s-%s was not found' % (protein, ligand)
+                    message += ' in the given center_atoms dictionary.'
+                    raise ValueError(message)
+                else:
+                    chain_id, residue_id, atom_name = center_atoms[protein,ligand]
+                    residue_name = None
+
+            elif isinstance(center_atoms, tuple):
+                chain_id, residue_name, atom_name = center_atoms
+                residue_id = None
+
             else:
-                chain_id, residue_id, atom_name = center_atoms[protein,ligand]
-                residue_name = None
+                raise ValueError('center_atoms must be a dict or tuple!')
 
-        elif isinstance(center_atoms, tuple):
-            chain_id, residue_name, atom_name = center_atoms
-            residue_id = None
+            # Get center coordinates
+            bc = None
+            for residue in structure.get_residues():
 
-        else:
-            raise ValueError('center_atoms must be a dict or tuple!')
+                res_match = False
 
-        # Get center coordinates
-        bc = None
-        for residue in structure.get_residues():
+                # Check that chain matches
+                chain = residue.get_parent()
+                if chain.id != chain_id:
+                    continue
 
-            res_match = False
+                # Check that residue matches
+                if residue_name == None:
+                    if residue.id[1] == residue_id:
+                        res_match = True
+                elif residue_id == None:
+                    if residue.resname == residue_name:
+                        res_match = True
 
-            # Check that chain matches
-            chain = residue.get_parent()
-            if chain.id != chain_id:
-                continue
+                # Check that the atom matches
+                if res_match:
+                    for atom in residue:
+                        if atom.name == atom_name:
+                            bc = [float(x) for x in atom.coord]
 
-            # Check that residue matches
-            if residue_name == None:
-                if residue.id[1] == residue_id:
-                    res_match = True
-            elif residue_id == None:
-                if residue.resname == residue_name:
-                    res_match = True
+            # Store bc if found
+            if bc != None:
+                box_centers[(protein, ligand)].append(np.array(bc))
+            else:
+                raise ValueError('Atom could not be match for model %s' % index)
 
-            # Check that the atom matches
-            if res_match:
-                for atom in residue:
-                    if atom.name == atom_name:
-                        bc = [float(x) for x in atom.coord]
+        # Check if there are more than one box center
+        for (protein, ligand) in box_centers:
 
-        # Store bc if found
-        if bc != None:
-            box_centers[(protein, ligand)].append(np.array(bc))
-        else:
-            raise ValueError('Atom could not be match for model %s' % index)
+            bc = np.array(box_centers[(protein, ligand)])
+            if len(bc) > 1:
+                if verbose:
+                    message = 'Multiple protein centers from different poses found for '
+                    message += '%s-%s. Calculating an average box center.' % (protein, ligand)
+                    print(message)
 
-    # Check if there are more than one box center
-    for (protein, ligand) in box_centers:
+                # Getting box center distance matrix
+                M = np.zeros((len(bc), len(bc)))
+                for i in range(len(bc)):
+                    for j in range(len(bc)):
+                        if i > j:
+                            M[i][j] = np.linalg.norm(bc[i]-bc[j])
+                            M[j][i] = M[i][j]
 
-        bc = np.array(box_centers[(protein, ligand)])
-        if len(bc) > 1:
-            if verbose:
-                message = 'Multiple protein centers from different poses found for '
-                message += '%s-%s. Calculating an average box center.' % (protein, ligand)
-                print(message)
+                    # Warn if the the difference between box centers is large
+                    if np.amax(M) > 2.0 and verbose:
+                        print('Warning: box centers differ more than 2.0 angstrom between them!')
+                        print('Is recommended that common poses are aligned before calculating their new box centers.')
+                        print()
 
-            # Getting box center distance matrix
-            M = np.zeros((len(bc), len(bc)))
-            for i in range(len(bc)):
-                for j in range(len(bc)):
-                    if i > j:
-                        M[i][j] = np.linalg.norm(bc[i]-bc[j])
-                        M[j][i] = M[i][j]
+                box_centers[(protein, ligand)] = np.average(bc, axis=0)
 
-                # Warn if the the difference between box centers is large
-                if np.amax(M) > 2.0 and verbose:
-                    print('Warning: box centers differ more than 2.0 angstrom between them!')
-                    print('Is recommended that common poses are aligned before calculating their new box centers.')
-                    print()
-
-            box_centers[(protein, ligand)] = np.average(bc, axis=0)
-
-    return box_centers
+        return box_centers
 
 
     def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
