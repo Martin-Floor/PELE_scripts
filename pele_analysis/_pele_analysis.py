@@ -98,23 +98,23 @@ class peleAnalysis:
         # Copy PELE inputs to analysis folder
         if self.verbose:
             print('Copying PELE input files')
-        self._copyPELEInputs()
+        self._copyPELEInputs(overwrite=self.force_reading)
 
         # Copy PELE configuration files to analysis folder
         if self.verbose:
             print('Copying PELE and Adaptive configuration files')
-        self._copyPELEConfiguration()
+        self._copyPELEConfiguration(overwrite=self.force_reading)
 
         # Copy PELE topology files to analysis folder
         if self.verbose:
             print('Copying PELE topology files')
-        self._copyPELETopology()
+        self._copyPELETopology(overwrite=self.force_reading)
 
         # Copy PELE trajectories to analysis folder
         if trajectories:
             if self.verbose:
                 print('Copying PELE trajectory files')
-            self._copyPELETrajectories()
+            self._copyPELETrajectories(overwrite=self.force_reading)
 
         # Set dictionary with Chain IDs to match mdtraj indexing
         self._setChainIDs()
@@ -299,16 +299,6 @@ class peleAnalysis:
 
                     # Set indexes for DataFrame
                     self.distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps'], inplace=True)
-
-    #     # Concatenate individual distances into a single data frame
-    #     all_distances = []
-    #     for protein in distances:
-    #         for ligand in distances[protein]:
-    #             all_distances.append(distances[protein][ligand])
-    #     all_distances = pd.concat(all_distances)
-    #
-    # # Add distances to main dataframe
-    #     self.data = self.data.merge(all_distances, left_index=True, right_index=True)
 
     def getTrajectory(self, protein, ligand, step, trajectory, equilibration=False):
         """
@@ -853,7 +843,7 @@ class peleAnalysis:
 
         interact(selectLevel, By_protein=True, By_ligand=False)
 
-    def getDistances(self, protein, ligand):
+    def getDistances(self, protein, ligand, return_none=False):
         """
         Returns the distance associated to a specific protein and ligand simulation
         """
@@ -2487,6 +2477,7 @@ class peleAnalysis:
                     io.set_structure(structure)
                     io.save(pdb_path)
 
+
     def getNewBoxCenters(self, pele_poses_folder, center_atoms, verbose=False):
         """
         Gets the new box centers for a group of extracted PELE poses. The new box centers
@@ -2536,7 +2527,7 @@ class peleAnalysis:
                     message += ' in the given center_atoms dictionary.'
                     raise ValueError(message)
                 else:
-                    chain_id, residue_id, atom_name = center_atoms
+                    chain_id, residue_id, atom_name = center_atoms[protein,ligand]
                     residue_name = None
 
             elif isinstance(center_atoms, tuple):
@@ -2559,7 +2550,7 @@ class peleAnalysis:
 
                 # Check that residue matches
                 if residue_name == None:
-                    if residue.resname == residue_name:
+                    if residue.id[1] == residue_id:
                         res_match = True
                 elif residue_id == None:
                     if residue.resname == residue_name:
@@ -2604,6 +2595,7 @@ class peleAnalysis:
                 box_centers[(protein, ligand)] = np.average(bc, axis=0)
 
         return box_centers
+
 
     def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
                              box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
@@ -3291,6 +3283,7 @@ class peleAnalysis:
 
         # Iterate PELE folders to read report files
         report_data = []
+        remove = [] # Put protein and ligands to remove them
         for protein, ligand in self.pele_combinations:
 
             # Check whether protein and ligand report files are present
@@ -3318,6 +3311,7 @@ class peleAnalysis:
 
             # Skip of dataframe is None
             if isinstance(data, type(None)):
+                remove.append((protein, ligand)) # Add protein and ligand to remove them
                 continue
 
             # Check which dataframe columns are to be kept
@@ -3337,11 +3331,13 @@ class peleAnalysis:
                 self.distances.setdefault(protein,{})
                 self.distances[protein][ligand] = distance_data
 
-                # Define a different distance output file for each pele run
-                distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
+                if not isinstance(distance_data, type(None)):
 
-                # Save distances to CSV file
-                self.distances[protein][ligand].to_csv(distance_file)
+                    # Define a different distance output file for each pele run
+                    distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
+
+                    # Save distances to CSV file
+                    self.distances[protein][ligand].to_csv(distance_file)
 
         if report_data == [] and equilibration:
             self.equilibration_data = None
@@ -3364,7 +3360,11 @@ class peleAnalysis:
             gc.collect()
             self._recoverDataState(remove=True)
 
-    def _copyPELEInputs(self):
+            # Remove protein and ligands from pele combinations
+            for protein, ligand in remove:
+                self.pele_combinations.pop(self.pele_combinations.index((protein, ligand)))
+
+    def _copyPELEInputs(self, overwrite=False):
         """
         Copy PELE input files to analysis folder for easy setup PELE reruns.
         """
@@ -3374,14 +3374,16 @@ class peleAnalysis:
                 if not os.path.exists(dir):
                     os.mkdir(dir)
                 for f in os.listdir(self.pele_directories[protein][ligand]):
-                    orig = self.pele_directories[protein][ligand]+'/'+f
                     dest = self.data_folder+'/pele_inputs/'+protein+self.separator+ligand+'/'+f
+                    if os.path.exists(dest) and not overwrite:
+                        continue
+                    orig = self.pele_directories[protein][ligand]+'/'+f
                     if f.endswith('.pdb'):
                         shutil.copyfile(orig, dest)
                     elif f.endswith('.yaml'):
                         shutil.copyfile(orig, dest)
 
-    def _copyPELEConfiguration(self):
+    def _copyPELEConfiguration(self, overwrite=False):
         for protein in self.pele_directories:
             for ligand in self.pele_directories[protein]:
 
@@ -3396,12 +3398,14 @@ class peleAnalysis:
                 if not os.path.exists(dir):
                     os.mkdir(dir)
                 for f in os.listdir(self.pele_directories[protein][ligand]+'/'+self.pele_output_folder):
-                    orig = self.pele_directories[protein][ligand]+'/'+self.pele_output_folder+'/'+f
                     dest = self.data_folder+'/pele_configuration/'+protein+self.separator+ligand+'/'+f
+                    if os.path.exists(dest) and not overwrite:
+                        continue
+                    orig = self.pele_directories[protein][ligand]+'/'+self.pele_output_folder+'/'+f
                     if f.endswith('.conf'):
                         shutil.copyfile(orig, dest)
 
-    def _copyPELETopology(self):
+    def _copyPELETopology(self, overwrite=False):
         """
         Copy topology files to analysis folder.
         """
@@ -3410,13 +3414,15 @@ class peleAnalysis:
                 dir = self.data_folder+'/pele_topologies/'+protein+self.separator+ligand
                 if not os.path.exists(dir):
                     os.mkdir(dir)
-                orig = self.topology_files[protein][ligand]
                 dest = dir+'/'+protein+self.separator+ligand+'.pdb'
+                if os.path.exists(dest) and not overwrite:
+                    continue
+                orig = self.topology_files[protein][ligand]
                 if orig != dest:
                     shutil.copyfile(orig, dest)
                     self.topology_files[protein][ligand] = dest
 
-    def _copyPELETrajectories(self):
+    def _copyPELETrajectories(self, overwrite=False):
         """
         Copy PELE output trajectories to analysis folder.
         """
@@ -3435,8 +3441,10 @@ class peleAnalysis:
                     if not os.path.exists(epoch_folder):
                         os.mkdir(epoch_folder)
                     for traj in self.trajectory_files[protein][ligand][epoch]:
-                        orig = self.trajectory_files[protein][ligand][epoch][traj]
                         dest = epoch_folder+'/'+orig.split('/')[-1]
+                        if os.path.exists(dest) and not overwrite:
+                            continue
+                        orig = self.trajectory_files[protein][ligand][epoch][traj]
                         if orig != dest: # Copy only they are not found in the analysis folder
                             shutil.copyfile(orig, dest)
                             self.trajectory_files[protein][ligand][epoch][traj] = dest
@@ -3452,8 +3460,10 @@ class peleAnalysis:
                     if not os.path.exists(epoch_folder):
                         os.mkdir(epoch_folder)
                     for traj in self.equilibration['trajectory'][protein][ligand][epoch]:
-                        orig = self.equilibration['trajectory'][protein][ligand][epoch][traj]
                         dest = epoch_folder+'/'+orig.split('/')[-1]
+                        if os.path.exists(dest) and not overwrite:
+                            continue
+                        orig = self.equilibration['trajectory'][protein][ligand][epoch][traj]
                         if orig != dest: # Copy only they are not found in the analysis folder
                             shutil.copyfile(orig, dest)
                             self.equilibration['trajectory'][protein][ligand][epoch][traj] = dest
@@ -3472,6 +3482,7 @@ class peleAnalysis:
             return
 
         # Check pele_folder for PELE runs.
+        remove = [] # Put protein and ligand here for their removal
         for d in os.listdir(self.pele_folder):
             if os.path.isdir(self.pele_folder+'/'+d):
 
@@ -3508,6 +3519,7 @@ class peleAnalysis:
                 # Check if output folder exists
                 if not os.path.exists(output_dir):
                     print('Output folder not found for %s-%s PELE calculation.' % (protein, ligand))
+                    remove.append((protein, ligand)) # Append protein and ligand for removal
                     continue
 
                 # Get paths to PELE folders
@@ -3541,6 +3553,14 @@ class peleAnalysis:
         # Sort protein and ligands for easy iteration
         self.proteins = sorted(self.proteins)
         self.ligands = sorted(self.ligands)
+
+        # Remove protein and ligand from paths
+        for protein, ligand in remove:
+            self.pele_directories[protein].pop(ligand)
+            if self.pele_directories[protein] == {}:
+                self.pele_directories.pop(protein)
+            if protein in self.report_files  and self.report_files[protein] == {}:
+                self.report_files.pop(protein)
 
     def _setChainIDs(self):
 
