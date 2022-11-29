@@ -1783,7 +1783,7 @@ class peleAnalysis:
 
     ### Extract poses methods
 
-    def getBestPELEPoses(self, filter_values, proteins=None, ligands=None, column='Binding Energy', n_models=1, return_failed=False):
+    def getBestPELEPoses(self, filter_values=None, proteins=None, ligands=None, column='Binding Energy', n_models=1, return_failed=False):
         """
         Get best models based on the best column score and a set of metrics with specified thresholds.
         The filter thresholds must be provided with a dictionary using the metric names as keys
@@ -1820,8 +1820,14 @@ class peleAnalysis:
                         continue
 
                 ligand_data = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
-                for metric in filter_values:
-                    ligand_data = ligand_data[ligand_data['metric_'+metric] < filter_values[metric]]
+                if filter_values != None:
+                    for metric in filter_values:
+                        if metric in ['RMSD', 'Ligand SASA', 'Total Energy', 'Binding Energy']:
+                            metric_name = metric
+                        else:
+                            metric_name = 'metric_'+metric
+                        ligand_data = ligand_data[ligand_data[metric_name] < filter_values[metric]]
+
                 if ligand_data.empty:
                     failed.append((model, ligand))
                     continue
@@ -1930,28 +1936,39 @@ class peleAnalysis:
 
                     # Create atom names to traj indexes dictionary
                     atom_traj_index = {}
-                    for residue in traj.topology.residues:
-                        residue_label = residue.name+str(residue.resSeq)
-                        atom_traj_index[residue_label] = {}
-                        for atom in residue.atoms:
-                            if 'HOH' in residue_label and atom.name == 'O':
-                                atom_name = 'OW'
-                            else:
-                                atom_name = atom.name
-                            atom_traj_index[residue_label][atom_name] = atom.index
+                    for chain in traj.topology.chains:
+                        chain_index = chain.index
+                        atom_traj_index[chain_index] = {}
+                        for residue in chain.residues:
+                            residue_label = residue.name+str(residue.resSeq)
+                            atom_traj_index[chain_index][residue_label] = {}
+                            for atom in residue.atoms:
+                                if 'HOH' in residue_label and atom.name == 'O':
+                                    atom_name = 'OW'
+                                else:
+                                    atom_name = atom.name
+                                atom_traj_index[chain_index][residue_label][atom_name] = atom.index
 
                     # Create a topology file with Bio.PDB
                     pdb_topology = parser.get_structure(protein, self.topology_files[protein][ligand])
                     atoms = [a for a in pdb_topology.get_atoms()]
 
-                    # Pass mdtraj coordinates to Bio.PDB structure to preserve correct chains
+                    # Match MDtraj and Bio.PDB chains by their order
+                    mdt_index = {}
+                    for cpdb, cmdt in zip(pdb_topology.get_chains(), atom_traj_index):
+                        mdt_index[cpdb.id] = cmdt
+
+                    # Pass mdtraj coordinates to Bio.PDB structure to preserve correct chain names
                     for i, entry in enumerate(ligand_data.index):
                         filename = separator.join([str(x) for x in entry])+'.pdb'
                         xyz = traj[i].xyz[0]
                         for j in range(traj.n_atoms):
 
-                            # Get residue label
+                            # Get chain and residue labels
+                            chain = atoms[j].get_parent().get_parent()
                             residue = atoms[j].get_parent()
+                            chain_index = mdt_index[chain.id]
+
                             if residue.resname in ['HID', 'HIE', 'HIP']:
                                 resname = 'HIS'
                             else:
@@ -1959,7 +1976,7 @@ class peleAnalysis:
                             residue_label = resname+str(residue.id[1])
 
                             # Give atom coordinates to Bio.PDB object
-                            traj_index = atom_traj_index[residue_label][atoms[j].name]
+                            traj_index = atom_traj_index[chain_index][residue_label][atoms[j].name]
                             atoms[j].coord = xyz[traj_index]*10
 
                     # Save structure
@@ -2487,7 +2504,7 @@ class peleAnalysis:
 
         When more than one pose is given for the same protein and ligand combination an
         average center will be calculated, therefore it is recommended that they will
-        be aligned before calculating the new average box center.
+        be aligned before calculating the new average box center (see alignCommonPELEPoses()).
 
         Parameters
         ==========
