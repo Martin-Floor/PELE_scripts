@@ -1796,6 +1796,17 @@ class peleAnalysis:
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         return ligand_series
 
+    def readClusterDataFromGlobal(self):
+
+        cluster_data = {}
+        for protein,ligand in self.pele_combinations:
+            df = pd.read_csv(self.pele_directories[protein][ligand]+'/output/data.csv')
+            for line in df.iterrows():
+                traj = line[1]['trajectory'].split('/')[-1].split('.')[0].split('_')[1]
+                cluster_data[(protein,ligand,line[1]['epoch'],traj,line[1]['numberOfAcceptedPeleSteps'])] = line[1]['Cluster']
+
+        self.data['cluster'] = cluster_data.values()
+
     ### Extract poses methods
 
     def getBestPELEPoses(self, filter_values, proteins=None, ligands=None, column='Binding Energy', n_models=1, return_failed=False):
