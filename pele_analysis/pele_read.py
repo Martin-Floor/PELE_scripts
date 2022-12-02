@@ -232,12 +232,23 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
 
     if os.path.exists(csv_file_name) and not force_reading:
         report_data = pd.read_csv(csv_file_name)
+
+        # Convert protein and ligand columns to strings
+        report_data = report_data.astype({'Protein':'string'})
+        report_data = report_data.astype({'Ligand':'string'})
+
         if equilibration:
             distance_data = None
         else:
             csv_distances_file = data_folder_name+'/distances/'+protein+separator+ligand+'.csv'
-            distance_data = pd.read_csv(csv_distances_file)
-    else:
+            if os.path.exists(csv_distances_file):
+                distance_data = pd.read_csv(csv_distances_file)
+                distance_data = distance_data.loc[:, ~distance_data.columns.str.contains('^Unnamed')]
+                distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+            else:
+                distance_data = None
+
+    elif report_files != None:
         report_data = []
         distance_data = []
 
@@ -272,9 +283,11 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
 
         report_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
         distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-
         _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration,
                        separator=separator, data_folder_name=data_folder_name)
+    else:
+        report_data = None
+        distance_data = None
 
     return report_data, distance_data
 
