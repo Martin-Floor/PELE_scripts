@@ -1956,25 +1956,28 @@ class peleAnalysis:
                     atom_traj_index = {}
                     for chain in traj.topology.chains:
                         chain_index = chain.index
-                        atom_traj_index[chain_index] = {}
+                        chain_name = self.chain_ids[protein][ligand][chain_index]
+                        if chain_name not in atom_traj_index:
+                            atom_traj_index[chain_name] = {}
                         for residue in chain.residues:
                             residue_label = residue.name+str(residue.resSeq)
-                            atom_traj_index[chain_index][residue_label] = {}
+                            atom_traj_index[chain_name][residue_label] = {}
                             for atom in residue.atoms:
                                 if 'HOH' in residue_label and atom.name == 'O':
                                     atom_name = 'OW'
                                 else:
                                     atom_name = atom.name
-                                atom_traj_index[chain_index][residue_label][atom_name] = atom.index
+
+                                atom_traj_index[chain_name][residue_label][atom_name] = atom.index
 
                     # Create a topology file with Bio.PDB
                     pdb_topology = parser.get_structure(protein, self.topology_files[protein][ligand])
                     atoms = [a for a in pdb_topology.get_atoms()]
 
-                    # Match MDtraj and Bio.PDB chains by their order
-                    mdt_index = {}
-                    for cpdb, cmdt in zip(pdb_topology.get_chains(), atom_traj_index):
-                        mdt_index[cpdb.id] = cmdt
+                    ## Match MDtraj and Bio.PDB chains by their order
+                    #mdt_index = {}
+                    #for cmdt,cpdb in zip(atom_traj_index,pdb_topology.get_chains()):
+                    #    mdt_index[cpdb.id] = cmdt
 
                     # Pass mdtraj coordinates to Bio.PDB structure to preserve correct chain names
                     for i, entry in enumerate(ligand_data.index):
@@ -1985,7 +1988,7 @@ class peleAnalysis:
                             # Get chain and residue labels
                             chain = atoms[j].get_parent().get_parent()
                             residue = atoms[j].get_parent()
-                            chain_index = mdt_index[chain.id]
+                            #chain_index = mdt_index[chain.id]
 
                             if residue.resname in ['HID', 'HIE', 'HIP']:
                                 resname = 'HIS'
@@ -1994,7 +1997,7 @@ class peleAnalysis:
                             residue_label = resname+str(residue.id[1])
 
                             # Give atom coordinates to Bio.PDB object
-                            traj_index = atom_traj_index[chain_index][residue_label][atoms[j].name]
+                            traj_index = atom_traj_index[chain.id][residue_label][atoms[j].name]
                             atoms[j].coord = xyz[traj_index]*10
 
                     # Save structure
