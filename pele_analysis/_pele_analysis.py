@@ -75,6 +75,7 @@ class peleAnalysis:
         self.energy_by_residue = energy_by_residue
         self.data = None
         self.distances = {}
+        self.nonbonded_energy = {}
 
         # System name attributes
         self.proteins = []
@@ -574,8 +575,8 @@ class peleAnalysis:
             if protein in self.distances:
                 if ligand in self.distances[protein]:
                     for distance in self.distances[protein][ligand]:
-                        if distance.startswith('distance_'):
-                            ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
+                        #if distance.startswith('distance_'):
+                        ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
 
         # Check if an axis has been given
         new_axis = False
@@ -1493,7 +1494,7 @@ class peleAnalysis:
 
         return 'vmd -e .load_vmd.tcl'
 
-    def combineDistancesIntoMetrics(self, catalytic_labels, overwrite=False):
+    def combineDistancesIntoMetrics(self, catalytic_labels,nonbonded_energy=False,overwrite=False):
         """
         Combine different equivalent distances into specific named metrics. The function
         takes as input a dictionary (catalytic_labels) composed of inner dictionaries as follows:
@@ -3234,6 +3235,9 @@ class peleAnalysis:
             # Create PELE distances
             os.mkdir(self.data_folder+'/distances')
 
+            # Create PELE non bonded energy
+            os.mkdir(self.data_folder+'/nonbonded_energy')
+
     def _getProteinLigandCombinations(self):
         """
         Get existing protein and ligand combinations from the analysis or PELE folders.
@@ -3285,7 +3289,7 @@ class peleAnalysis:
                 start = time.time()
 
             # Read report files into panda dataframes
-            data, distance_data = pele_read.readReportFiles(report_files,
+            data, distance_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
                                                             protein,
                                                             ligand,
                                                             ebr_threshold=0.1,
@@ -3310,7 +3314,7 @@ class peleAnalysis:
             if self.verbose:
                 print('\t in %.2f seconds.' % (time.time()-start))
 
-            # Save distance data
+            # Save distance and nonbonded energy data
             if not equilibration:
                 self.distances.setdefault(protein,{})
                 self.distances[protein][ligand] = distance_data
@@ -3322,6 +3326,17 @@ class peleAnalysis:
 
                     # Save distances to CSV file
                     self.distances[protein][ligand].to_csv(distance_file)
+
+                self.nonbonded_energy.setdefault(protein,{})
+                self.nonbonded_energy[protein][ligand] = nonbonded_energy_data
+
+                if not isinstance(distance_data, type(None)):
+
+                    # Define a different distance output file for each pele run
+                    nonbonded_energy_file = self.data_folder+'/nonbonded_energy/'+protein+self.separator+ligand+'.csv'
+
+                    # Save distances to CSV file
+                    self.nonbonded_energy[protein][ligand].to_csv(nonbonded_energy_file)
 
         if report_data == [] and equilibration:
             self.equilibration_data = None
