@@ -3376,7 +3376,7 @@ class peleAnalysis:
                 self.nonbonded_energy.setdefault(protein,{})
                 self.nonbonded_energy[protein][ligand] = nonbonded_energy_data
 
-                if not isinstance(distance_data, type(None)):
+                if not isinstance(nonbonded_energy_data, type(None)):
 
                     # Define a different distance output file for each pele run
                     nonbonded_energy_file = self.data_folder+'/nonbonded_energy/'+protein+self.separator+ligand+'.csv'
