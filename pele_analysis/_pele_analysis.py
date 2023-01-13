@@ -521,7 +521,7 @@ class peleAnalysis:
 
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None, size=1.0, labels_size=10.0,
                                         xlim=None, ylim=None, metrics=None, title=None, title_size=14.0, return_axis=False, dpi=300,
-                                        axis=None, xlabel=None, ylabel=None, vertical_line_color='k', **kwargs):
+                                        axis=None, xlabel=None, ylabel=None, vertical_line_color='k', marker_size=0.8, **kwargs):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns. Data series can be filtered by specific metrics.
@@ -618,6 +618,7 @@ class peleAnalysis:
                     cmap=colormap,
                     norm=norm,
                     label=protein+self.separator+ligand,
+                    s=marker_size,
                     **kwargs)
                 if new_axis:
                     cbar = plt.colorbar(sc, label=color_column)
@@ -629,6 +630,7 @@ class peleAnalysis:
                     c=color_values,
                     cmap=colormap,
                     label=protein+self.separator+ligand,
+                    s=marker_size*size,
                     **kwargs)
                 if new_axis:
                     cbar = plt.colorbar(sc, label=color_column)
@@ -637,12 +639,14 @@ class peleAnalysis:
                     ligand_series[y],
                     c=color_column,
                     label=protein+self.separator+ligand,
+                    s=marker_size*size,
                     **kwargs)
 
         else:
             sc = axis.scatter(ligand_series[x],
                 ligand_series[y],
                 label=protein+self.separator+ligand,
+                s=marker_size*size,
                 **kwargs)
 
         if not isinstance(vertical_line, type(None)):
@@ -3331,7 +3335,8 @@ class peleAnalysis:
                 self.distances.setdefault(protein,{})
                 self.distances[protein][ligand] = distance_data
 
-                if not isinstance(distance_data, type(None)):
+
+                if not isinstance(distance_data, type(None)) and not distance_data.empty:
 
                     # Define a different distance output file for each pele run
                     distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
