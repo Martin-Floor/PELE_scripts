@@ -1964,10 +1964,10 @@ class peleAnalysis:
                         if chain_name not in atom_traj_index:
                             atom_traj_index[chain_name] = {}
                         for residue in chain.residues:
-                            residue_label = residue.name+str(residue.resSeq)
+                            residue_label = residue.resSeq
                             atom_traj_index[chain_name][residue_label] = {}
                             for atom in residue.atoms:
-                                if 'HOH' in residue_label and atom.name == 'O':
+                                if 'HOH' in residue.name and atom.name == 'O':
                                     atom_name = 'OW'
                                 else:
                                     atom_name = atom.name
@@ -1998,7 +1998,7 @@ class peleAnalysis:
                                 resname = 'HIS'
                             else:
                                 resname = residue.resname
-                            residue_label = resname+str(residue.id[1])
+                            residue_label = residue.id[1]
 
                             # Give atom coordinates to Bio.PDB object
                             traj_index = atom_traj_index[chain.id][residue_label][atoms[j].name]
