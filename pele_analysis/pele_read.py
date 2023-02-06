@@ -247,7 +247,7 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
             if os.path.exists(csv_distances_file):
                 distance_data = pd.read_csv(csv_distances_file)
                 distance_data = distance_data.loc[:, ~distance_data.columns.str.contains('^Unnamed')]
-                distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+                distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
             else:
                 distance_data = None
 
@@ -294,9 +294,9 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
             print('Failed to read PELE data for %s + %s' % (protein, ligand))
             return (None, None, None)
 
-        report_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-        distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
-        nonbonded_energy_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
+        report_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
+        distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
+        nonbonded_energy_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
 
         _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration,
                        separator=separator, data_folder_name=data_folder_name)
