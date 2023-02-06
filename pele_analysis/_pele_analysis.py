@@ -863,14 +863,14 @@ class peleAnalysis:
         """
 
         if protein not in self.distances:
-            raise ValueError('There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
-            #print('WARNING: There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
+            #raise ValueError('There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
+            print('WARNING: There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
         elif ligand not in self.distances[protein]:
-            raise ValueError('There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
-            #print('WARNING: There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+            #raise ValueError('There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+            print('WARNING: There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
 
-        if not os.path.isdir(self.pele_folder):
-            raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
+        #if not os.path.isdir(self.pele_folder):
+        #    raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
 
         distances = []
         for d in self.distances[protein][ligand]:
