@@ -2696,7 +2696,7 @@ class peleAnalysis:
                              spawning='independent', continuation=False, equilibration=True, skip_models=None, skip_ligands=None,
                              extend_iterations=False, only_models=None, only_ligands=None, ligand_templates=None, seed=12345, log_file=False,
                              simulation_type=None, nonbonded_energy=None, nonbonded_energy_type='all', nonbonded_new_flag=False,
-                             covalent_ligands=None, old_pele_folder=None, skip_ligands_prep=None, rescoring=False):
+                             covalent_ligands=None, old_pele_folder=None, skip_ligands_prep=None):
         """
         Generates a PELE calculation for extracted poses. The function reads all the
         protein ligand poses and creates input for a PELE platform set up run.
@@ -2929,9 +2929,6 @@ class peleAnalysis:
                             iyf.write("equilibration: false\n")
                         if spawning != None:
                             iyf.write("spawning: '"+str(spawning)+"'\n")
-
-                        if rescoring:
-                            iyf.write("rescoring: true\n")
 
                         iyf.write("traj: trajectory.xtc\n")
                         iyf.write("working_folder: 'output'\n")
