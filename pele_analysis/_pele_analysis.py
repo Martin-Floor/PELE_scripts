@@ -916,14 +916,14 @@ class peleAnalysis:
         """
 
         if protein not in self.distances:
-            raise ValueError('There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
-            #print('WARNING: There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
+            #raise ValueError('There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
+            print('WARNING: There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
         elif ligand not in self.distances[protein]:
-            raise ValueError('There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
-            #print('WARNING: There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+            #raise ValueError('There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+            print('WARNING: There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
 
-        if not os.path.isdir(self.pele_folder):
-            raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
+        #if not os.path.isdir(self.pele_folder):
+        #    raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
 
         distances = []
         for d in self.distances[protein][ligand]:
@@ -2018,10 +2018,10 @@ class peleAnalysis:
                         if chain_name not in atom_traj_index:
                             atom_traj_index[chain_name] = {}
                         for residue in chain.residues:
-                            residue_label = residue.name+str(residue.resSeq)
+                            residue_label = residue.resSeq
                             atom_traj_index[chain_name][residue_label] = {}
                             for atom in residue.atoms:
-                                if 'HOH' in residue_label and atom.name == 'O':
+                                if 'HOH' in residue.name and atom.name == 'O':
                                     atom_name = 'OW'
                                 else:
                                     atom_name = atom.name
@@ -2052,7 +2052,7 @@ class peleAnalysis:
                                 resname = 'HIS'
                             else:
                                 resname = residue.resname
-                            residue_label = resname+str(residue.id[1])
+                            residue_label = residue.id[1]
 
                             # Give atom coordinates to Bio.PDB object
                             traj_index = atom_traj_index[chain.id][residue_label][atoms[j].name]
@@ -3491,7 +3491,7 @@ class peleAnalysis:
                 self.nonbonded_energy.setdefault(protein,{})
                 self.nonbonded_energy[protein][ligand] = nonbonded_energy_data
 
-                if not isinstance(distance_data, type(None)):
+                if not isinstance(nonbonded_energy_data, type(None)):
 
                     # Define a different distance output file for each pele run
                     nonbonded_energy_file = self.data_folder+'/nonbonded_energy/'+protein+self.separator+ligand+'.csv'
