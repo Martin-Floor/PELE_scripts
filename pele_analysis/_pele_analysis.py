@@ -1877,7 +1877,6 @@ class peleAnalysis:
             the filtered data frame (index 1).
         """
 
-        best_poses = pd.DataFrame()
         bp = []
         failed = []
         for model in self.proteins:
@@ -2882,7 +2881,7 @@ class peleAnalysis:
                     if ligand not in distances[protein]:
                         distances[protein][ligand] = []
 
-                    pele_distances = [(x.split('_')[1:3][0], x.split('_')[1:3][1]) for x in self.getDistances(protein, ligand)]
+                    pele_distances = [(x.split('_')[1:3][0], x.split('_')[1:3][1]) for x in self.getDistances(protein, ligand) if '_coordinate' not in x]
                     pele_distances = list(set(pele_distances))
 
                     for d in pele_distances:
