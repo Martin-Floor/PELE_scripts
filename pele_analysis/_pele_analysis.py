@@ -2962,7 +2962,7 @@ class peleAnalysis:
                         if isinstance(box_centers, type(None)) and peptide:
                             raise ValueError('You must give per-protein box_centers when docking peptides!')
                         if not isinstance(box_centers, type(None)):
-                            if not all(isinstance(x, float) for x in box_centers[(protein, ligand)]):
+                            if not all(isinstance(x, (float,int)) for x in box_centers[(protein, ligand)]):
                                 # get coordinates from tuple
                                 structure = structures[protein+separator+ligand]
                                 for chain in structure.get_chains():
@@ -3010,18 +3010,20 @@ class peleAnalysis:
                             iyf.write('log: true\n')
 
                         iyf.write('\n')
-                        iyf.write("#Options gathered from "+input_yaml+'\n')
 
-                        with open(input_yaml) as tyf:
-                            for l in tyf:
-                                if l.startswith('#'):
-                                    continue
-                                elif l.startswith('-'):
-                                    continue
-                                elif l.strip() == '':
-                                    continue
-                                if l.split()[0].replace(':', '') not in keywords:
-                                    iyf.write(l)
+                        if input_yaml != None:
+                            iyf.write("#Options gathered from "+input_yaml+'\n')
+
+                            with open(input_yaml) as tyf:
+                                for l in tyf:
+                                    if l.startswith('#'):
+                                        continue
+                                    elif l.startswith('-'):
+                                        continue
+                                    elif l.strip() == '':
+                                        continue
+                                    if l.split()[0].replace(':', '') not in keywords:
+                                        iyf.write(l)
 
                     if energy_by_residue:
                         _copyScriptFile(pele_folder, 'addEnergyByResidueToPELEconf.py')
