@@ -87,6 +87,7 @@ class peleAnalysis:
         if energy_by_residue_type not in ebr_types:
             raise ValueError('Energy by residue type not valid. valid options are: '+' '.join(energy_by_residue_type))
 
+
         # Check data folder for paths to csv files
         if self.verbose:
             print('Checking PELE analysis folder: %s' % self.data_folder)
@@ -206,6 +207,11 @@ class peleAnalysis:
                     dist_label = {}
                     pair_lengths = []
                     for pair in atom_pairs[protein][ligand]:
+                        if len(pair) == 1:
+                            if pair[0] not in ['X', 'Y', 'Z']:
+                                raise ValueError('Only X,Y,Z coordinates can be returned for a single coordinate request.')
+                            pairs.append(pair[0])
+                            dist_label[pair[0]] = pair[0]+'_coordinate'
                         if len(pair) >= 2:
                             # Check if atoms are in the protein+ligand PELE topology
                             if pair[0] not in self.atom_indexes[protein][ligand]:
@@ -223,10 +229,6 @@ class peleAnalysis:
 
                         if len(pair) >= 3:
                             # Check if atoms are in the protein+ligand PELE topology
-                            if pair[0] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
-                            if pair[1] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
                             if pair[2] not in self.atom_indexes[protein][ligand]:
                                 raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
 
@@ -237,12 +239,6 @@ class peleAnalysis:
 
                         if len(pair) == 4:
                             # Check if atoms are in the protein+ligand PELE topology
-                            if pair[0] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
-                            if pair[1] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
-                            if pair[2] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
                             if pair[3] not in self.atom_indexes[protein][ligand]:
                                 raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[3], protein, ligand))
 
@@ -255,11 +251,16 @@ class peleAnalysis:
                     pair_lengths = set(pair_lengths)
                     if len(pair_lengths) > 1:
                         raise ValueError('Mixed number of atoms given!')
+
                     pair_lengths = list(pair_lengths)[0]
 
                     # Define labels
-                    labels = [dist_label[p]+''.join([str(x) for x in p[0]])+'_'+\
-                                            ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
+
+                    if pair_lengths >= 2:
+                        labels = [dist_label[p]+''.join([str(x) for x in p[0]])+'_'+\
+                                                ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
+                    else:
+                        labels = [dist_label[p] for p in atom_pairs[protein][ligand]]
 
                     # Create an entry for each distance
                     for label in labels:
@@ -277,6 +278,22 @@ class peleAnalysis:
                                 message += 'of protein %s and ligand %s' % (protein, ligand)
                                 raise ValueError(message)
 
+                            # Calculate centroid coordinates
+                            if pair_lengths == 1:
+
+                                # Get all ligand atom coordinates
+                                for r in traj.topology.residues:
+                                    if r.name == self.ligand_names[ligand]:
+                                        ligand_atoms = [a.index for a in r.atoms]
+
+                                # Get the requested coordinates
+                                ligand_coordinates = traj.atom_slice(ligand_atoms).xyz
+                                indexes = []
+                                coord_to_index = {'X':0, 'Y':1, 'Z':2}
+                                for p in pairs:
+                                    indexes.append(coord_to_index[p])
+                                d = np.average(ligand_coordinates[:,:,indexes], axis=1)*10
+
                             # Calculate distances
                             if pair_lengths == 2:
                                 d = md.compute_distances(traj, pairs)*10
@@ -292,7 +309,8 @@ class peleAnalysis:
                             self.distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
                             self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(d.shape[0]))
                             self.distances[protein][ligand]['Step'] += list(range(d.shape[0]))
-                            series = self.getProteinAndLigandData(protein, ligand)
+                            # series = self.getProteinAndLigandData(protein, ligand)
+
                             for i,l in enumerate(labels):
                                 self.distances[protein][ligand][l] += list(d[:,i])
 
@@ -321,9 +339,56 @@ class peleAnalysis:
                             top=self.topology_files[protein][ligand])
         return traj
 
-    def calculateRMSD(self, equilibration=True, productive=True, recalculate=False):
+    def calculateLigandRMSD(self, recalculate=False):
         """
-        Calculate the RMSD of all steps regarding the input (topology) structure.
+        Calculate ligand RMSD using as reference the lowest binding energy pose. It
+        is added as "Ligand RMSD" column in the pele data frame'
+        """
+
+        if 'Ligand RMSD' in self.data.keys() or recalculate:
+            print('Ligand RMSD data already computed. Give recalculate=True to recompute.')
+            return
+        else:
+            RMSD = None
+
+        for protein in self.proteins:
+            for ligand in self.ligands:
+
+                # Skip protein,ligand combinations without topology files
+                if ligand not in self.topology_files[protein]:
+                    continue
+
+                # Get topology trajectory as reference for alignment
+                topology_file = self.topology_files[protein][ligand]
+                top_traj = md.load(topology_file)
+
+                # Get best binding energy pose as reference
+                ligand_data = self.getProteinAndLigandData(protein, ligand)
+                ref_model = ligand_data.nsmallest(1, 'Binding Energy')
+                ref_trajectory = ref_model.index.get_level_values('Trajectory')[0]
+                ref_epoch = ref_model.index.get_level_values('Epoch')[0]
+                ref_step = ref_model.index.get_level_values('Accepted Pele Steps')[0]
+                ref_traj = self.getTrajectory(protein, ligand, ref_epoch, ref_trajectory)[ref_step]
+
+                for epoch in sorted(self.trajectory_files[protein][ligand]):
+                    for trajectory in sorted(self.trajectory_files[protein][ligand][epoch]):
+                        traj = self.getTrajectory(protein, ligand, epoch, trajectory)
+                        traj.superpose(top_traj)
+                        ligand_atoms = traj.topology.select('resname '+self.ligand_names[ligand])
+
+                        # Calculate RMSD
+                        rmsd = md.rmsd(traj, ref_traj, atom_indices=ligand_atoms)*10
+                        if isinstance(RMSD, type(None)):
+                            RMSD = rmsd
+                        else:
+                            RMSD = np.concatenate((RMSD, rmsd))
+
+        self.data['Ligand RMSD'] = RMSD
+        self._saveDataState()
+
+    def calculateProteinRMSD(self, rmsd_type=None, equilibration=True, productive=True, recalculate=False):
+        """
+        Calculate the RMSD of all steps regarding the input (topology) structure'
         """
 
         if not os.path.isdir(self.pele_folder):
@@ -528,7 +593,7 @@ class peleAnalysis:
 
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None, size=1.0, labels_size=10.0,
                                         xlim=None, ylim=None, metrics=None, title=None, title_size=14.0, return_axis=False, dpi=300,
-                                        axis=None, xlabel=None, ylabel=None, vertical_line_color='k', marker_size=0.8, **kwargs):
+                                        axis=None, xlabel=None, ylabel=None, vertical_line_color='k', marker_size=0.8, clim=None, **kwargs):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns. Data series can be filtered by specific metrics.
@@ -552,6 +617,8 @@ class peleAnalysis:
             The limits for the x-range.
         ylim : tuple
             The limits for the y-range.
+        clim : tuple
+            The limits for the color range.
         metrics : dict
             A set of metrics for filtering the data points.
         title : str
@@ -601,6 +668,13 @@ class peleAnalysis:
 
         if color_column != None:
 
+            if clim != None:
+                vmin = clim[0]
+                vmax = clim[1]
+            else:
+                vmin = None
+                vmax = None
+
             ascending = False
             colormap='Blues_r'
 
@@ -625,11 +699,15 @@ class peleAnalysis:
                     c=color_values,
                     cmap=colormap,
                     norm=norm,
+                    vmin=vmin,
+                    vmax=vmax,
                     label=protein+self.separator+ligand,
                     s=marker_size,
                     **kwargs)
                 if new_axis:
-                    cbar = plt.colorbar(sc, label=color_column)
+                    cbar = plt.colorbar(sc)
+                    cbar.set_label(label=color_column, size=labels_size*size)
+                    cbar.ax.tick_params(labelsize=labels_size*size)
             elif color_column in color_columns:
                 ligand_series = ligand_series.sort_values(color_column, ascending=ascending)
                 color_values = ligand_series[color_column]
@@ -637,15 +715,21 @@ class peleAnalysis:
                     ligand_series[y],
                     c=color_values,
                     cmap=colormap,
+                    vmin=vmin,
+                    vmax=vmax,
                     label=protein+self.separator+ligand,
                     s=marker_size*size,
                     **kwargs)
                 if new_axis:
-                    cbar = plt.colorbar(sc, label=color_column)
+                    cbar = plt.colorbar(sc)
+                    cbar.set_label(label=color_column, size=labels_size*size)
+                    cbar.ax.tick_params(labelsize=labels_size*size)
             else:
                 sc = axis.scatter(ligand_series[x],
                     ligand_series[y],
                     c=color_column,
+                    vmin=vmin,
+                    vmax=vmax,
                     label=protein+self.separator+ligand,
                     s=marker_size*size,
                     **kwargs)
@@ -703,12 +787,11 @@ class peleAnalysis:
             if not ligand_series.empty:
                 X.append(ligand_series[column].tolist())
                 labels.append(ligand)
-
         plt.boxplot(X, labels=labels)
         plt.xlabel('Ligands')
         plt.ylabel(column)
-        plt.xticks(rotation=90, fontsize=size)
-        plt.show()
+        plt.xticks(rotation=75)
+        # plt.show()
 
     def boxPlotLigandSimulation(self, ligand, column):
         """
@@ -736,7 +819,7 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, color=None):
+    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None, size=1.0):
         """
         Plot binding energy as interactive plot.
         """
@@ -774,11 +857,14 @@ class peleAnalysis:
                     for d in self.distances[Protein][Ligand]:
                         if 'distance' in d:
                             distances.append(d)
-                if 'RMSD' in self.data:
-                    distances.append('RMSD')
+                        elif '_coordinate' in d:
+                            distances.append(d)
+
+                if 'Ligand RMSD' in self.data:
+                    distances.append('Ligand RMSD')
 
                 if distances == []:
-                    raise ValueError('Not RMSD nor distances were found! Consider to calculate some distance.')
+                    raise ValueError('Not Ligand RMSD nor distances were found! Consider to calculate some distance.')
 
             if color == None:
                 color_columns = [k for k in ligand_series.keys()]
@@ -832,21 +918,21 @@ class peleAnalysis:
 
             if isinstance(metrics_sliders, type(None)):
                     self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
-                                                     vertical_line=vertical_line, color_column=Color)
+                                                     vertical_line=vertical_line, color_column=Color, clim=clim, size=size)
             elif Color == 'Color by metric':
 
                 axis = self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column='k',return_axis=True,
-                                                     metrics=None)
+                                                     metrics=None, clim=clim, size=size)
 
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
-                                     vertical_line=vertical_line, color_column='r',
-                                     metrics=metrics_sliders,axis=axis, alpha=0.05)
+                                                     vertical_line=vertical_line, color_column='r', metrics=metrics_sliders,
+                                                     axis=axis, alpha=0.05, clim=clim, size=size)
 
             else:
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
-                                                     vertical_line=vertical_line, color_column=Color,
-                                                     metrics=metrics_sliders)
+                                                     vertical_line=vertical_line, color_column=Color, metrics=metrics_sliders,
+                                                     clim=clim, size=size)
 
 
         interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line),
@@ -890,6 +976,8 @@ class peleAnalysis:
         distances = []
         for d in self.distances[protein][ligand]:
             if 'distance' in d:
+                distances.append(d)
+            elif '_coordinate' in d:
                 distances.append(d)
         return distances
 
@@ -1417,6 +1505,9 @@ class peleAnalysis:
 
     def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False,
                       num_trajectories='all', epochs=None, trajectories=None):
+        """
+
+        """
 
         if not os.path.isdir(self.pele_folder):
             raise ValueError('Pele folder not found. There are no trajectories.')
@@ -1525,7 +1616,7 @@ class peleAnalysis:
 
         return 'vmd -e .load_vmd.tcl'
 
-    def combineDistancesIntoMetrics(self, catalytic_labels,nonbonded_energy=False,overwrite=False):
+    def combineDistancesIntoMetrics(self, catalytic_labels, nonbonded_energy=False, overwrite=False):
         """
         Combine different equivalent distances into specific named metrics. The function
         takes as input a dictionary (catalytic_labels) composed of inner dictionaries as follows:
@@ -1798,8 +1889,29 @@ class peleAnalysis:
 
         d = display(VB)
 
-    def getProteinAndLigandData(self, protein, ligand):
-        protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+    def getProteinAndLigandData(self, protein, ligand, equilibration=False):
+        """
+        Get PELE data for a protein and ligand combination.
+
+        Paramters
+        =========
+        protein : str
+            Protein name
+        ligand : str
+            Ligand Name
+        equilibration : bool
+            Get equilibration data instead?
+
+        Returns
+        =======
+        ligand_series : pandas.DataFrame
+            The pandas for the protein and ligand data.
+        """
+        if equilibration:
+            data = self.equilibration_data
+        else:
+            data = self.data
+        protein_series = data[data.index.get_level_values('Protein') == protein]
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         return ligand_series
 
@@ -1843,7 +1955,6 @@ class peleAnalysis:
             the filtered data frame (index 1).
         """
 
-        best_poses = pd.DataFrame()
         bp = []
         failed = []
         for model in self.proteins:
@@ -2848,7 +2959,7 @@ class peleAnalysis:
                     if ligand not in distances[protein]:
                         distances[protein][ligand] = []
 
-                    pele_distances = [(x.split('_')[1:3][0], x.split('_')[1:3][1]) for x in self.getDistances(protein, ligand)]
+                    pele_distances = [(x.split('_')[1:3][0], x.split('_')[1:3][1]) for x in self.getDistances(protein, ligand) if '_coordinate' not in x]
                     pele_distances = list(set(pele_distances))
 
                     for d in pele_distances:
@@ -2895,6 +3006,7 @@ class peleAnalysis:
                             iyf.write("equilibration: false\n")
                         if spawning != None:
                             iyf.write("spawning: '"+str(spawning)+"'\n")
+
                         iyf.write("traj: trajectory.xtc\n")
                         iyf.write("working_folder: 'output'\n")
                         if usesrun:
@@ -2928,7 +3040,7 @@ class peleAnalysis:
                         if isinstance(box_centers, type(None)) and peptide:
                             raise ValueError('You must give per-protein box_centers when docking peptides!')
                         if not isinstance(box_centers, type(None)):
-                            if not all(isinstance(x, float) for x in box_centers[(protein, ligand)]):
+                            if not all(isinstance(x, (float,int)) for x in box_centers[(protein, ligand)]):
                                 # get coordinates from tuple
                                 structure = structures[protein+separator+ligand]
                                 for chain in structure.get_chains():
@@ -2946,7 +3058,7 @@ class peleAnalysis:
                             for coord in coordinates:
                                 #if not isinstance(coord, float):
                                 #    raise ValueError('Box centers must be given as a (x,y,z) tuple or list of floats.')
-                                box_center += '  - '+str(coord)+'\n'
+                                box_center += '  - '+str(float(coord))+'\n'
                             iyf.write("box_center: \n"+box_center)
 
                         # energy by residue is not implemented in PELE platform, therefore
@@ -2976,18 +3088,20 @@ class peleAnalysis:
                             iyf.write('log: true\n')
 
                         iyf.write('\n')
-                        iyf.write("#Options gathered from "+input_yaml+'\n')
 
-                        with open(input_yaml) as tyf:
-                            for l in tyf:
-                                if l.startswith('#'):
-                                    continue
-                                elif l.startswith('-'):
-                                    continue
-                                elif l.strip() == '':
-                                    continue
-                                if l.split()[0].replace(':', '') not in keywords:
-                                    iyf.write(l)
+                        if input_yaml != None:
+                            iyf.write("#Options gathered from "+input_yaml+'\n')
+
+                            with open(input_yaml) as tyf:
+                                for l in tyf:
+                                    if l.startswith('#'):
+                                        continue
+                                    elif l.startswith('-'):
+                                        continue
+                                    elif l.strip() == '':
+                                        continue
+                                    if l.split()[0].replace(':', '') not in keywords:
+                                        iyf.write(l)
 
                     if energy_by_residue:
                         _copyScriptFile(pele_folder, 'addEnergyByResidueToPELEconf.py')
@@ -3140,11 +3254,33 @@ class peleAnalysis:
                         if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
                             os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
 
-    def _saveDataState(self, equilibration=False):
-        if equilibration:
-            self.equilibration_data.to_csv(self.data_folder+'/equilibration_data.csv')
+    def _saveDataState(self, equilibration=False, individually=False):
+        """
+        Save the data state of all protein and ligand into the CSV files.
+
+        Parameters
+        ==========
+        equilibration : bool
+            Save the equilibration data instead?
+        individually : bool
+            Save the DataFrames individually by protein and ligand combination?
+        """
+
+        if individually:
+            for protein, ligand in self.pele_combinations:
+                ligand_data = self.getProteinAndLigandData(protein, ligand, equilibration=equilibration)
+                if equilibration:
+                    data_file = self.data_folder+'/equilibration_data_'+protein+self.separator+ligand+'.csv'
+                else:
+                    data_file = self.data_folder+'/data_'+protein+self.separator+ligand+'.csv'
+                ligand_data.to_csv(data_file)
         else:
-            self.data.to_csv(self.data_folder+'/data.csv')
+            if equilibration:
+                self.equilibration_data.to_csv(self.data_folder+'/equilibration_data.csv')
+            else:
+                self.data.to_csv(self.data_folder+'/data.csv')
+
+
 
     def _recoverDataState(self, remove=False, equilibration=False):
         if equilibration:
@@ -3468,6 +3604,7 @@ class peleAnalysis:
         if equilibration:
             # Merge all dataframes into a single dataframe
             self.equilibration_data = pd.concat(report_data)
+            # self.equilibration_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
             self._saveDataState(equilibration=equilibration)
             self.equilibration_data = None
             gc.collect()
@@ -3475,7 +3612,7 @@ class peleAnalysis:
         else:
             # Merge all dataframes into a single dataframe
             self.data = pd.concat(report_data)
-
+            # self.data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
             # Save and reload dataframe to avoid memory fragmentation
             self._saveDataState()
             self.data = None
