@@ -386,7 +386,7 @@ class peleAnalysis:
         self.data['Ligand RMSD'] = RMSD
         self._saveDataState()
 
-    def calculateProteinRMSD(self, rmsd_type=None, equilibration=True, productive=True, recalculate=False):
+    def calculateProteinRMSD(self, full_atom=True, equilibration=True, productive=True, recalculate=False):
         """
         Calculate the RMSD of all steps regarding the input (topology) structure'
         """
@@ -409,7 +409,11 @@ class peleAnalysis:
                                 for trajectory in sorted(self.equilibration['trajectory'][protein][ligand][step]):
                                     traj = self.getTrajectory(protein, ligand, step, trajectory, equilibration=True)
                                     traj.superpose(reference)
-                                    protein_atoms = traj.topology.select('protein')
+                                    if full_atom:
+                                        protein_atoms = traj.topology.select('protein')
+                                    else:
+                                        protein_atoms = traj.topology.select('protein and name CA')
+
                                     rmsd = md.rmsd(traj, reference, atom_indices=protein_atoms)*10
                                     if isinstance(RMSD, type(None)):
                                         RMSD = rmsd
