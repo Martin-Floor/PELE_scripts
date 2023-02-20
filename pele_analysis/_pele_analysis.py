@@ -686,7 +686,7 @@ class peleAnalysis:
                 ascending = True
                 colormap='Blues'
 
-            elif color_column == 'Epoch':
+            elif color_column == 'Epoch' or color_column == 'Cluster':
                 ascending = True
                 color_values = ligand_series.reset_index()[color_column]
                 cmap = plt.cm.jet
@@ -1934,9 +1934,13 @@ class peleAnalysis:
             df = pd.read_csv(self.pele_directories[protein][ligand]+'/output/data.csv')
             for line in df.iterrows():
                 traj = line[1]['trajectory'].split('/')[-1].split('.')[0].split('_')[1]
-                cluster_data[(protein,ligand,line[1]['epoch'],traj,line[1]['numberOfAcceptedPeleSteps'])] = line[1]['Cluster']
+                if line[1]['Cluster'] == '-':
+                    cl = '-1'
+                else:
+                    cl =  line[1]['Cluster']
+                cluster_data[(protein,ligand,line[1]['epoch'],traj,line[1]['numberOfAcceptedPeleSteps'])] = int(cl)
 
-        self.data['cluster'] = cluster_data.values()
+        self.data['Cluster'] = cluster_data.values()
 
 
     ### Extract poses methods
