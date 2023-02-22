@@ -1,5 +1,6 @@
 from . import pele_read
 from . import pele_trajectory
+from . import pele_distances
 
 import os
 import shutil
@@ -141,8 +142,7 @@ class peleAnalysis:
         self.proteins = sorted(self.proteins)
         self.ligands = sorted(self.ligands)
 
-    def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False,
-                           verbose=False):
+    def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False, verbose=False):
         """
         Calculate distances between pairs of atoms for each pele (protein+ligand)
         simulation. The atom pairs are given as a dictionary with the following format:
@@ -155,7 +155,7 @@ class peleAnalysis:
         Parameters
         ==========
         atom_pairs : dict
-            Atom pairs for each protein + ligand entry.
+            Atom pairs for each protein + ligand entry
         equilibration : bool
             Calculate distances for the equilibration steps also
         verbose : bool
@@ -181,7 +181,7 @@ class peleAnalysis:
                         print('Distance file for %s + %s was found. Reading distances from there...' % (protein, ligand))
                     self.distances[protein][ligand] = pd.read_csv(distance_file, index_col=False)
                     self.distances[protein][ligand] = self.distances[protein][ligand].loc[:, ~self.distances[protein][ligand].columns.str.contains('^Unnamed')]
-                    self.distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps'], inplace=True)
+                    self.distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps'], inplace=True)
                 else:
                     self.distances[protein][ligand] = {}
                     self.distances[protein][ligand]['Protein'] = []
@@ -189,79 +189,110 @@ class peleAnalysis:
                     self.distances[protein][ligand]['Epoch'] = []
                     self.distances[protein][ligand]['Trajectory'] = []
                     self.distances[protein][ligand]['Accepted Pele Steps'] = []
-                    if verbose:
-                        print('Calculating distances for %s + %s ' % (protein, ligand))
 
-                    # Load one trajectory at the time to save memory
-                    trajectory_files = self.trajectory_files[protein][ligand]
-                    topology_file = self.topology_files[protein][ligand]
+                if verbose:
+                    print('Calculating distances for %s + %s ' % (protein, ligand))
 
-                    # Get atom pairs indexes
-                    topology = md.load(topology_file).topology
+                # Load one trajectory at the time to save memory
+                trajectory_files = self.trajectory_files[protein][ligand]
+                topology_file = self.topology_files[protein][ligand]
 
-                    # Get atom pair indexes to compute distances
-                    pairs = []
-                    dist_label = {}
-                    pair_lengths = []
-                    for pair in atom_pairs[protein][ligand]:
-                        if len(pair) >= 2:
-                            # Check if atoms are in the protein+ligand PELE topology
-                            if pair[0] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
-                            if pair[1] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                # Get atom pairs indexes
+                topology = md.load(topology_file).topology
 
-                            # Get the atom indexes
-                            i1 = self.atom_indexes[protein][ligand][pair[0]]
-                            i2 = self.atom_indexes[protein][ligand][pair[1]]
+                # Get atom pair indexes to compute distances
+                pairs = []
+                dist_label = {}
+                pair_lengths = []
+                for pair in atom_pairs[protein][ligand]:
+                    if len(pair) >= 2:
+                        # Check if atoms are in the protein+ligand PELE topology
+                        if pair[0] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                        if pair[1] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
 
-                            if len(pair) == 2:
-                                pairs.append((i1, i2))
-                                dist_label[(pair[0], pair[1])] = 'distance_'
+                        # Get the atom indexes
+                        i1 = self.atom_indexes[protein][ligand][pair[0]]
+                        i2 = self.atom_indexes[protein][ligand][pair[1]]
 
-                        if len(pair) >= 3:
-                            # Check if atoms are in the protein+ligand PELE topology
-                            if pair[0] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
-                            if pair[1] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
-                            if pair[2] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
+                        if len(pair) == 2:
+                            pairs.append((i1, i2))
+                            dist_label[(pair[0], pair[1])] = 'distance_'
 
-                            i3 = self.atom_indexes[protein][ligand][pair[2]]
-                            if len(pair) == 3:
-                                pairs.append((pair[0], pair[1], pair[2]))
-                                dist_label[(i1, i2, i3)] = 'angle_'
+                    if len(pair) >= 3:
+                        # Check if atoms are in the protein+ligand PELE topology
+                        if pair[0] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                        if pair[1] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                        if pair[2] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
 
-                        if len(pair) == 4:
-                            # Check if atoms are in the protein+ligand PELE topology
-                            if pair[0] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
-                            if pair[1] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
-                            if pair[2] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
-                            if pair[3] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[3], protein, ligand))
+                        i3 = self.atom_indexes[protein][ligand][pair[2]]
+                        if len(pair) == 3:
+                            pairs.append((pair[0], pair[1], pair[2]))
+                            dist_label[(i1, i2, i3)] = 'angle_'
 
-                            i4 = self.atom_indexes[protein][ligand][pair[3]]
-                            pairs.append((i1, i2, i3, i4))
-                            dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'torsion_'
+                    if len(pair) == 4:
+                        # Check if atoms are in the protein+ligand PELE topology
+                        if pair[0] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                        if pair[1] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                        if pair[2] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
+                        if pair[3] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[3], protein, ligand))
 
-                        pair_lengths.append(len(pair))
+                        i4 = self.atom_indexes[protein][ligand][pair[3]]
+                        pairs.append((i1, i2, i3, i4))
+                        dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'torsion_'
 
-                    pair_lengths = set(pair_lengths)
-                    if len(pair_lengths) > 1:
-                        raise ValueError('Mixed number of atoms given!')
-                    pair_lengths = list(pair_lengths)[0]
+                    pair_lengths.append(len(pair))
 
-                    # Define labels
-                    labels = [dist_label[p]+''.join([str(x) for x in p[0]])+'_'+\
-                                            ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
+                # Check pairs
+                pair_lengths = set(pair_lengths)
+                if len(pair_lengths) > 1:
+                    raise ValueError('Mixed number of atoms given!')
+                pair_lengths = list(pair_lengths)[0]
+
+                # Define labels
+                labels = [dist_label[p]+''.join([str(x) for x in p[0]])+'_'+\
+                                        ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
+
+                # Check if labels are already in distance_data
+                missing_labels = []
+                skip_index_append = False
+                if isinstance(self.distances[protein][ligand], pd.DataFrame):
+                    distances_keys = list(self.distances[protein][ligand].keys())
+                    for l in labels:
+                        if l not in distances_keys:
+                            missing_labels.append(l)
+                    if missing_labels != []:
+                        # Convert DF into a dictionary for distance appending
+                        self.distances[protein][ligand].reset_index(inplace=True)
+                        self.distances[protein][ligand] = self.distances[protein][ligand].to_dict()
+                        for k in self.distances[protein][ligand]:
+                            nv = [self.distances[protein][ligand][k][x] for x in self.distances[protein][ligand][k]]
+                            self.distances[protein][ligand][k] = nv
+                        skip_index_append = True
+                else:
+                    missing_labels = labels
+
+                # Update pairs based on missing labels
+                if missing_labels != []:
 
                     # Create an entry for each distance
-                    for label in labels:
+                    for label in missing_labels:
                         self.distances[protein][ligand][label] = []
+
+                    # Update pairs based on missing labels
+                    updated_pairs = []
+                    for p,l in zip(pairs, labels):
+                        if l in missing_labels:
+                            updated_pairs.append(p)
+                    pairs = updated_pairs
 
                     # Compute distances and them to the dicionary
                     for epoch in sorted(trajectory_files):
@@ -284,13 +315,18 @@ class peleAnalysis:
                                 d = md.compute_dihedrals(traj, pairs)*10
 
                             # Store data
-                            self.distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
-                            self.distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
-                            self.distances[protein][ligand]['Epoch'] += [epoch]*d.shape[0]
-                            self.distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
-                            self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(d.shape[0]))
-                            for i,l in enumerate(labels):
+                            if not skip_index_append:
+                                self.distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
+                                self.distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
+                                self.distances[protein][ligand]['Epoch'] += [epoch]*d.shape[0]
+                                self.distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
+                                self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(d.shape[0]))
+                            for i,l in enumerate(missing_labels):
                                 self.distances[protein][ligand][l] += list(d[:,i])
+
+
+                    for d in self.distances[protein][ligand]:
+                        print(d, len(self.distances[protein][ligand][d]))
 
                     # Convert distances into dataframe
                     self.distances[protein][ligand] = pd.DataFrame(self.distances[protein][ligand])
@@ -300,6 +336,31 @@ class peleAnalysis:
 
                     # Set indexes for DataFrame
                     self.distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps'], inplace=True)
+
+    def calculateDistancesParallel(self, atom_pairs, overwrite=False, verbose=False, cpus=None):
+        """
+        Calculate distances between pairs of atoms for each pele (protein+ligand)
+        simulation. The atom pairs are given as a dictionary with the following format:
+
+        The atom pairs must be given in a dicionary with each key representing the name
+        of a model and each value a sub-dicionary with the ligands as keys and a list of the atom pairs
+        to calculate in the format:
+            {model_name: { ligand_name : [((chain1_id, residue1_id, atom1_name), (chain2_id, residue2_id, atom2_name)), ...],...} another_model_name:...}
+
+        Parameters
+        ==========
+        atom_pairs : dict
+            Atom pairs for each protein + ligand entry
+        verbose : bool
+            Display function messages
+        overwrite : bool
+            Force recalculation of distances.
+        cpus : int
+            Number of cpus to use in the distances calculation.
+        """
+        distance_calculation = pele_distances.distances(self)
+        distance_calculation.calculateDistances(atom_pairs, overwrite=overwrite,
+                                                verbose=verbose, cpus=cpus)
 
     def getTrajectory(self, protein, ligand, step, trajectory, equilibration=False):
         """
