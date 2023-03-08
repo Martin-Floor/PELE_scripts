@@ -1035,6 +1035,12 @@ class peleAnalysis:
         #    raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
 
         distances = []
+
+        if protein not in self.distances:
+            return distances
+        elif ligand not in self.distances[protein]:
+            return distances
+
         for d in self.distances[protein][ligand]:
             if 'distance' in d:
                 distances.append(d)
@@ -1352,7 +1358,7 @@ class peleAnalysis:
                 matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30, pele_data=None, KT=5.93):
 
         def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json',
-                                     lig_label_rot=50, pele_data=None, **metrics):
+                                     lig_label_rot=90, pele_data=None, **metrics):
 
             if isinstance(pele_data, type(None)):
                 pele_data = self.data
@@ -1412,7 +1418,8 @@ class peleAnalysis:
                 M = M[sort_indexes]
                 protein_labels = [self.proteins[x] for x in sort_indexes]
 
-            plt.matshow(M, cmap='autumn')
+            plt.figure(dpi=100, figsize=(0.28*len(self.ligands),0.2*len(self.proteins)))
+            plt.imshow(M, cmap='autumn')
             if dA:
                 plt.colorbar(label='${E_{B}^{C}}-{E_{B}^{NC}}$')
             elif Ec:
@@ -1983,7 +1990,6 @@ class peleAnalysis:
 
         Parameters
         ==========
-
         """
 
         cluster_data = {}
@@ -1998,7 +2004,6 @@ class peleAnalysis:
                 cluster_data[(protein,ligand,line[1]['epoch'],traj,line[1]['numberOfAcceptedPeleSteps'])] = int(cl)
 
         self.data['Cluster'] = cluster_data.values()
-
 
     ### Extract poses methods
 
@@ -2621,10 +2626,11 @@ class peleAnalysis:
             structure = self._readPDB(protein+'-'+ligand, self.topology_files[protein][ligand])
             yield (protein, ligand), structure
 
-    def getFolderStructures(self, poses_folder, return_paths=False):
+    def getFolderStructures(self, poses_folder, return_paths=False, only_proteins=None,
+                            only_ligands=None):
         """
-        Iterate over the PDB files in a folder as Biopython structures. Th folder must be written
-        in the format of the extractPELEPoses() function.
+        Iterate over the PDB files in a folder as Biopython structures. The folder
+        must be written in the format of the extractPELEPoses() function.
 
         Parameters
         ==========
@@ -2632,11 +2638,29 @@ class peleAnalysis:
             Path to PELE poses extracted with extractPELEPoses() function.
         """
 
+        if only_proteins == None:
+            only_proteins = []
+        elif isinstance(only_proteins, str):
+            only_proteins = [only_proteins]
+
+        if only_ligands == None:
+            only_ligands = []
+        elif isinstance(only_ligands, str):
+            only_ligands = [only_ligands]
+
         for protein in os.listdir(poses_folder):
+
+            if only_proteins != [] and protein not in only_proteins:
+                continue
+
             for f in os.listdir(poses_folder+'/'+protein):
                 fs = f.replace('.pdb','').split(self.separator)
                 if fs[0] == protein:
                     ligand, epoch, trajectory, pele_step = fs[1:5]
+
+                    if only_ligands != [] and ligand not in only_ligands:
+                        continue
+
                     if return_paths:
                         yield (protein, ligand, epoch, trajectory, pele_step), poses_folder+'/'+protein+'/'+f
                     else:
@@ -2709,7 +2733,8 @@ class peleAnalysis:
                     io.save(pdb_path)
 
 
-    def getNewBoxCenters(self, pele_poses_folder, center_atoms, verbose=False):
+    def getNewBoxCenters(self, pele_poses_folder, center_atoms, verbose=False,
+                         only_proteins=None, only_ligands=None):
         """
         Gets the new box centers for a group of extracted PELE poses. The new box centers
         are taken from a dictionary containing an atom-tuple in the format:
@@ -2726,7 +2751,7 @@ class peleAnalysis:
 
         When more than one pose is given for the same protein and ligand combination an
         average center will be calculated, therefore it is recommended that they will
-        be aligned before calculating the new average box center (see alignCommonPELEPoses()).
+        be aligned before calculating the new average box center.
 
         Parameters
         ==========
@@ -2734,6 +2759,10 @@ class peleAnalysis:
             Path to a folder were poses were extracted with the function extractPELEPoses()
         center_atoms : dict or tuple
             Atoms to be used as coordinate centers for the new box coordinates.
+        only_proteins : (list, str)
+            Only process the given proteins.
+        only_ligands : (list, str)
+            Only process the given ligands.
 
         Returns
         =======
@@ -2741,9 +2770,20 @@ class peleAnalysis:
             Dictionary by (protein, ligand) that contains the new box center coordinates
         """
 
+        if only_proteins == None:
+            only_proteins = []
+        elif isinstance(only_proteins, str):
+            only_proteins = [only_proteins]
+
+        if only_ligands == None:
+            only_ligands = []
+        elif isinstance(only_ligands, str):
+            only_ligands = [only_ligands]
+
         # Get new box centers
         box_centers = {}
-        for index, structure in self.getFolderStructures(pele_poses_folder):
+        for index, structure in getFolderStructures(self, pele_poses_folder, only_proteins=only_proteins,
+                                                    only_ligands=only_ligands):
 
             protein = index[0]
             ligand = index[1]
@@ -2797,10 +2837,11 @@ class peleAnalysis:
             if bc != None:
                 box_centers[(protein, ligand)].append(np.array(bc))
             else:
-                raise ValueError('Atom could not be match for model %s' % index)
+                raise ValueError('Atom could not be match for model %s-%s' % (protein, ligand))
 
         # Check if there are more than one box center
         for (protein, ligand) in box_centers:
+
             bc = np.array(box_centers[(protein, ligand)])
             if len(bc) > 1:
                 if verbose:
@@ -2824,12 +2865,9 @@ class peleAnalysis:
 
                 box_centers[(protein, ligand)] = np.average(bc, axis=0)
 
-            # Change box centers to simple 3-element np.array if they are list
-            if isinstance(box_centers[(protein, ligand)], list):
-                box_centers[(protein, ligand)] = box_centers[(protein, ligand)][0]
+        box_centers = {key:value[0] for key,value in box_centers.items()}
 
         return box_centers
-
 
     def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
                              box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
