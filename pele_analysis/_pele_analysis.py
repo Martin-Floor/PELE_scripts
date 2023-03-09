@@ -3803,10 +3803,10 @@ class peleAnalysis:
                     if not os.path.exists(epoch_folder):
                         os.mkdir(epoch_folder)
                     for traj in self.trajectory_files[protein][ligand][epoch]:
+                        orig = self.trajectory_files[protein][ligand][epoch][traj]
                         dest = epoch_folder+'/'+orig.split('/')[-1]
                         if os.path.exists(dest) and not overwrite:
                             continue
-                        orig = self.trajectory_files[protein][ligand][epoch][traj]
                         if orig != dest: # Copy only they are not found in the analysis folder
                             shutil.copyfile(orig, dest)
                             self.trajectory_files[protein][ligand][epoch][traj] = dest
