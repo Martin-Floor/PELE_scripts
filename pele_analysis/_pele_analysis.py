@@ -38,7 +38,7 @@ class peleAnalysis:
 
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
-                 read_equilibration=True, data_folder_name=None, trajectories=False):
+                 read_equilibration=True, data_folder_name=None, global_pele=False ,trajectories=False):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -129,8 +129,13 @@ class peleAnalysis:
         if self.verbose:
             print('Reading PELE information for:')
 
+
         # Read PELE simulation report data
         self._readReportData()
+
+        if global_pele:
+            self._readGlobalReportData()
+            self._readReportData()
 
         if read_equilibration:
             if self.verbose:
@@ -139,6 +144,8 @@ class peleAnalysis:
             self._readReportData(equilibration=True)
         else:
             print('Skipping equilibration information from report files.')
+
+
 
         # Sort protein and ligand names alphabetically for orderly iterations.
         self.proteins = sorted(self.proteins)
@@ -697,13 +704,6 @@ class peleAnalysis:
         if ligand_series.empty:
             raise ValueError("Ligand name %s not found in protein's %s data!" % (ligand, protein))
 
-        # Filter points by metric
-        mask = {}
-        if not isinstance(metrics, type(None)):
-            for metric in metrics:
-                mask[(protein, ligand)] = ligand_series[metric] <= metrics[metric]
-                ligand_series = ligand_series[mask[(protein, ligand)]]
-
         # Add distance data to ligand_series
         if len(ligand_series) != 0:
             if protein in self.distances:
@@ -712,6 +712,13 @@ class peleAnalysis:
                         for distance in self.distances[protein][ligand]:
                             #if distance.startswith('distance_'):
                             ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
+
+        # Filter points by metric
+        mask = {}
+        if not isinstance(metrics, type(None)):
+            for metric in metrics:
+                mask[(protein, ligand)] = ligand_series[metric] <= metrics[metric]
+                ligand_series = ligand_series[mask[(protein, ligand)]]
 
         # Check if an axis has been given
         new_axis = False
@@ -880,7 +887,7 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None, size=1.0):
+    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None, size=1.0, alpha=0.05):
         """
         Plot binding energy as interactive plot.
         """
@@ -965,6 +972,7 @@ class peleAnalysis:
                          Ligand=fixed(Ligand),
                          Distance=distances,
                          Color=color_object,
+                         alpha=fixed(alpha),
                          vertical_line=fixed(vertical_line),
                          **metrics_sliders)
             else:
@@ -975,7 +983,8 @@ class peleAnalysis:
                          Color=color_object,
                          vertical_line=fixed(vertical_line))
 
-        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, **metrics_sliders):
+        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, alpha=0.05,
+                                    **metrics_sliders):
 
             if isinstance(metrics_sliders, type(None)):
                     self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
@@ -988,7 +997,7 @@ class peleAnalysis:
 
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column='r', metrics=metrics_sliders,
-                                                     axis=axis, alpha=0.05, clim=clim, size=size)
+                                                     axis=axis, alpha=alpha, clim=clim, size=size)
 
             else:
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
@@ -2205,9 +2214,9 @@ class peleAnalysis:
                             traj_index = atom_traj_index[chain.id][residue_label][atoms[j].name]
                             atoms[j].coord = xyz[traj_index]*10
 
-                    # Save structure
-                    io.set_structure(pdb_topology)
-                    io.save(output_folder+'/'+protein+'/'+filename)
+                        # Save structure
+                        io.set_structure(pdb_topology)
+                        io.save(output_folder+'/'+protein+'/'+filename)
 
     ### Clustering methods
 
@@ -3726,6 +3735,17 @@ class peleAnalysis:
             for protein, ligand in remove:
                 self.pele_combinations.pop(self.pele_combinations.index((protein, ligand)))
 
+    def _readGlobalReportData(self,overwrite=False):
+
+        for protein, ligand in self.pele_combinations:
+            df = pd.read_csv(self.data_folder+'/data_'+protein+self.separator+ligand+'.csv')
+            if 'Cluster' not in df:
+                df_glo = pd.read_csv(self.pele_directories[protein][ligand]+'/output/'+'data.csv')
+                df = df.join(df_glo['Cluster'], how='right')
+                df.to_csv(self.data_folder+'/data_'+protein+self.separator+ligand+'.csv')
+
+        #    shutil.move(self.pele_directories[protein][ligand]+'/output/'+'data.csv',self.data_folder+'/data_'+protein+'_'+ligand+'.csv')
+
     def _copyPELEInputs(self, overwrite=False):
         """
         Copy PELE input files to analysis folder for easy setup PELE reruns.
@@ -3803,10 +3823,10 @@ class peleAnalysis:
                     if not os.path.exists(epoch_folder):
                         os.mkdir(epoch_folder)
                     for traj in self.trajectory_files[protein][ligand][epoch]:
+                        orig = self.trajectory_files[protein][ligand][epoch][traj]
                         dest = epoch_folder+'/'+orig.split('/')[-1]
                         if os.path.exists(dest) and not overwrite:
                             continue
-                        orig = self.trajectory_files[protein][ligand][epoch][traj]
                         if orig != dest: # Copy only they are not found in the analysis folder
                             shutil.copyfile(orig, dest)
                             self.trajectory_files[protein][ligand][epoch][traj] = dest
