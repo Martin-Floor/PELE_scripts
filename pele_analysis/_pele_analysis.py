@@ -38,7 +38,7 @@ class peleAnalysis:
 
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
-                 read_equilibration=True, data_folder_name=None,global_pele=True ,trajectories=False):
+                 read_equilibration=True, data_folder_name=None, global_pele=False ,trajectories=False):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -887,7 +887,7 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None, size=1.0):
+    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None, size=1.0, alpha=0.05):
         """
         Plot binding energy as interactive plot.
         """
@@ -972,6 +972,7 @@ class peleAnalysis:
                          Ligand=fixed(Ligand),
                          Distance=distances,
                          Color=color_object,
+                         alpha=fixed(alpha),
                          vertical_line=fixed(vertical_line),
                          **metrics_sliders)
             else:
@@ -982,7 +983,8 @@ class peleAnalysis:
                          Color=color_object,
                          vertical_line=fixed(vertical_line))
 
-        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, **metrics_sliders):
+        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, alpha=0.05,
+                                    **metrics_sliders):
 
             if isinstance(metrics_sliders, type(None)):
                     self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
@@ -995,7 +997,7 @@ class peleAnalysis:
 
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column='r', metrics=metrics_sliders,
-                                                     axis=axis, alpha=0.05, clim=clim, size=size)
+                                                     axis=axis, alpha=alpha, clim=clim, size=size)
 
             else:
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
