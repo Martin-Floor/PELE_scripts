@@ -1693,7 +1693,7 @@ class peleAnalysis:
 
         return 'vmd -e .load_vmd.tcl'
 
-    def combineDistancesIntoMetrics(self, catalytic_labels, nonbonded_energy=False, overwrite=False):
+    def combineDistancesIntoMetrics(self, catalytic_labels, labels=None, nonbonded_energy=False, overwrite=False):
         """
         Combine different equivalent distances into specific named metrics. The function
         takes as input a dictionary (catalytic_labels) composed of inner dictionaries as follows:
@@ -1720,10 +1720,22 @@ class peleAnalysis:
                 print('Combined metric %s already added. Give overwrite=True to combine again the distances.' % name)
             else:
                 values = []
+                if labels != None:
+                    label_values = []
                 for protein, ligand in sorted(self.pele_combinations):
+
+                    # Get best distance values
                     distances = catalytic_labels[name][protein][ligand]
                     values += self.distances[protein][ligand][distances].min(axis=1).tolist()
+
+                    if labels != None:
+                        best_distances = pele.distances[protein][ligand][distances].idxmin(axis=1).to_list()
+                        label_values += [labels[name][protein][ligand][x] for x in best_distances]
+
                 self.data['metric_'+name] = values
+                if labels != None:
+                    self.data['label_'+name] = label_values
+
                 self._saveDataState()
 
     def plotEnergyByResidue(self, initial_threshold=4.5):
@@ -3766,6 +3778,7 @@ class peleAnalysis:
                         shutil.copyfile(orig, dest)
 
     def _copyPELEConfiguration(self, overwrite=False):
+
         for protein in self.pele_directories:
             for ligand in self.pele_directories[protein]:
 
