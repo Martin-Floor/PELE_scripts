@@ -2782,7 +2782,7 @@ class peleAnalysis:
 
         # Get new box centers
         box_centers = {}
-        for index, structure in getFolderStructures(self, pele_poses_folder, only_proteins=only_proteins,
+        for index, structure in self.getFolderStructures(pele_poses_folder, only_proteins=only_proteins,
                                                     only_ligands=only_ligands):
 
             protein = index[0]
