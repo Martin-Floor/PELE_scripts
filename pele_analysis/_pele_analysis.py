@@ -1,5 +1,6 @@
 from . import pele_read
 from . import pele_trajectory
+from . import pele_distances
 
 import os
 import shutil
@@ -150,8 +151,7 @@ class peleAnalysis:
         self.proteins = sorted(self.proteins)
         self.ligands = sorted(self.ligands)
 
-    def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False,
-                           verbose=False):
+    def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False, verbose=False):
         """
         Calculate distances between pairs of atoms for each pele (protein+ligand)
         simulation. The atom pairs are given as a dictionary with the following format:
@@ -164,7 +164,7 @@ class peleAnalysis:
         Parameters
         ==========
         atom_pairs : dict
-            Atom pairs for each protein + ligand entry.
+            Atom pairs for each protein + ligand entry
         equilibration : bool
             Calculate distances for the equilibration steps also
         verbose : bool
@@ -198,80 +198,110 @@ class peleAnalysis:
                     self.distances[protein][ligand]['Epoch'] = []
                     self.distances[protein][ligand]['Trajectory'] = []
                     self.distances[protein][ligand]['Accepted Pele Steps'] = []
-                    self.distances[protein][ligand]['Step'] = []
-                    if verbose:
-                        print('Calculating distances for %s + %s ' % (protein, ligand))
 
-                    # Load one trajectory at the time to save memory
-                    trajectory_files = self.trajectory_files[protein][ligand]
-                    topology_file = self.topology_files[protein][ligand]
+                if verbose:
+                    print('Calculating distances for %s + %s ' % (protein, ligand))
 
-                    # Get atom pairs indexes
-                    topology = md.load(topology_file).topology
+                # Load one trajectory at the time to save memory
+                trajectory_files = self.trajectory_files[protein][ligand]
+                topology_file = self.topology_files[protein][ligand]
 
-                    # Get atom pair indexes to compute distances
-                    pairs = []
-                    dist_label = {}
-                    pair_lengths = []
-                    for pair in atom_pairs[protein][ligand]:
-                        if len(pair) == 1:
-                            if pair[0] not in ['X', 'Y', 'Z']:
-                                raise ValueError('Only X,Y,Z coordinates can be returned for a single coordinate request.')
-                            pairs.append(pair[0])
-                            dist_label[pair[0]] = pair[0]+'_coordinate'
-                        if len(pair) >= 2:
-                            # Check if atoms are in the protein+ligand PELE topology
-                            if pair[0] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
-                            if pair[1] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                # Get atom pairs indexes
+                topology = md.load(topology_file).topology
 
-                            # Get the atom indexes
-                            i1 = self.atom_indexes[protein][ligand][pair[0]]
-                            i2 = self.atom_indexes[protein][ligand][pair[1]]
+                # Get atom pair indexes to compute distances
+                pairs = []
+                dist_label = {}
+                pair_lengths = []
+                for pair in atom_pairs[protein][ligand]:
+                    if len(pair) >= 2:
+                        # Check if atoms are in the protein+ligand PELE topology
+                        if pair[0] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                        if pair[1] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
 
-                            if len(pair) == 2:
-                                pairs.append((i1, i2))
-                                dist_label[(pair[0], pair[1])] = 'distance_'
+                        # Get the atom indexes
+                        i1 = self.atom_indexes[protein][ligand][pair[0]]
+                        i2 = self.atom_indexes[protein][ligand][pair[1]]
 
-                        if len(pair) >= 3:
-                            # Check if atoms are in the protein+ligand PELE topology
-                            if pair[2] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
+                        if len(pair) == 2:
+                            pairs.append((i1, i2))
+                            dist_label[(pair[0], pair[1])] = 'distance_'
 
-                            i3 = self.atom_indexes[protein][ligand][pair[2]]
-                            if len(pair) == 3:
-                                pairs.append((pair[0], pair[1], pair[2]))
-                                dist_label[(i1, i2, i3)] = 'angle_'
+                    if len(pair) >= 3:
+                        # Check if atoms are in the protein+ligand PELE topology
+                        if pair[0] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                        if pair[1] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                        if pair[2] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
 
-                        if len(pair) == 4:
-                            # Check if atoms are in the protein+ligand PELE topology
-                            if pair[3] not in self.atom_indexes[protein][ligand]:
-                                raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[3], protein, ligand))
+                        i3 = self.atom_indexes[protein][ligand][pair[2]]
+                        if len(pair) == 3:
+                            pairs.append((pair[0], pair[1], pair[2]))
+                            dist_label[(i1, i2, i3)] = 'angle_'
 
-                            i4 = self.atom_indexes[protein][ligand][pair[3]]
-                            pairs.append((i1, i2, i3, i4))
-                            dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'torsion_'
+                    if len(pair) == 4:
+                        # Check if atoms are in the protein+ligand PELE topology
+                        if pair[0] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
+                        if pair[1] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
+                        if pair[2] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
+                        if pair[3] not in self.atom_indexes[protein][ligand]:
+                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[3], protein, ligand))
 
-                        pair_lengths.append(len(pair))
+                        i4 = self.atom_indexes[protein][ligand][pair[3]]
+                        pairs.append((i1, i2, i3, i4))
+                        dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'torsion_'
 
-                    pair_lengths = set(pair_lengths)
-                    if len(pair_lengths) > 1:
-                        raise ValueError('Mixed number of atoms given!')
+                    pair_lengths.append(len(pair))
 
-                    pair_lengths = list(pair_lengths)[0]
+                # Check pairs
+                pair_lengths = set(pair_lengths)
+                if len(pair_lengths) > 1:
+                    raise ValueError('Mixed number of atoms given!')
+                pair_lengths = list(pair_lengths)[0]
 
-                    # Define labels
+                # Define labels
+                labels = [dist_label[p]+''.join([str(x) for x in p[0]])+'_'+\
+                                        ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
 
-                    if pair_lengths >= 2:
-                        labels = [dist_label[p]+''.join([str(x) for x in p[0]])+'_'+\
-                                                ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
-                    else:
-                        labels = [dist_label[p] for p in atom_pairs[protein][ligand]]
+                # Check if labels are already in distance_data
+                missing_labels = []
+                skip_index_append = False
+                if isinstance(self.distances[protein][ligand], pd.DataFrame):
+                    distances_keys = list(self.distances[protein][ligand].keys())
+                    for l in labels:
+                        if l not in distances_keys:
+                            missing_labels.append(l)
+                    if missing_labels != []:
+                        # Convert DF into a dictionary for distance appending
+                        self.distances[protein][ligand].reset_index(inplace=True)
+                        self.distances[protein][ligand] = self.distances[protein][ligand].to_dict()
+                        for k in self.distances[protein][ligand]:
+                            nv = [self.distances[protein][ligand][k][x] for x in self.distances[protein][ligand][k]]
+                            self.distances[protein][ligand][k] = nv
+                        skip_index_append = True
+                else:
+                    missing_labels = labels
+
+                # Update pairs based on missing labels
+                if missing_labels != []:
 
                     # Create an entry for each distance
-                    for label in labels:
+                    for label in missing_labels:
                         self.distances[protein][ligand][label] = []
+
+                    # Update pairs based on missing labels
+                    updated_pairs = []
+                    for p,l in zip(pairs, labels):
+                        if l in missing_labels:
+                            updated_pairs.append(p)
+                    pairs = updated_pairs
 
                     # Compute distances and them to the dicionary
                     for epoch in sorted(trajectory_files):
@@ -310,16 +340,18 @@ class peleAnalysis:
                                 d = md.compute_dihedrals(traj, pairs)*10
 
                             # Store data
-                            self.distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
-                            self.distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
-                            self.distances[protein][ligand]['Epoch'] += [epoch]*d.shape[0]
-                            self.distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
-                            self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(d.shape[0]))
-                            self.distances[protein][ligand]['Step'] += list(range(d.shape[0]))
-                            # series = self.getProteinAndLigandData(protein, ligand)
-
-                            for i,l in enumerate(labels):
+                            if not skip_index_append:
+                                self.distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
+                                self.distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
+                                self.distances[protein][ligand]['Epoch'] += [epoch]*d.shape[0]
+                                self.distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
+                                self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(d.shape[0]))
+                            for i,l in enumerate(missing_labels):
                                 self.distances[protein][ligand][l] += list(d[:,i])
+
+
+                    for d in self.distances[protein][ligand]:
+                        print(d, len(self.distances[protein][ligand][d]))
 
                     # Convert distances into dataframe
                     self.distances[protein][ligand] = pd.DataFrame(self.distances[protein][ligand])
@@ -329,6 +361,31 @@ class peleAnalysis:
 
                     # Set indexes for DataFrame
                     self.distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps', 'Step'], inplace=True)
+
+    def calculateDistancesParallel(self, atom_pairs, overwrite=False, verbose=False, cpus=None):
+        """
+        Calculate distances between pairs of atoms for each pele (protein+ligand)
+        simulation. The atom pairs are given as a dictionary with the following format:
+
+        The atom pairs must be given in a dicionary with each key representing the name
+        of a model and each value a sub-dicionary with the ligands as keys and a list of the atom pairs
+        to calculate in the format:
+            {model_name: { ligand_name : [((chain1_id, residue1_id, atom1_name), (chain2_id, residue2_id, atom2_name)), ...],...} another_model_name:...}
+
+        Parameters
+        ==========
+        atom_pairs : dict
+            Atom pairs for each protein + ligand entry
+        verbose : bool
+            Display function messages
+        overwrite : bool
+            Force recalculation of distances.
+        cpus : int
+            Number of cpus to use in the distances calculation.
+        """
+        distance_calculation = pele_distances.distances(self)
+        distance_calculation.calculateDistances(atom_pairs, overwrite=overwrite,
+                                                verbose=verbose, cpus=cpus)
 
     def getTrajectory(self, protein, ligand, step, trajectory, equilibration=False):
         """
@@ -985,6 +1042,12 @@ class peleAnalysis:
         #    raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
 
         distances = []
+
+        if protein not in self.distances:
+            return distances
+        elif ligand not in self.distances[protein]:
+            return distances
+
         for d in self.distances[protein][ligand]:
             if 'distance' in d:
                 distances.append(d)
@@ -1302,7 +1365,7 @@ class peleAnalysis:
                 matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30, pele_data=None, KT=5.93):
 
         def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json',
-                                     lig_label_rot=50, pele_data=None, **metrics):
+                                     lig_label_rot=90, pele_data=None, **metrics):
 
             if isinstance(pele_data, type(None)):
                 pele_data = self.data
@@ -1362,7 +1425,8 @@ class peleAnalysis:
                 M = M[sort_indexes]
                 protein_labels = [self.proteins[x] for x in sort_indexes]
 
-            plt.matshow(M, cmap='autumn')
+            plt.figure(dpi=100, figsize=(0.28*len(self.ligands),0.2*len(self.proteins)))
+            plt.imshow(M, cmap='autumn')
             if dA:
                 plt.colorbar(label='${E_{B}^{C}}-{E_{B}^{NC}}$')
             elif Ec:
@@ -1925,6 +1989,28 @@ class peleAnalysis:
         protein_series = data[data.index.get_level_values('Protein') == protein]
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         return ligand_series
+
+    def readClusterDataFromGlobal(self):
+
+        """
+        Read cluster data from the data file generated by site-finder PELE.
+
+        Parameters
+        ==========
+        """
+
+        cluster_data = {}
+        for protein,ligand in self.pele_combinations:
+            df = pd.read_csv(self.pele_directories[protein][ligand]+'/output/data.csv')
+            for line in df.iterrows():
+                traj = line[1]['trajectory'].split('/')[-1].split('.')[0].split('_')[1]
+                if line[1]['Cluster'] == '-':
+                    cl = '-1'
+                else:
+                    cl =  line[1]['Cluster']
+                cluster_data[(protein,ligand,line[1]['epoch'],traj,line[1]['numberOfAcceptedPeleSteps'])] = int(cl)
+
+        self.data['Cluster'] = cluster_data.values()
 
     ### Extract poses methods
 
@@ -2547,10 +2633,11 @@ class peleAnalysis:
             structure = self._readPDB(protein+'-'+ligand, self.topology_files[protein][ligand])
             yield (protein, ligand), structure
 
-    def getFolderStructures(self, poses_folder, return_paths=False):
+    def getFolderStructures(self, poses_folder, return_paths=False, only_proteins=None,
+                            only_ligands=None):
         """
-        Iterate over the PDB files in a folder as Biopython structures. Th folder must be written
-        in the format of the extractPELEPoses() function.
+        Iterate over the PDB files in a folder as Biopython structures. The folder
+        must be written in the format of the extractPELEPoses() function.
 
         Parameters
         ==========
@@ -2558,11 +2645,29 @@ class peleAnalysis:
             Path to PELE poses extracted with extractPELEPoses() function.
         """
 
+        if only_proteins == None:
+            only_proteins = []
+        elif isinstance(only_proteins, str):
+            only_proteins = [only_proteins]
+
+        if only_ligands == None:
+            only_ligands = []
+        elif isinstance(only_ligands, str):
+            only_ligands = [only_ligands]
+
         for protein in os.listdir(poses_folder):
+
+            if only_proteins != [] and protein not in only_proteins:
+                continue
+
             for f in os.listdir(poses_folder+'/'+protein):
                 fs = f.replace('.pdb','').split(self.separator)
                 if fs[0] == protein:
                     ligand, epoch, trajectory, pele_step = fs[1:5]
+
+                    if only_ligands != [] and ligand not in only_ligands:
+                        continue
+
                     if return_paths:
                         yield (protein, ligand, epoch, trajectory, pele_step), poses_folder+'/'+protein+'/'+f
                     else:
@@ -2635,7 +2740,8 @@ class peleAnalysis:
                     io.save(pdb_path)
 
 
-    def getNewBoxCenters(self, pele_poses_folder, center_atoms, verbose=False):
+    def getNewBoxCenters(self, pele_poses_folder, center_atoms, verbose=False,
+                         only_proteins=None, only_ligands=None):
         """
         Gets the new box centers for a group of extracted PELE poses. The new box centers
         are taken from a dictionary containing an atom-tuple in the format:
@@ -2652,7 +2758,7 @@ class peleAnalysis:
 
         When more than one pose is given for the same protein and ligand combination an
         average center will be calculated, therefore it is recommended that they will
-        be aligned before calculating the new average box center (see alignCommonPELEPoses()).
+        be aligned before calculating the new average box center.
 
         Parameters
         ==========
@@ -2660,6 +2766,10 @@ class peleAnalysis:
             Path to a folder were poses were extracted with the function extractPELEPoses()
         center_atoms : dict or tuple
             Atoms to be used as coordinate centers for the new box coordinates.
+        only_proteins : (list, str)
+            Only process the given proteins.
+        only_ligands : (list, str)
+            Only process the given ligands.
 
         Returns
         =======
@@ -2667,9 +2777,20 @@ class peleAnalysis:
             Dictionary by (protein, ligand) that contains the new box center coordinates
         """
 
+        if only_proteins == None:
+            only_proteins = []
+        elif isinstance(only_proteins, str):
+            only_proteins = [only_proteins]
+
+        if only_ligands == None:
+            only_ligands = []
+        elif isinstance(only_ligands, str):
+            only_ligands = [only_ligands]
+
         # Get new box centers
         box_centers = {}
-        for index, structure in self.getFolderStructures(pele_poses_folder):
+        for index, structure in getFolderStructures(self, pele_poses_folder, only_proteins=only_proteins,
+                                                    only_ligands=only_ligands):
 
             protein = index[0]
             ligand = index[1]
@@ -2723,10 +2844,11 @@ class peleAnalysis:
             if bc != None:
                 box_centers[(protein, ligand)].append(np.array(bc))
             else:
-                raise ValueError('Atom could not be match for model %s' % index)
+                raise ValueError('Atom could not be match for model %s-%s' % (protein, ligand))
 
         # Check if there are more than one box center
         for (protein, ligand) in box_centers:
+
             bc = np.array(box_centers[(protein, ligand)])
             if len(bc) > 1:
                 if verbose:
@@ -2750,12 +2872,9 @@ class peleAnalysis:
 
                 box_centers[(protein, ligand)] = np.average(bc, axis=0)
 
-            # Change box centers to simple 3-element np.array if they are list
-            if isinstance(box_centers[(protein, ligand)], list):
-                box_centers[(protein, ligand)] = box_centers[(protein, ligand)][0]
+        box_centers = {key:value[0] for key,value in box_centers.items()}
 
         return box_centers
-
 
     def setUpPELECalculation(self, pele_folder, models_folder, input_yaml, box_centers=None, distances=None, ligand_index=1,
                              box_radius=10, steps=100, debug=False, iterations=3, cpus=96, equilibration_steps=100, ligand_energy_groups=None,
@@ -3702,10 +3821,10 @@ class peleAnalysis:
                     if not os.path.exists(epoch_folder):
                         os.mkdir(epoch_folder)
                     for traj in self.trajectory_files[protein][ligand][epoch]:
+                        orig = self.trajectory_files[protein][ligand][epoch][traj]
                         dest = epoch_folder+'/'+orig.split('/')[-1]
                         if os.path.exists(dest) and not overwrite:
                             continue
-                        orig = self.trajectory_files[protein][ligand][epoch][traj]
                         if orig != dest: # Copy only they are not found in the analysis folder
                             shutil.copyfile(orig, dest)
                             self.trajectory_files[protein][ligand][epoch][traj] = dest
