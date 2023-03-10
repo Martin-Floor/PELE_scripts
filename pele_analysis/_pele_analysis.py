@@ -144,6 +144,8 @@ class peleAnalysis:
         else:
             print('Skipping equilibration information from report files.')
 
+
+
         # Sort protein and ligand names alphabetically for orderly iterations.
         self.proteins = sorted(self.proteins)
         self.ligands = sorted(self.ligands)
@@ -645,13 +647,6 @@ class peleAnalysis:
         if ligand_series.empty:
             raise ValueError("Ligand name %s not found in protein's %s data!" % (ligand, protein))
 
-        # Filter points by metric
-        mask = {}
-        if not isinstance(metrics, type(None)):
-            for metric in metrics:
-                mask[(protein, ligand)] = ligand_series[metric] <= metrics[metric]
-                ligand_series = ligand_series[mask[(protein, ligand)]]
-
         # Add distance data to ligand_series
         if len(ligand_series) != 0:
             if protein in self.distances:
@@ -660,6 +655,13 @@ class peleAnalysis:
                         for distance in self.distances[protein][ligand]:
                             #if distance.startswith('distance_'):
                             ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
+
+        # Filter points by metric
+        mask = {}
+        if not isinstance(metrics, type(None)):
+            for metric in metrics:
+                mask[(protein, ligand)] = ligand_series[metric] <= metrics[metric]
+                ligand_series = ligand_series[mask[(protein, ligand)]]
 
         # Check if an axis has been given
         new_axis = False
@@ -2124,9 +2126,9 @@ class peleAnalysis:
                             traj_index = atom_traj_index[chain.id][residue_label][atoms[j].name]
                             atoms[j].coord = xyz[traj_index]*10
 
-                    # Save structure
-                    io.set_structure(pdb_topology)
-                    io.save(output_folder+'/'+protein+'/'+filename)
+                        # Save structure
+                        io.set_structure(pdb_topology)
+                        io.save(output_folder+'/'+protein+'/'+filename)
 
     ### Clustering methods
 
