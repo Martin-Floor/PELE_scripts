@@ -2028,7 +2028,8 @@ class peleAnalysis:
 
     ### Extract poses methods
 
-    def getBestPELEPoses(self, filter_values=None, proteins=None, ligands=None, column='Binding Energy', n_models=1, return_failed=False):
+    def getBestPELEPoses(self, filter_values=None, proteins=None, ligands=None, column='Binding Energy',
+                         n_models=1, return_failed=False, cluster_aware=True):
         """
         Get best models based on the best column score and a set of metrics with specified thresholds.
         The filter thresholds must be provided with a dictionary using the metric names as keys
@@ -2044,6 +2045,8 @@ class peleAnalysis:
             Whether to return a list of the pele without any poses fulfilling
             the selection criteria. It is returned as a tuple (index 0) alongside
             the filtered data frame (index 1).
+        cluster_aware : bool
+            Check if cluster column is inside the dataframe and extract best models also by cluster.
         """
 
         bp = []
@@ -2064,6 +2067,7 @@ class peleAnalysis:
                         continue
 
                 ligand_data = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
+
                 if filter_values != None:
                     for metric in filter_values:
                         if metric in ['RMSD', 'Ligand SASA', 'Total Energy', 'Binding Energy']:
@@ -2075,10 +2079,25 @@ class peleAnalysis:
                 if ligand_data.empty:
                     failed.append((model, ligand))
                     continue
-                if ligand_data.shape[0] < n_models:
-                    print('WARNING: less than %s models available for pele %s + %s simulation' % (n_models, model, ligand))
-                for i in ligand_data[column].nsmallest(n_models).index:
-                    bp.append(i)
+
+                if 'Cluster' in self.data.keys() and cluster_aware:
+
+                    clusters = [x for x in ligand_data['Cluster'] if x != '-']
+                    clusters = list(set(clusters))
+
+                    for c in clusters:
+
+                        cluster_data = ligand_data[ligand_data['Cluster'] == c]
+                        if cluster_data.shape[0] < n_models:
+                            print('WARNING: less than %s models available for pele %s + %s simulation for cluster %s' % (n_models, model, ligand, c))
+                        for i in cluster_data[column].nsmallest(n_models).index:
+                            bp.append(i)
+
+                else:
+                    if ligand_data.shape[0] < n_models:
+                        print('WARNING: less than %s models available for pele %s + %s simulation' % (n_models, model, ligand))
+                    for i in ligand_data[column].nsmallest(n_models).index:
+                        bp.append(i)
 
         if return_failed:
 
