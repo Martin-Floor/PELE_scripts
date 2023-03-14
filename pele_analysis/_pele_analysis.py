@@ -1729,7 +1729,7 @@ class peleAnalysis:
                     values += self.distances[protein][ligand][distances].min(axis=1).tolist()
 
                     if labels != None:
-                        best_distances = pele.distances[protein][ligand][distances].idxmin(axis=1).to_list()
+                        best_distances = self.distances[protein][ligand][distances].idxmin(axis=1).to_list()
                         label_values += [labels[name][protein][ligand][x] for x in best_distances]
 
                 self.data['metric_'+name] = values
