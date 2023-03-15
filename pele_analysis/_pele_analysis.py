@@ -660,7 +660,7 @@ class peleAnalysis:
                                   productive=productive)
 
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None, size=1.0, labels_size=10.0,
-                                        xlim=None, ylim=None, metrics=None, title=None, title_size=14.0, return_axis=False, dpi=300,
+                                        xlim=None, ylim=None, metrics=None, labels=None, title=None, title_size=14.0, return_axis=False, dpi=300,
                                         axis=None, xlabel=None, ylabel=None, vertical_line_color='k', marker_size=0.8, clim=None, **kwargs):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
@@ -689,6 +689,8 @@ class peleAnalysis:
             The limits for the color range.
         metrics : dict
             A set of metrics for filtering the data points.
+        labels : dict
+            Analog to metrics, use the label column values to filter the data.
         title : str
             The plot's title.
         return_axis : bool
@@ -714,11 +716,16 @@ class peleAnalysis:
                             ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
 
         # Filter points by metric
-        mask = {}
         if not isinstance(metrics, type(None)):
             for metric in metrics:
-                mask[(protein, ligand)] = ligand_series[metric] <= metrics[metric]
-                ligand_series = ligand_series[mask[(protein, ligand)]]
+                mask = ligand_series[metric] <= metrics[metric]
+                ligand_series = ligand_series[mask]
+
+        if not isinstance(labels, type(None)):
+            for label in labels:
+                if labels[label] != None:
+                    mask = ligand_series[label] == labels[label]
+                    ligand_series = ligand_series[mask]
 
         # Check if an axis has been given
         new_axis = False
@@ -898,17 +905,19 @@ class peleAnalysis:
             else:
                 raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
 
-        def getLigands(Protein, by_metric=True, vertical_line=None, filter_by_metric=False,color_by_metric=False,color=None):
-            protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
+        def getLigands(protein):
+            protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
-            interact(getDistance, Protein=fixed(Protein), Ligand=ligands, vertical_line=fixed(vertical_line),
-                     by_metric=fixed(by_metric), filter_by_metric=fixed(filter_by_metric),color_by_metric=fixed(color_by_metric),color=fixed(color))
+            ligands_ddm = Dropdown(options=ligands, description='Ligand',
+                                   style= {'description_width': 'initial'})
 
-        def getDistance(Protein, Ligand, vertical_line=None, by_metric=True, filter_by_metric=False,color_by_metric=False,color=None):
-            protein_series = self.data[self.data.index.get_level_values('Protein') == Protein]
-            ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
+            interact(getDistance, protein_series=fixed(protein_series), protein=fixed(protein), ligand=ligands_ddm)
+
+        def getDistance(protein_series, protein, ligand, by_metric=False):
+            ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
 
             distances = []
+            distance_label = 'Distance'
             if by_metric:
                 distances = []
                 for d in ligand_series:
@@ -918,11 +927,13 @@ class peleAnalysis:
 
             if distances == []:
                 by_metric = False
+            else:
+                distance_label = 'Metric'
 
             if not by_metric:
                 distances = []
-                if Ligand in self.distances[Protein] and not isinstance(self.distances[Protein][Ligand], type(None)):
-                    for d in self.distances[Protein][Ligand]:
+                if ligand in self.distances[protein] and not isinstance(self.distances[protein][ligand], type(None)):
+                    for d in self.distances[protein][ligand]:
                         if 'distance' in d:
                             distances.append(d)
                         elif '_coordinate' in d:
@@ -934,21 +945,18 @@ class peleAnalysis:
                 if distances == []:
                     raise ValueError('Not Ligand RMSD nor distances were found! Consider to calculate some distance.')
 
-            if color == None:
-                color_columns = [k for k in ligand_series.keys()]
-                color_columns = [k for k in color_columns if ':' not in k]
-                color_columns = [k for k in color_columns if 'distance' not in k]
-                color_columns = [k for k in color_columns if not k.startswith('metric_')]
-                color_columns = [None, 'Epoch']+color_columns
-                del color_columns[color_columns.index('Binding Energy')]
-                color_object = color_columns
-            else:
-                color_object = fixed(color)
+            distances_ddm = Dropdown(options=distances, description=distance_label,
+                                     style= {'description_width': 'initial'})
 
-            if filter_by_metric or color_by_metric:# Add checks for the given pele data pandas df
+            interact(getMetrics, distances=fixed(distances_ddm),
+                     ligand_series=fixed(ligand_series),
+                     protein=fixed(protein), ligand=fixed(ligand))
+
+        def getMetrics(ligand_series, distances, protein, ligand, filter_by_metric=False, filter_by_label=False, color_by_metric=False):
+
+            if color_by_metric or filter_by_metric:
                 metrics = [k for k in ligand_series.keys() if 'metric_' in k]
                 metrics_sliders = {}
-
                 for m in metrics:
                     m_slider = FloatSlider(
                                     value=4.0,
@@ -964,49 +972,74 @@ class peleAnalysis:
                                 )
                     metrics_sliders[m] = m_slider
 
+            else:
+                metrics_sliders = {}
+
+            if filter_by_label:
+                labels_ddms = {}
+                labels = [l for l in ligand_series.keys() if 'label_' in l]
+                for l in labels:
+                    label_options = [None]+sorted(list(set(ligand_series[l])))
+                    labels_ddms[l] = Dropdown(options=label_options, description=l, style= {'description_width': 'initial'})
+            else:
+                labels_ddms = {}
+
+            interact(getColor, distance=distances, protein=fixed(protein), ligand=fixed(ligand), metrics=fixed(metrics_sliders),
+                     ligand_series=fixed(ligand_series), color_by_metric=fixed(color_by_metric), **labels_ddms)
+
+        def getColor(distance, ligand_series, metrics, protein, ligand, color_by_metric=False, **labels):
+
+            if color == None:
+                color_columns = [k for k in ligand_series.keys()]
+                color_columns = [k for k in color_columns if ':' not in k]
+                color_columns = [k for k in color_columns if 'distance' not in k]
+                color_columns = [k for k in color_columns if not k.startswith('metric_')]
+                color_columns = [k for k in color_columns if not k.startswith('label_')]
+                color_columns = [None, 'Epoch']+color_columns
+                del color_columns[color_columns.index('Binding Energy')]
+
+                color_ddm = Dropdown(options=color_columns, description='Color',
+                                     style= {'description_width': 'initial'})
                 if color_by_metric:
-                    color_object = 'Color by metric'
+                    color_ddm.options = ['Color by metric']
+                    alpha = 0.10
+                else:
+                    alpha = fixed(0.10)
 
-                interact(_bindingEnergyLandscape,
-                         Protein=fixed(Protein),
-                         Ligand=fixed(Ligand),
-                         Distance=distances,
-                         Color=color_object,
-                         alpha=fixed(alpha),
-                         vertical_line=fixed(vertical_line),
-                         **metrics_sliders)
-            else:
-                interact(_bindingEnergyLandscape,
-                         Protein=fixed(Protein),
-                         Ligand=fixed(Ligand),
-                         Distance=distances,
-                         Color=color_object,
-                         vertical_line=fixed(vertical_line))
-
-        def _bindingEnergyLandscape(Protein, Ligand, Distance, Color, vertical_line=None, alpha=0.05,
-                                    **metrics_sliders):
-
-            if isinstance(metrics_sliders, type(None)):
-                    self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
-                                                     vertical_line=vertical_line, color_column=Color, clim=clim, size=size)
-            elif Color == 'Color by metric':
-
-                axis = self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
-                                                     vertical_line=vertical_line, color_column='k',return_axis=True,
-                                                     metrics=None, clim=clim, size=size)
-
-                self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
-                                                     vertical_line=vertical_line, color_column='r', metrics=metrics_sliders,
-                                                     axis=axis, alpha=alpha, clim=clim, size=size)
+                color_object = color_ddm
 
             else:
-                self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
-                                                     vertical_line=vertical_line, color_column=Color, metrics=metrics_sliders,
-                                                     clim=clim, size=size)
+                color_object = fixed(color)
 
+            interact(_bindingEnergyLandscape, color=color_object, ligand_series=fixed(ligand_series),
+                     distance=fixed(distance), color_by_metric=fixed(color_by_metric), Alpha=alpha,
+                     labels=fixed(labels), protein=fixed(protein), ligand=fixed(ligand), **metrics)
 
-        interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line),
-                 by_metric=False, filter_by_metric=False,color_by_metric=False,color=fixed(color))
+        def _bindingEnergyLandscape(color, ligand_series, distance, protein, ligand, color_by_metric=False, Alpha=0.10, labels=None, **metrics):
+
+            # Deactivate metrics for first plot and make it black
+            return_axis = False
+            if color_by_metric:
+                color = 'k'
+                color_metrics = metrics
+                metrics = {}
+                return_axis = True
+
+            axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
+                                                        vertical_line=vertical_line, color_column=color, clim=clim, size=size,
+                                                        metrics=metrics, labels=labels, return_axis=return_axis)
+
+            # Make a second plot only coloring points passing the filters
+            if color_by_metric:
+                self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
+                                                     vertical_line=vertical_line, color_column='r', clim=clim, size=size,
+                                                     metrics=color_metrics, labels=labels, axis=axis, alpha=Alpha)
+
+        proteins = self.proteins
+        proteins_ddm = Dropdown(options=proteins, description='Protein',
+                                style= {'description_width': 'initial'})
+
+        interact(getLigands, protein=proteins_ddm)
 
     def plotDistributions(self):
         """
@@ -1364,10 +1397,14 @@ class peleAnalysis:
         interact(_bindingFreeEnergyMatrix, KT=KT_slider)
 
     def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90,
-                matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json', max_metric_threshold=30, pele_data=None, KT=5.93):
+                                                   matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json',
+                                                   max_metric_threshold=30, pele_data=None, KT=5.93):
 
-        def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, dA=True, Ec=False, Enc=False, models_file='catalytic_models.json',
+        def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, models_file='catalytic_models.json',
                                      lig_label_rot=90, pele_data=None, **metrics):
+
+            metrics_filter = {m:metrics[m] for m in metrics if m.startswith('metric_')}
+            labels_filter = {l:metrics[l] for l in metrics if l.startswith('label_')}
 
             if isinstance(pele_data, type(None)):
                 pele_data = self.data
@@ -1392,29 +1429,19 @@ class peleAnalysis:
 
                         # Calculate catalytic binding energy
                         catalytic_series = ligand_series
-                        for metric in metrics:
-                            catalytic_series = catalytic_series[catalytic_series[metric] <= metrics[metric]]
+
+                        for metric in metrics_filter:
+                            catalytic_series = catalytic_series[catalytic_series[metric] <= metrics_filter[metric]]
+
+                        for l in labels_filter:
+                            # Filter by labels
+                            if labels_filter[m] != None:
+                                catalytic_series = catalytic_series[catalytic_series[l] == labels_filter[l]]
 
                         total_energy = catalytic_series['Total Energy']
                         relative_energy = total_energy-energy_minimum
                         probability = np.exp(-relative_energy/KT)/Z
-                        Ebc = np.sum(probability*catalytic_series['Binding Energy'])
-
-                        # Calculate non-catalytic binding energy
-                        catalytic_indexes = catalytic_series.index.values.tolist()
-                        noncatalytic_series = ligand_series.loc[~ligand_series.index.isin(catalytic_indexes)]
-
-                        total_energy = noncatalytic_series['Total Energy']
-                        relative_energy = total_energy-energy_minimum
-                        probability = np.exp(-relative_energy/KT)/Z
-                        Ebnc = np.sum(probability*noncatalytic_series['Binding Energy'])
-
-                        if dA:
-                            M[i][j] = Ebc-Ebnc
-                        elif Ec:
-                            M[i][j] = Ebc
-                        elif Enc:
-                            M[i][j] = Ebnc
+                        M[i][j] = np.sum(probability*catalytic_series['Binding Energy'])
                     else:
                         M[i][j] = np.nan
 
@@ -1429,12 +1456,7 @@ class peleAnalysis:
 
             plt.figure(dpi=100, figsize=(0.28*len(self.ligands),0.2*len(self.proteins)))
             plt.imshow(M, cmap='autumn')
-            if dA:
-                plt.colorbar(label='${E_{B}^{C}}-{E_{B}^{NC}}$')
-            elif Ec:
-                plt.colorbar(label='$E_{B}^{C}$')
-            elif Enc:
-                plt.colorbar(label='$E_{B}^{NC}$')
+            plt.colorbar(label='$E_{B}^{C}$')
 
             if store_values:
                 np.save(matrix_file, M)
@@ -1452,52 +1474,71 @@ class peleAnalysis:
 
             display(plt.show())
 
+        # Define if PELE data is given
         if isinstance(pele_data, type(None)):
             pele_data = self.data
 
         # Add checks for the given pele data pandas df
         metrics = [k for k in pele_data.keys() if 'metric_' in k]
+        labels = {}
+        for m in metrics:
+            for l in pele_data.keys():
+                if 'label_' in l and l.replace('label_', '') == m.replace('metric_', ''):
+                    labels[m] = sorted(list(set(pele_data[l])))
 
         metrics_sliders = {}
+        labels_ddms = {}
         for m in metrics:
             m_slider = FloatSlider(
-                            value=initial_threshold,
-                            min=0,
-                            max=max_metric_threshold,
-                            step=0.1,
-                            description=m+':',
-                            disabled=False,
-                            continuous_update=False,
-                            orientation='horizontal',
-                            readout=True,
-                            readout_format='.2f',
-                        )
-            metrics_sliders[m] = m_slider
-
-        KT_slider = FloatSlider(
-                        value=KT,
-                        min=0.593,
-                        max=1000.0,
+                        value=initial_threshold,
+                        min=0,
+                        max=max_metric_threshold,
                         step=0.1,
-                        description='KT:',
+                        description=m+':',
                         disabled=False,
                         continuous_update=False,
                         orientation='horizontal',
                         readout=True,
-                        readout_format='.1f',
-                    )
+                        readout_format='.2f',
+                        style= {'description_width': 'initial'})
 
-        dA = Checkbox(value=False,
-                     description='$\delta A$')
-        Ec = Checkbox(value=True,
-                     description='$E_{B}^{C}$')
-        Enc = Checkbox(value=False,
-                     description='$E_{B}^{NC}$')
+            metrics_sliders[m] = m_slider
 
-        ligand_ddm = Dropdown(options=self.ligands+['by_protein'])
+            if labels[m] != []:
+                label_options = [None]+labels[m]
+                label_ddm = Dropdown(options=label_options, description=m.replace('metric_', 'label_'), style= {'description_width': 'initial'})
+                metrics_sliders[m.replace('metric_', 'label_')] = label_ddm
 
-        interact(_bindingFreeEnergyMatrix, KT=KT_slider, sort_by_ligand=ligand_ddm, pele_data=fixed(pele_data),
-                 dA=dA, Ec=Ec, Enc=Enc, models_file=fixed(models_file), lig_label_rot=fixed(lig_label_rot), **metrics_sliders)
+        VB = []
+        ligand_ddm = Dropdown(options=self.ligands+['by_protein'], description='Sort by ligand',
+                              style= {'description_width': 'initial'})
+        VB.append(ligand_ddm)
+
+        KT_slider = FloatSlider(
+                    value=KT,
+                    min=0.593,
+                    max=1000.0,
+                    step=0.1,
+                    description='KT:',
+                    disabled=False,
+                    continuous_update=False,
+                    orientation='horizontal',
+                    readout=True,
+                    readout_format='.1f')
+
+        for m in metrics_sliders:
+            VB.append(metrics_sliders[m])
+        for m in labels_ddms:
+            VB.append(labels_ddms[m])
+        VB.append(KT_slider)
+
+        plot = interactive_output(_bindingFreeEnergyMatrix, {'KT': KT_slider, 'sort_by_ligand' :ligand_ddm,
+                                  'pele_data' : fixed(pele_data), 'models_file': fixed(models_file),
+                                  'lig_label_rot' : fixed(lig_label_rot), **metrics_sliders})
+        VB.append(plot)
+        VB = VBox(VB)
+
+        display(VB)
 
     def visualiseBestPoses(self, pele_data=None, initial_threshold=3.5):
 
