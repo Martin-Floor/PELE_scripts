@@ -1076,7 +1076,7 @@ class peleAnalysis:
                 show = False
 
             if not skip_fp:
-                axis = scatterPlotIndividualSimulation(self ,protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
+                axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                             vertical_line=vertical_line, color_column=color, clim=clim, size=size,
                                                             metrics=metrics, labels=labels, return_axis=return_axis, show=show,
                                                             title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
@@ -1084,7 +1084,7 @@ class peleAnalysis:
 
             # Make a second plot only coloring points passing the filters
             if color_by_metric:
-                scatterPlotIndividualSimulation(self, protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
+                self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column='r', clim=clim, size=size,
                                                      metrics=color_metrics, labels=labels, axis=axis, show=True, alpha=Alpha,
                                                      no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
@@ -1099,7 +1099,7 @@ class peleAnalysis:
                     colors = iter([plt.cm.Set2(i) for i in range(len(all_labels[l]))])
                     for i,v in enumerate(all_labels[l]):
                         if i == 0:
-                            axis = scatterPlotIndividualSimulation(self, protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
+                            axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
                                                                    vertical_line=vertical_line, color_column=[next(colors)], clim=clim, size=size,
                                                                    metrics=metrics, labels=labels, return_axis=return_axis, alpha=Alpha, show=show,
                                                                    no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
@@ -1107,7 +1107,7 @@ class peleAnalysis:
                             continue
                         elif i == len(all_labels[l])-1:
                             show = True
-                        axis = scatterPlotIndividualSimulation(self, protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
+                        axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
                                                                     vertical_line=vertical_line, color_column=[next(colors)], clim=clim, size=size,
                                                                     metrics=metrics, labels={l:v}, return_axis=return_axis, axis=axis, alpha=Alpha, show=show,
                                                                     show_legend=True, title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
