@@ -659,9 +659,10 @@ class peleAnalysis:
                                   equilibration=equilibration,
                                   productive=productive)
 
-    def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None, size=1.0, labels_size=10.0,
-                                        xlim=None, ylim=None, metrics=None, labels=None, title=None, title_size=14.0, return_axis=False, dpi=300,
-                                        axis=None, xlabel=None, ylabel=None, vertical_line_color='k', marker_size=0.8, clim=None, **kwargs):
+    def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None, size=1.0, labels_size=10.0, plot_label=None,
+                                        xlim=None, ylim=None, metrics=None, labels=None, title=None, title_size=14.0, return_axis=False, dpi=300, show_legend=False,
+                                        axis=None, xlabel=None, ylabel=None, vertical_line_color='k', vertical_line_width=0.5, marker_size=0.8, clim=None, show=False,
+                                        legend_font_size=6, no_xticks=False, no_yticks=False, no_cbar=False, no_xlabel=False, no_ylabel=False, **kwargs):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns. Data series can be filtered by specific metrics.
@@ -734,6 +735,10 @@ class peleAnalysis:
             axis = plt.gca()
             new_axis = True
 
+        # Check if label has been given
+        if plot_label == None:
+            plot_label = protein+self.separator+ligand
+
         # Define color columns
         color_columns = [k for k in ligand_series.keys()]
         color_columns = [k for k in color_columns if ':' not in k]
@@ -776,13 +781,15 @@ class peleAnalysis:
                     norm=norm,
                     vmin=vmin,
                     vmax=vmax,
-                    label=protein+self.separator+ligand,
+                    label=plot_label,
                     s=marker_size,
                     **kwargs)
                 if new_axis:
-                    cbar = plt.colorbar(sc)
-                    cbar.set_label(label=color_column, size=labels_size*size)
-                    cbar.ax.tick_params(labelsize=labels_size*size)
+                    if not no_cbar:
+                        cbar = plt.colorbar(sc)
+                        cbar.set_label(label=color_column, size=labels_size*size)
+                        cbar.ax.tick_params(labelsize=labels_size*size)
+
             elif color_column in color_columns:
                 ligand_series = ligand_series.sort_values(color_column, ascending=ascending)
                 color_values = ligand_series[color_column]
@@ -792,44 +799,59 @@ class peleAnalysis:
                     cmap=colormap,
                     vmin=vmin,
                     vmax=vmax,
-                    label=protein+self.separator+ligand,
+                    label=plot_label,
                     s=marker_size*size,
                     **kwargs)
                 if new_axis:
-                    cbar = plt.colorbar(sc)
-                    cbar.set_label(label=color_column, size=labels_size*size)
-                    cbar.ax.tick_params(labelsize=labels_size*size)
+                    if not no_cbar:
+                        cbar = plt.colorbar(sc)
+                        cbar.set_label(label=color_column, size=labels_size*size)
+                        cbar.ax.tick_params(labelsize=labels_size*size)
             else:
                 sc = axis.scatter(ligand_series[x],
                     ligand_series[y],
                     c=color_column,
                     vmin=vmin,
                     vmax=vmax,
-                    label=protein+self.separator+ligand,
+                    label=plot_label,
                     s=marker_size*size,
                     **kwargs)
 
         else:
             sc = axis.scatter(ligand_series[x],
                 ligand_series[y],
-                label=protein+self.separator+ligand,
+                label=plot_label,
                 s=marker_size*size,
                 **kwargs)
 
         if not isinstance(vertical_line, type(None)):
-            axis.axvline(vertical_line, c=vertical_line_color, ls='--')
+            axis.axvline(vertical_line, c=vertical_line_color, lw=0.5, ls='--')
 
-        if xlabel == None:
+        if xlabel == None and not no_xlabel:
             xlabel = x
-        if ylabel == None:
+        if ylabel == None and not no_ylabel:
             ylabel = y
 
         axis.set_xlabel(xlabel, fontsize=labels_size*size)
         axis.set_ylabel(ylabel, fontsize=labels_size*size)
         axis.tick_params(axis='both', labelsize=labels_size*size)
 
+        if no_xticks:
+            for tick in axis.xaxis.get_major_ticks():
+                tick.tick1line.set_visible(False)
+                tick.tick2line.set_visible(False)
+                tick.label1.set_visible(False)
+                tick.label2.set_visible(False)
+
+        if no_yticks:
+            for tick in axis.yaxis.get_major_ticks():
+                tick.tick1line.set_visible(False)
+                tick.tick2line.set_visible(False)
+                tick.label1.set_visible(False)
+                tick.label2.set_visible(False)
+
         # plt.subplots_adjust(bottom=0.1, right=0.8, top=0.8)
-        plt.tight_layout()
+    #     plt.tight_layout()
 
         if title != None:
             axis.set_title(title, fontsize=title_size*size)
@@ -838,10 +860,14 @@ class peleAnalysis:
         if ylim != None:
             axis.set_ylim(ylim)
 
-        if return_axis:
-            return plt.gca()
-        else:
+        if show_legend:
+            plt.legend(prop={'size': legend_font_size*size})
+
+        if show:
             plt.show()
+
+        if return_axis:
+            return axis
 
     def boxPlotProteinSimulation(self, protein, column):
         """
@@ -894,7 +920,9 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None, size=1.0, alpha=0.05):
+    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None,
+                               size=1.0, alpha=0.05, vertical_line_width=0.5, title=None, no_xticks=False,
+                               no_yticks=False, no_xlabel=False, no_ylabel=False, no_cbar=False):
         """
         Plot binding energy as interactive plot.
         """
@@ -952,7 +980,8 @@ class peleAnalysis:
                      ligand_series=fixed(ligand_series),
                      protein=fixed(protein), ligand=fixed(ligand))
 
-        def getMetrics(ligand_series, distances, protein, ligand, filter_by_metric=False, filter_by_label=False, color_by_metric=False):
+        def getMetrics(ligand_series, distances, protein, ligand, filter_by_metric=False, filter_by_label=False,
+                       color_by_metric=False, color_by_labels=False):
 
             if color_by_metric or filter_by_metric:
                 metrics = [k for k in ligand_series.keys() if 'metric_' in k]
@@ -980,14 +1009,17 @@ class peleAnalysis:
                 labels = [l for l in ligand_series.keys() if 'label_' in l]
                 for l in labels:
                     label_options = [None]+sorted(list(set(ligand_series[l])))
-                    labels_ddms[l] = Dropdown(options=label_options, description=l, style= {'description_width': 'initial'})
+                    labels_ddms[l] = Dropdown(options=label_options, description=l,
+                                              style= {'description_width': 'initial'})
             else:
                 labels_ddms = {}
 
-            interact(getColor, distance=distances, protein=fixed(protein), ligand=fixed(ligand), metrics=fixed(metrics_sliders),
-                     ligand_series=fixed(ligand_series), color_by_metric=fixed(color_by_metric), **labels_ddms)
+            interact(getColor, distance=distances, protein=fixed(protein), ligand=fixed(ligand),
+                     metrics=fixed(metrics_sliders), ligand_series=fixed(ligand_series),
+                     color_by_metric=fixed(color_by_metric), color_by_labels=fixed(color_by_labels), **labels_ddms)
 
-        def getColor(distance, ligand_series, metrics, protein, ligand, color_by_metric=False, **labels):
+        def getColor(distance, ligand_series, metrics, protein, ligand, color_by_metric=False,
+                     color_by_labels=False, **labels):
 
             if color == None:
                 color_columns = [k for k in ligand_series.keys()]
@@ -1001,8 +1033,11 @@ class peleAnalysis:
                 color_ddm = Dropdown(options=color_columns, description='Color',
                                      style= {'description_width': 'initial'})
                 if color_by_metric:
-                    color_ddm.options = ['Color by metric']
+                    color_ddm.options = ['Color by metrics']
                     alpha = 0.10
+                elif color_by_labels:
+                    color_ddm.options = ['Color by labels']
+                    alpha = 1.00
                 else:
                     alpha = fixed(0.10)
 
@@ -1012,10 +1047,19 @@ class peleAnalysis:
                 color_object = fixed(color)
 
             interact(_bindingEnergyLandscape, color=color_object, ligand_series=fixed(ligand_series),
-                     distance=fixed(distance), color_by_metric=fixed(color_by_metric), Alpha=alpha,
-                     labels=fixed(labels), protein=fixed(protein), ligand=fixed(ligand), **metrics)
+                     distance=fixed(distance), color_by_metric=fixed(color_by_metric), color_by_labels=fixed(color_by_labels),
+                     Alpha=alpha, labels=fixed(labels), protein=fixed(protein), ligand=fixed(ligand), title=fixed(title),
+                     no_xticks=fixed(no_xticks), no_yticks=fixed(no_yticks), no_cbar=fixed(no_cbar),
+                     no_xlabel=fixed(no_xlabel), no_ylabel=fixed(no_ylabel), **metrics)
 
-        def _bindingEnergyLandscape(color, ligand_series, distance, protein, ligand, color_by_metric=False, Alpha=0.10, labels=None, **metrics):
+        def _bindingEnergyLandscape(color, ligand_series, distance, protein, ligand,
+                                    color_by_metric=False, color_by_labels=False,
+                                    Alpha=0.10, labels=None, title=None, no_xticks=False,
+                                    no_yticks=False, no_cbar=False, no_xlabel=True, no_ylabel=False,
+                                    **metrics):
+
+            skip_fp = False
+            show = True
 
             # Deactivate metrics for first plot and make it black
             return_axis = False
@@ -1024,16 +1068,50 @@ class peleAnalysis:
                 color_metrics = metrics
                 metrics = {}
                 return_axis = True
+                show = False
 
-            axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
-                                                        vertical_line=vertical_line, color_column=color, clim=clim, size=size,
-                                                        metrics=metrics, labels=labels, return_axis=return_axis)
+            elif color_by_labels:
+                skip_fp = True
+                return_axis = True
+                show = False
+
+            if not skip_fp:
+                axis = scatterPlotIndividualSimulation(self ,protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
+                                                            vertical_line=vertical_line, color_column=color, clim=clim, size=size,
+                                                            metrics=metrics, labels=labels, return_axis=return_axis, show=show,
+                                                            title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
+                                                            no_xlabel=no_xlabel, no_ylabel=no_ylabel)
 
             # Make a second plot only coloring points passing the filters
             if color_by_metric:
-                self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
+                scatterPlotIndividualSimulation(self, protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column='r', clim=clim, size=size,
-                                                     metrics=color_metrics, labels=labels, axis=axis, alpha=Alpha)
+                                                     metrics=color_metrics, labels=labels, axis=axis, show=True, alpha=Alpha,
+                                                     no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
+                                                     no_ylabel=no_ylabel)
+            elif color_by_labels:
+                all_labels = {}
+                for l in ligand_series.keys():
+                    if 'label_' in l:
+                        all_labels[l] = sorted(list(set(ligand_series[l].to_list())))
+
+                for l in all_labels:
+                    colors = iter([plt.cm.Set2(i) for i in range(len(all_labels[l]))])
+                    for i,v in enumerate(all_labels[l]):
+                        if i == 0:
+                            axis = scatterPlotIndividualSimulation(self, protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
+                                                                   vertical_line=vertical_line, color_column=[next(colors)], clim=clim, size=size,
+                                                                   metrics=metrics, labels=labels, return_axis=return_axis, alpha=Alpha, show=show,
+                                                                   no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
+                                                                   no_ylabel=no_ylabel)
+                            continue
+                        elif i == len(all_labels[l])-1:
+                            show = True
+                        axis = scatterPlotIndividualSimulation(self, protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
+                                                                    vertical_line=vertical_line, color_column=[next(colors)], clim=clim, size=size,
+                                                                    metrics=metrics, labels={l:v}, return_axis=return_axis, axis=axis, alpha=Alpha, show=show,
+                                                                    show_legend=True, title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
+                                                                    no_xlabel=no_xlabel, no_ylabel=no_ylabel)
 
         proteins = self.proteins
         proteins_ddm = Dropdown(options=proteins, description='Protein',
