@@ -1582,7 +1582,7 @@ class peleAnalysis:
 
             metrics_sliders[m] = m_slider
 
-            if labels[m] != []:
+            if m in labels and labels[m] != []:
                 label_options = [None]+labels[m]
                 label_ddm = Dropdown(options=label_options, description=m.replace('metric_', 'label_'), style= {'description_width': 'initial'})
                 metrics_sliders[m.replace('metric_', 'label_')] = label_ddm
