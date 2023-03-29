@@ -247,7 +247,10 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
             if os.path.exists(csv_distances_file):
                 distance_data = pd.read_csv(csv_distances_file)
                 distance_data = distance_data.loc[:, ~distance_data.columns.str.contains('^Unnamed')]
-                distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
+                indexes = ['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps']
+                if 'Step' in distance_data.keys():
+                    indexes.append('Step')
+                distance_data.set_index(indexes, inplace=True)
             else:
                 distance_data = None
 
