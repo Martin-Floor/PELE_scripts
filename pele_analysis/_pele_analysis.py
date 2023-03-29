@@ -1476,10 +1476,13 @@ class peleAnalysis:
 
     def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90,
                                                    matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json',
-                                                   max_metric_threshold=30, pele_data=None, KT=5.93):
+                                                   max_metric_threshold=30, pele_data=None, KT=5.93, to_csv=None,
+                                                   only_proteins=None, only_ligands=None):
 
         def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, models_file='catalytic_models.json',
-                                     lig_label_rot=90, pele_data=None, **metrics):
+                                     lig_label_rot=90, pele_data=None, only_proteins=None, only_ligands=None,
+                                     **metrics):
+
 
             metrics_filter = {m:metrics[m] for m in metrics if m.startswith('metric_')}
             labels_filter = {l:metrics[l] for l in metrics if l.startswith('label_')}
@@ -1487,14 +1490,32 @@ class peleAnalysis:
             if isinstance(pele_data, type(None)):
                 pele_data = self.data
 
+            if only_proteins != None:
+                proteins = [p for p in self.proteins if p in only_proteins]
+            else:
+                proteins = self.proteins
+
+            if only_ligands != None:
+                ligands = [l for l in self.ligands if l in only_ligands]
+            else:
+                ligands = self.ligands
+
+            if len(proteins) == 0:
+                raise ValueError('No proteins were found!')
+            if len(ligands) == 0:
+                raise ValueError('No ligands were found!')
+
+
             # Create a matrix of length proteins times ligands
-            M = np.zeros((len(self.proteins), len(self.ligands)))
+            M = np.zeros((len(proteins), len(ligands)))
 
             # Calculate the probaility of each state
-            for i,protein in enumerate(self.proteins):
+            for i,protein in enumerate(proteins):
+
                 protein_series = pele_data[pele_data.index.get_level_values('Protein') == protein]
 
-                for j, ligand in enumerate(self.ligands):
+                for j, ligand in enumerate(ligands):
+
                     ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
 
                     if not ligand_series.empty:
@@ -1513,7 +1534,7 @@ class peleAnalysis:
 
                         for l in labels_filter:
                             # Filter by labels
-                            if labels_filter[m] != None:
+                            if labels_filter[l] != None:
                                 catalytic_series = catalytic_series[catalytic_series[l] == labels_filter[l]]
 
                         total_energy = catalytic_series['Total Energy']
@@ -1523,34 +1544,55 @@ class peleAnalysis:
                     else:
                         M[i][j] = np.nan
 
-            # Sort matrix by ligand or protein
-            if sort_by_ligand == 'by_protein':
-                protein_labels = self.proteins
-            else:
-                ligand_index = self.ligands.index(sort_by_ligand)
-                sort_indexes = M[:, ligand_index].argsort()
-                M = M[sort_indexes]
-                protein_labels = [self.proteins[x] for x in sort_indexes]
-
-            plt.figure(dpi=100, figsize=(0.28*len(self.ligands),0.2*len(self.proteins)))
-            plt.imshow(M, cmap='autumn')
-            plt.colorbar(label='$E_{B}^{C}$')
-
             if store_values:
                 np.save(matrix_file, M)
                 if not models_file.endswith('.json'):
                     models_file = models_file+'.json'
                 with open(models_file, 'w') as of:
-                    json.dump(protein_labels, of)
+                    json.dump(proteins, of)
+
+            if to_csv != None:
+                catalytic_values = {}
+                catalytic_values['Model'] = []
+                catalytic_values['Ligand'] = []
+                catalytic_values['$E_{B}^{C}$'] = []
+
+                for i,m in zip(M, proteins):
+                    for v, l in zip(i,  ligands):
+                        catalytic_values['Model'].append(m)
+                        catalytic_values['Ligand'].append(l)
+                        catalytic_values['$E_{B}^{C}$'].append(v)
+                catalytic_values = pd.DataFrame(catalytic_values)
+                catalytic_values.set_index(['Model', 'Ligand'])
+                catalytic_values.to_csv(to_csv)
+
+            # Sort matrix by ligand or protein
+            if sort_by_ligand == 'by_protein':
+                protein_labels = proteins
+            else:
+                ligand_index = ligands.index(sort_by_ligand)
+                sort_indexes = M[:, ligand_index].argsort()
+                M = M[sort_indexes]
+                protein_labels = [proteins[x] for x in sort_indexes]
+
+            plt.figure(dpi=100, figsize=(0.28*len(ligands),0.2*len(proteins)))
+            plt.imshow(M, cmap='autumn')
+            plt.colorbar(label='$E_{B}^{C}$')
 
             plt.xlabel('Ligands', fontsize=12)
             ax = plt.gca()
-            ax.set_xticklabels(self.ligands, rotation=lig_label_rot)
-            plt.xticks(np.arange(0,len(self.ligands)), self.ligands, rotation=lig_label_rot)
+            ax.set_xticklabels(ligands, rotation=lig_label_rot)
+            plt.xticks(np.arange(0,len(ligands)), ligands, rotation=lig_label_rot)
             plt.ylabel('Proteins', fontsize=12)
-            plt.yticks(range(len(self.proteins)), protein_labels)
+            plt.yticks(range(len(proteins)), protein_labels)
 
             display(plt.show())
+
+        # Check to_csv input
+        if to_csv != None and not isinstance(to_csv, str):
+            raise ValueError('to_csv must be a path to the output csv file.')
+        if to_csv != None and not to_csv.endswith('.csv'):
+            to_csv = to_csv+'.csv'
 
         # Define if PELE data is given
         if isinstance(pele_data, type(None)):
@@ -1587,8 +1629,21 @@ class peleAnalysis:
                 label_ddm = Dropdown(options=label_options, description=m.replace('metric_', 'label_'), style= {'description_width': 'initial'})
                 metrics_sliders[m.replace('metric_', 'label_')] = label_ddm
 
+        if only_proteins != None:
+            if isinstance(only_proteins, str):
+                only_proteins = [only_proteins]
+
+        # Get only ligands if given
+        if only_ligands != None:
+            if isinstance(only_ligands, str):
+                only_ligands = [only_ligands]
+
+            ligands = [l for l in self.ligands if l in only_ligands]
+        else:
+            ligands = self.ligands
+
         VB = []
-        ligand_ddm = Dropdown(options=self.ligands+['by_protein'], description='Sort by ligand',
+        ligand_ddm = Dropdown(options=ligands+['by_protein'], description='Sort by ligand',
                               style= {'description_width': 'initial'})
         VB.append(ligand_ddm)
 
@@ -1612,7 +1667,8 @@ class peleAnalysis:
 
         plot = interactive_output(_bindingFreeEnergyMatrix, {'KT': KT_slider, 'sort_by_ligand' :ligand_ddm,
                                   'pele_data' : fixed(pele_data), 'models_file': fixed(models_file),
-                                  'lig_label_rot' : fixed(lig_label_rot), **metrics_sliders})
+                                  'lig_label_rot' : fixed(lig_label_rot), 'only_proteins': fixed(only_proteins),
+                                  'only_ligands': fixed(only_ligands), **metrics_sliders})
         VB.append(plot)
         VB = VBox(VB)
 
@@ -1848,14 +1904,67 @@ class peleAnalysis:
                     values += self.distances[protein][ligand][distances].min(axis=1).tolist()
 
                     if labels != None:
+                        if name not in labels or protein not in labels[name] or ligand not in labels[name][protein]:
+                            continue
+                        if labels[name][protein][ligand] == {}:
+                            continue
+
                         best_distances = self.distances[protein][ligand][distances].idxmin(axis=1).to_list()
                         label_values += [labels[name][protein][ligand][x] for x in best_distances]
 
                 self.data['metric_'+name] = values
-                if labels != None:
+                if labels != None and label_values != []:
                     self.data['label_'+name] = label_values
 
                 self._saveDataState()
+
+    def combineMetricsWithExclusions(self, combinations, exclusions, drop=True):
+        """
+        missing
+        """
+
+        # Get all metrics as index dictionary
+        metrics_indexes = {}
+        all_metrics = []
+        i = 0
+        for c in combinations:
+            for m in combinations[c]:
+                metrics_indexes[m] = i
+                all_metrics.append('metric_'+m)
+                i += 1
+
+        # Get data as numpy array with only metric columns
+        data = self.data[all_metrics]
+
+        # Get labels of the shortest distance
+        min_values = data.idxmin(axis=1)
+
+        # Define columns to be excluded
+        excluded_values = [] # Exclude for the same metric
+        for i,m in enumerate(min_values):
+            m = m.replace('metric_', '')
+            for e in exclusions:
+                if m in e:
+                    x = list(set(e)-set([m]))[0]
+                    excluded_values.append([i,metrics_indexes[x]])
+
+            for c in combinations:
+                if m in combinations[c]:
+                    y = list(set(combinations[c])-set([m]))[0]
+                    excluded_values.append([i,metrics_indexes[y]])
+
+        # Set excluded values as np.inf
+        data = data.to_numpy()
+        for i,j in excluded_values:
+            data[i,j] = np.inf
+
+        # Add new metrics to data frame
+        for c in combinations:
+            c_indexes = [metrics_indexes[c] for c in combinations[c]]
+            self.data['metric_'+c] = np.min(data[:,c_indexes], axis=1)
+
+        if drop:
+            self.data.drop(all_metrics, axis=1, inplace=True)
 
     def plotEnergyByResidue(self, initial_threshold=4.5):
         """
@@ -2148,7 +2257,7 @@ class peleAnalysis:
     ### Extract poses methods
 
     def getBestPELEPoses(self, filter_values=None, proteins=None, ligands=None, column='Binding Energy',
-                         n_models=1, return_failed=False, cluster_aware=True):
+                         n_models=1, return_failed=False, cluster_aware=True, label_aware=True):
         """
         Get best models based on the best column score and a set of metrics with specified thresholds.
         The filter thresholds must be provided with a dictionary using the metric names as keys
@@ -2212,6 +2321,19 @@ class peleAnalysis:
                         for i in cluster_data[column].nsmallest(n_models).index:
                             bp.append(i)
 
+                elif len([x for x in self.data.keys() if 'label_' in x]) > 0 and label_aware:
+                    labels = [x for x in self.data.keys() if 'label_' in x]
+
+                    for label in labels:
+                        label_values = sorted(list(set(ligand_data[label])))
+                        for value in label_values:
+                            label_value_data = ligand_data[ligand_data[label] == value]
+
+                            if label_value_data.shape[0] < n_models:
+                                print('WARNING: less than %s models available for pele %s + %s simulation for label %s and value %s' % (n_models, model, ligand, c))
+                            for i in label_value_data[column].nsmallest(n_models).index:
+                                bp.append(i)
+
                 else:
                     if ligand_data.shape[0] < n_models:
                         print('WARNING: less than %s models available for pele %s + %s simulation' % (n_models, model, ligand))
@@ -2225,17 +2347,23 @@ class peleAnalysis:
         return self.data[self.data.index.isin(bp)]
 
     def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None,
-                                    min_threshold=3.5, max_threshold=5.0, step_size=0.1):
+                                    min_threshold=3.5, max_threshold=5.0, step_size=0.1, label_aware=True):
         """
         Extract best poses iteratively using all given metrics simoultaneously.
         """
         extracted = []
         selected_indexes = []
 
+        if len([x for x in self.data.keys() if 'label_' in x]) > 0 and label_aware:
+            labels = [x for x in self.data.keys() if 'label_' in x]
+        else:
+            labels = []
+
         for t in np.arange(min_threshold, max_threshold+(step_size/10), step_size):
             filter_values = {m:t for m in metrics}
             best_poses = self.getBestPELEPoses(filter_values, column=column, n_models=1,
-                                               proteins=proteins, ligands=ligands)
+                                               proteins=proteins, ligands=ligands,
+                                               label_aware=label_aware)
             mask = []
             if not isinstance(ligands, type(None)):
                 for level in best_poses.index.get_level_values('Ligand'):
@@ -2247,11 +2375,21 @@ class peleAnalysis:
             else:
                 pele_data = best_poses
 
-            for row in pele_data.index:
-                if row[:2] not in extracted:
-                    selected_indexes.append(row)
-                if row[:2] not in extracted:
-                    extracted.append(row[:2])
+            # Check that models were not written in a previous iteration (one by protein, ligand, and label)
+            if label_aware and labels != []:
+                for i,v in pele_data.iterrows():
+                    for l in labels:
+                        i_label = (*i[:2], v[l])
+                        if i_label not in extracted:
+                            selected_indexes.append(i)
+                            extracted.append(i_label)
+
+            # Check that models were not written in a previous iteration (one by protein and ligand)
+            else:
+                for row in pele_data.index:
+                    if row[:2] not in extracted:
+                        selected_indexes.append(row)
+                        extracted.append(row[:2])
 
         final_mask = []
         for row in self.data.index:
@@ -2263,7 +2401,7 @@ class peleAnalysis:
 
         return pele_data
 
-    def extractPELEPoses(self, pele_data, output_folder, separator=None, keep_chain_names=True):
+    def extractPELEPoses(self, pele_data, output_folder, separator=None, keep_chain_names=True, label_aware=True):
         """
         Extract pele poses present in a pele dataframe. The PELE DataFrame
         contains the same structure as the self.data dataframe, attribute of
@@ -2281,6 +2419,11 @@ class peleAnalysis:
 
         if separator == None:
             separator = self.separator
+
+        if len([x for x in self.data.keys() if 'label_' in x]) > 0 and label_aware:
+            labels = [x for x in self.data.keys() if 'label_' in x]
+        else:
+            labels = []
 
         # Create output folder
         if not os.path.exists(output_folder):
@@ -2312,6 +2455,10 @@ class peleAnalysis:
                     if not os.path.exists(output_folder+'/'+protein):
                         os.mkdir(output_folder+'/'+protein)
 
+                    # Check whether protein and ligand trajectories are available.
+                    if protein not in self.trajectory_files or ligand not in self.trajectory_files[protein]:
+                        raise ValueError('Trajectory files not found for protein %s and ligand %s.' % (protein, ligand))
+
                     traj = pele_trajectory.loadTrajectoryFrames(ligand_data,
                                                                 self.trajectory_files[protein][ligand],
                                                                 self.topology_files[protein][ligand])
@@ -2338,13 +2485,13 @@ class peleAnalysis:
                     pdb_topology = parser.get_structure(protein, self.topology_files[protein][ligand])
                     atoms = [a for a in pdb_topology.get_atoms()]
 
-                    ## Match MDtraj and Bio.PDB chains by their order
-                    #mdt_index = {}
-                    #for cmdt,cpdb in zip(atom_traj_index,pdb_topology.get_chains()):
-                    #    mdt_index[cpdb.id] = cmdt
-
                     # Pass mdtraj coordinates to Bio.PDB structure to preserve correct chain names
-                    for i, entry in enumerate(ligand_data.index):
+                    for i, (entry, values) in enumerate(ligand_data.iterrows()):
+
+                        if label_aware and labels != []:
+                            label_string = '-'.join([values[l] for l in labels])
+                            entry = (*entry[:2], label_string, * entry[2:])
+
                         filename = separator.join([str(x) for x in entry])+'.pdb'
                         xyz = traj[i].xyz[0]
                         for j in range(traj.n_atoms):
@@ -2649,6 +2796,9 @@ class peleAnalysis:
         self.data['Ligand Clusters'] = cluster_data
 
     def setLigandMSMClusters(self):
+        """
+        Create a class for analysing PELE simulations under the MSM framework.
+        """
         from ._msm_clustering import ligand_msm
         self.ligand_msm = ligand_msm(self)
         return self.ligand_msm
@@ -3023,8 +3173,6 @@ class peleAnalysis:
                         print()
 
                 box_centers[(protein, ligand)] = np.average(bc, axis=0)
-
-        box_centers = {key:value[0] for key,value in box_centers.items()}
 
         return box_centers
 
