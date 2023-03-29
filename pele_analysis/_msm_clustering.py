@@ -178,7 +178,8 @@ class ligand_msm:
                 axes[i].set_ylabel('IC '+str(c[1]+1))
 
     def getMetricData(self, ligand, protein, metric):
-
+        """
+        """
         metric_data = []
         ligand_data = self.pele_analysis.data[self.pele_analysis.data.index.get_level_values('Ligand') == ligand]
         protein_data = ligand_data[ligand_data.index.get_level_values('Protein') == protein]
@@ -191,7 +192,6 @@ class ligand_msm:
     def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100):
         """
         """
-
         def getLigands(Protein, max_tica=10, metric_line=None):
             ligands = []
             for protein, ligand in self.pele_analysis.pele_combinations:
