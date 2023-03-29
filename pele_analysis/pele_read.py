@@ -265,13 +265,21 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
 
         for epoch in sorted(report_files):
             for traj in sorted(report_files[epoch]):
-                rd, dd ,nbed = _readReportFile(report_files[epoch][traj],
+                report_return = _readReportFile(report_files[epoch][traj],
                                          equilibration=equilibration,
                                          ebr_threshold=ebr_threshold,
                                          protein=protein,
                                          ligand=ligand,
                                          epoch=epoch,
                                          trajectory=traj)
+
+                if report_return == None:
+                    m = 'For protein %s and ligand %s,' % (protein, ligand)
+                    m += ' no PELE data was found for epoch %s and trajectory %s.'  % (epoch, traj)
+                    print(m)
+                    continue
+
+                rd, dd, nbed = report_return
 
                 report_data.append(rd)
                 distance_data.append(dd)
