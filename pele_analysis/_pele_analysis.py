@@ -38,7 +38,7 @@ class peleAnalysis:
 
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
-                 read_equilibration=True, data_folder_name=None,global_pele=True ,trajectories=False):
+                 read_equilibration=True, data_folder_name=None,global_pele=False ,trajectories=False):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -986,21 +986,21 @@ class peleAnalysis:
 
             if isinstance(metrics_sliders, type(None)):
                     self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
-                                                     vertical_line=vertical_line, color_column=Color, clim=clim, size=size)
+                                                     vertical_line=vertical_line, color_column=Color, clim=clim, size=size, xlabel=Distance+ ' (Å)', ylabel='Binding Energy (kcal/mol)')
             elif Color == 'Color by metric':
 
                 axis = self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column='k',return_axis=True,
-                                                     metrics=None, clim=clim, size=size)
+                                                     metrics=None, clim=clim, size=size, xlabel=Distance+ '(Å)', ylabel='Binding Energy (kcal/mol)')
 
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column='r', metrics=metrics_sliders,
-                                                     axis=axis, alpha=0.05, clim=clim, size=size)
+                                                     axis=axis, alpha=0.05, clim=clim, size=size, xlabel=Distance+ '(Å)', ylabel='Binding Energy (kcal/mol)')
 
             else:
                 self.scatterPlotIndividualSimulation(Protein, Ligand, Distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column=Color, metrics=metrics_sliders,
-                                                     clim=clim, size=size)
+                                                     clim=clim, size=size, xlabel=Distance+ '(Å)', ylabel='Binding Energy (kcal/mol)')
 
 
         interact(getLigands, Protein=sorted(self.proteins), vertical_line=fixed(vertical_line),
