@@ -1920,7 +1920,22 @@ class peleAnalysis:
 
     def combineMetricsWithExclusions(self, combinations, exclusions, drop=True):
         """
-        missing
+        Function to combine metrics that are mutually exclusive. The function takes two inputs,
+        combinations and exclusions.
+        Combinations are the metrics that should be merged and have the following structure:
+
+            combinations = {
+                new_metric_name = { (comb_metric_1,comb_metric_2),...}}
+
+        Exclusions are the pairs of metrics that are mutually exclusive as a list of tuples.
+
+        Parameters
+        ==========
+        combinations : dict
+            Dictionary defining which distances will be combined under a common name.
+        exclusions : list
+            List of tuples of the incompatible metrics
+
         """
 
         # Get all metrics as index dictionary
