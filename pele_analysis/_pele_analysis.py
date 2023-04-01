@@ -409,13 +409,14 @@ class peleAnalysis:
         is added as "Ligand RMSD" column in the pele data frame'
         """
 
-        if 'Ligand RMSD' in self.data.keys() or recalculate:
+        if 'Ligand RMSD' in self.data.keys() and not recalculate:
             print('Ligand RMSD data already computed. Give recalculate=True to recompute.')
             return
         else:
             RMSD = None
 
         for protein in self.proteins:
+
             for ligand in self.ligands:
 
                 # Skip protein,ligand combinations without topology files
@@ -434,6 +435,7 @@ class peleAnalysis:
                 ref_step = ref_model.index.get_level_values('Accepted Pele Steps')[0]
                 ref_traj = self.getTrajectory(protein, ligand, ref_epoch, ref_trajectory)[ref_step]
 
+                # Calculate ligand RMSD
                 for epoch in sorted(self.trajectory_files[protein][ligand]):
                     for trajectory in sorted(self.trajectory_files[protein][ligand][epoch]):
                         traj = self.getTrajectory(protein, ligand, epoch, trajectory)
@@ -448,7 +450,7 @@ class peleAnalysis:
                             RMSD = np.concatenate((RMSD, rmsd))
 
         self.data['Ligand RMSD'] = RMSD
-        self._saveDataState()
+        self._saveDataState(individually=True)
 
     def calculateProteinRMSD(self, full_atom=True, equilibration=True, productive=True, recalculate=False):
         """
@@ -1483,7 +1485,6 @@ class peleAnalysis:
                                      lig_label_rot=90, pele_data=None, only_proteins=None, only_ligands=None,
                                      **metrics):
 
-
             metrics_filter = {m:metrics[m] for m in metrics if m.startswith('metric_')}
             labels_filter = {l:metrics[l] for l in metrics if l.startswith('label_')}
 
@@ -1505,12 +1506,11 @@ class peleAnalysis:
             if len(ligands) == 0:
                 raise ValueError('No ligands were found!')
 
-
             # Create a matrix of length proteins times ligands
             M = np.zeros((len(proteins), len(ligands)))
 
             # Calculate the probaility of each state
-            for i,protein in enumerate(proteins):
+            for i, protein in enumerate(proteins):
 
                 protein_series = pele_data[pele_data.index.get_level_values('Protein') == protein]
 
@@ -3172,7 +3172,7 @@ class peleAnalysis:
                         print('Is recommended that common poses are aligned before calculating their new box centers.')
                         print()
 
-                box_centers[(protein, ligand)] = np.average(bc, axis=0)
+                box_centers[(protein, ligand)] = np.average(bc, axis=0)[0]
 
         return box_centers
 
@@ -3449,7 +3449,9 @@ class peleAnalysis:
                         iyf.write("box_radius: "+str(box_radius)+"\n")
                         if isinstance(box_centers, type(None)) and peptide:
                             raise ValueError('You must give per-protein box_centers when docking peptides!')
+
                         if not isinstance(box_centers, type(None)):
+
                             if not all(isinstance(x, (float,int)) for x in box_centers[(protein, ligand)]):
                                 # get coordinates from tuple
                                 structure = structures[protein+separator+ligand]
@@ -3664,7 +3666,7 @@ class peleAnalysis:
                         if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
                             os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
 
-    def _saveDataState(self, equilibration=False, individually=False):
+    def _saveDataState(self, equilibration=False, individually=False, only_proteins=None, only_ligands=None):
         """
         Save the data state of all protein and ligand into the CSV files.
 
@@ -3674,23 +3676,53 @@ class peleAnalysis:
             Save the equilibration data instead?
         individually : bool
             Save the DataFrames individually by protein and ligand combination?
+        only_proteins : (str, list)
+            Only save individual data for the given proteins.
+        only_ligands : (str, list)
+            Only save individual data for the given ligands.
         """
+
+        if only_proteins != None:
+            if not individually:
+                raise ValueError('only_proteins only works for saving data individually.')
+            if isinstance(only_proteins, str):
+                only_proteins = [only_proteins]
+            if not isinstance(only_proteins, list):
+                raise ValueError('only_proteins should a be a string or a list.')
+
+        if only_ligands != None:
+            if not individually:
+                raise ValueError('only_ligands only works for saving data points individually.')
+            if isinstance(only_ligands, str):
+                only_ligands = [only_ligands]
+            if not isinstance(only_ligands, list):
+                raise ValueError('only_ligands should a be a string or a list.')
 
         if individually:
             for protein, ligand in self.pele_combinations:
+
+                # Skip proteins not given in only_proteins
+                if only_proteins != None:
+                    if protein not in only_proteins:
+                        continue
+
+                # Skip ligands not given in only_ligands
+                if only_ligands != None:
+                    if ligand not in only_ligands:
+                        continue
+
                 ligand_data = self.getProteinAndLigandData(protein, ligand, equilibration=equilibration)
                 if equilibration:
                     data_file = self.data_folder+'/equilibration_data_'+protein+self.separator+ligand+'.csv'
                 else:
                     data_file = self.data_folder+'/data_'+protein+self.separator+ligand+'.csv'
                 ligand_data.to_csv(data_file)
+
         else:
             if equilibration:
                 self.equilibration_data.to_csv(self.data_folder+'/equilibration_data.csv')
             else:
                 self.data.to_csv(self.data_folder+'/data.csv')
-
-
 
     def _recoverDataState(self, remove=False, equilibration=False):
         if equilibration:
