@@ -2294,14 +2294,14 @@ class peleAnalysis:
 
         bp = []
         failed = []
-        for model in self.proteins:
+        for protein in self.proteins:
 
             # If a list of proteins is given skip proteins not in the list
             if proteins != None:
                 if protein not in proteins:
                     continue
 
-            protein_series = self.data[self.data.index.get_level_values('Protein') == model]
+            protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
             for ligand in self.ligands:
 
                 # If a list of ligands is given skip ligands not in the list
@@ -2320,7 +2320,7 @@ class peleAnalysis:
                         ligand_data = ligand_data[ligand_data[metric_name] < filter_values[metric]]
 
                 if ligand_data.empty:
-                    failed.append((model, ligand))
+                    failed.append((protein, ligand))
                     continue
 
                 if 'Cluster' in self.data.keys() and cluster_aware:
@@ -2332,7 +2332,7 @@ class peleAnalysis:
 
                         cluster_data = ligand_data[ligand_data['Cluster'] == c]
                         if cluster_data.shape[0] < n_models:
-                            print('WARNING: less than %s models available for pele %s + %s simulation for cluster %s' % (n_models, model, ligand, c))
+                            print('WARNING: less than %s models available for pele %s + %s simulation for cluster %s' % (n_models, protein, ligand, c))
                         for i in cluster_data[column].nsmallest(n_models).index:
                             bp.append(i)
 
@@ -2345,13 +2345,13 @@ class peleAnalysis:
                             label_value_data = ligand_data[ligand_data[label] == value]
 
                             if label_value_data.shape[0] < n_models:
-                                print('WARNING: less than %s models available for pele %s + %s simulation for label %s and value %s' % (n_models, model, ligand, c))
+                                print('WARNING: less than %s models available for pele %s + %s simulation for label %s and value %s' % (n_models, protein, ligand, c))
                             for i in label_value_data[column].nsmallest(n_models).index:
                                 bp.append(i)
 
                 else:
                     if ligand_data.shape[0] < n_models:
-                        print('WARNING: less than %s models available for pele %s + %s simulation' % (n_models, model, ligand))
+                        print('WARNING: less than %s models available for pele %s + %s simulation' % (n_models, protein, ligand))
                     for i in ligand_data[column].nsmallest(n_models).index:
                         bp.append(i)
 
@@ -3167,6 +3167,7 @@ class peleAnalysis:
         for (protein, ligand) in box_centers:
 
             bc = np.array(box_centers[(protein, ligand)])
+
             if len(bc) > 1:
                 if verbose:
                     message = 'Multiple protein centers from different poses found for '
@@ -3187,7 +3188,11 @@ class peleAnalysis:
                         print('Is recommended that common poses are aligned before calculating their new box centers.')
                         print()
 
-                box_centers[(protein, ligand)] = np.average(bc, axis=0)[0]
+                box_centers[(protein, ligand)] = np.average(bc, axis=0)
+
+            else:
+
+                box_centers[(protein, ligand)] = bc.reshape((3,))
 
         return box_centers
 
