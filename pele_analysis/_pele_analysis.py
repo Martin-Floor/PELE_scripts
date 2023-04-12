@@ -214,6 +214,7 @@ class peleAnalysis:
                 dist_label = {}
                 pair_lengths = []
                 for pair in atom_pairs[protein][ligand]:
+
                     if len(pair) >= 2:
                         # Check if atoms are in the protein+ligand PELE topology
                         if pair[0] not in self.atom_indexes[protein][ligand]:
@@ -827,7 +828,7 @@ class peleAnalysis:
                 **kwargs)
 
         if not isinstance(vertical_line, type(None)):
-            axis.axvline(vertical_line, c=vertical_line_color, lw=0.5, ls='--')
+            axis.axvline(vertical_line, c=vertical_line_color, lw=vertical_line_width, ls='--')
 
         if xlabel == None and not no_xlabel:
             xlabel = x
@@ -923,8 +924,9 @@ class peleAnalysis:
         plt.show()
 
     def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None,
-                               size=1.0, alpha=0.05, vertical_line_width=0.5, title=None, no_xticks=False,
-                               no_yticks=False, no_xlabel=False, no_ylabel=False, no_cbar=False):
+                               size=1.0, alpha=0.05, vertical_line_width=0.5, vertical_line_color='k',
+                               title=None, no_xticks=False, no_yticks=False, no_xlabel=False, no_ylabel=False,
+                               no_cbar=False):
         """
         Plot binding energy as interactive plot.
         """
@@ -1080,6 +1082,7 @@ class peleAnalysis:
             if not skip_fp:
                 axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                             vertical_line=vertical_line, color_column=color, clim=clim, size=size,
+                                                            vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                             metrics=metrics, labels=labels, return_axis=return_axis, show=show,
                                                             title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
                                                             no_xlabel=no_xlabel, no_ylabel=no_ylabel)
@@ -1088,6 +1091,7 @@ class peleAnalysis:
             if color_by_metric:
                 self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column='r', clim=clim, size=size,
+                                                     vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                      metrics=color_metrics, labels=labels, axis=axis, show=True, alpha=Alpha,
                                                      no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
                                                      no_ylabel=no_ylabel)
@@ -1103,6 +1107,7 @@ class peleAnalysis:
                         if i == 0:
                             axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
                                                                    vertical_line=vertical_line, color_column=[next(colors)], clim=clim, size=size,
+                                                                   vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                                    metrics=metrics, labels=labels, return_axis=return_axis, alpha=Alpha, show=show,
                                                                    no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
                                                                    no_ylabel=no_ylabel)
@@ -1111,6 +1116,7 @@ class peleAnalysis:
                             show = True
                         axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
                                                                     vertical_line=vertical_line, color_column=[next(colors)], clim=clim, size=size,
+                                                                    vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                                     metrics=metrics, labels={l:v}, return_axis=return_axis, axis=axis, alpha=Alpha, show=show,
                                                                     show_legend=True, title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
                                                                     no_xlabel=no_xlabel, no_ylabel=no_ylabel)
@@ -1479,11 +1485,11 @@ class peleAnalysis:
     def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90,
                                                    matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json',
                                                    max_metric_threshold=30, pele_data=None, KT=5.93, to_csv=None,
-                                                   only_proteins=None, only_ligands=None):
+                                                   only_proteins=None, only_ligands=None, dpi=100):
 
         def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, models_file='catalytic_models.json',
                                      lig_label_rot=90, pele_data=None, only_proteins=None, only_ligands=None,
-                                     **metrics):
+                                     dpi=100, **metrics):
 
             metrics_filter = {m:metrics[m] for m in metrics if m.startswith('metric_')}
             labels_filter = {l:metrics[l] for l in metrics if l.startswith('label_')}
@@ -1575,7 +1581,7 @@ class peleAnalysis:
                 M = M[sort_indexes]
                 protein_labels = [proteins[x] for x in sort_indexes]
 
-            plt.figure(dpi=100, figsize=(0.28*len(ligands),0.2*len(proteins)))
+            plt.figure(dpi=dpi, figsize=(0.28*len(ligands),0.2*len(proteins)))
             plt.imshow(M, cmap='autumn')
             plt.colorbar(label='$E_{B}^{C}$')
 
@@ -1668,7 +1674,7 @@ class peleAnalysis:
         plot = interactive_output(_bindingFreeEnergyMatrix, {'KT': KT_slider, 'sort_by_ligand' :ligand_ddm,
                                   'pele_data' : fixed(pele_data), 'models_file': fixed(models_file),
                                   'lig_label_rot' : fixed(lig_label_rot), 'only_proteins': fixed(only_proteins),
-                                  'only_ligands': fixed(only_ligands), **metrics_sliders})
+                                  'only_ligands': fixed(only_ligands), 'dpi' : fixed(dpi), **metrics_sliders})
         VB.append(plot)
         VB = VBox(VB)
 
@@ -3107,7 +3113,7 @@ class peleAnalysis:
         # Get new box centers
         box_centers = {}
         for index, structure in self.getFolderStructures(pele_poses_folder, only_proteins=only_proteins,
-                                                    only_ligands=only_ligands):
+                                                         only_ligands=only_ligands):
 
             protein = index[0]
             ligand = index[1]
@@ -3167,6 +3173,7 @@ class peleAnalysis:
         for (protein, ligand) in box_centers:
 
             bc = np.array(box_centers[(protein, ligand)])
+
             if len(bc) > 1:
                 if verbose:
                     message = 'Multiple protein centers from different poses found for '
@@ -3186,8 +3193,10 @@ class peleAnalysis:
                         print('Warning: box centers differ more than 2.0 angstrom between them!')
                         print('Is recommended that common poses are aligned before calculating their new box centers.')
                         print()
+                box_centers[(protein, ligand)] = np.average(bc, axis=0)
 
-                box_centers[(protein, ligand)] = np.average(bc, axis=0)[0]
+            else:
+                box_centers[(protein, ligand)] = bc.reshape((3,))
 
         return box_centers
 
@@ -3599,7 +3608,7 @@ class peleAnalysis:
                         if extend_iterations:
                             _copyScriptFile(pele_folder, 'extendAdaptiveIteartions.py')
                             extend_script_name = '._extendAdaptiveIteartions.py'
-                            command += 'python ../'+extend_script_name+' output\n'
+                            command += 'python ../'+extend_script_name+' output '+str(iterations)+'\n'
 
                         command += 'python -m pele_platform.main input_restart.yaml\n'
 
