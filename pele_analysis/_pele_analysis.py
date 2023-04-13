@@ -190,7 +190,10 @@ class peleAnalysis:
                         print('Distance file for %s + %s was found. Reading distances from there...' % (protein, ligand))
                     self.distances[protein][ligand] = pd.read_csv(distance_file, index_col=False)
                     self.distances[protein][ligand] = self.distances[protein][ligand].loc[:, ~self.distances[protein][ligand].columns.str.contains('^Unnamed')]
-                    self.distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps', 'Step'], inplace=True)
+                    index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                    if 'Step' in self.distances[protein][ligand].keys():
+                        index_columns.append('Step')
+                    self.distances[protein][ligand].set_index(index_columns, inplace=True)
                 else:
                     self.distances[protein][ligand] = {}
                     self.distances[protein][ligand]['Protein'] = []
@@ -214,6 +217,12 @@ class peleAnalysis:
                 dist_label = {}
                 pair_lengths = []
                 for pair in atom_pairs[protein][ligand]:
+
+                    if len(pair) == 1:
+                        if pair not in ['X', 'Y', 'Z']:
+                            raise ValueError('You must ask for a X, Y, or Z coordinate!')
+                        pairs.append(pair)
+                        dist_label[pair] = 'coordinate_'
 
                     if len(pair) >= 2:
                         # Check if atoms are in the protein+ligand PELE topology
@@ -268,8 +277,15 @@ class peleAnalysis:
                 pair_lengths = list(pair_lengths)[0]
 
                 # Define labels
-                labels = [dist_label[p]+''.join([str(x) for x in p[0]])+'_'+\
-                                        ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
+                labels = []
+                for pair in atom_pairs[protein][ligand]:
+                    label = dist_label[pair]
+                    if len(pair) > 1:
+                        for p in pair:
+                            label += ''.join([str(x) for x in p])+'_'
+                    else:
+                        label += pair+'_'
+                    labels.append(label[:-1])
 
                 # Check if labels are already in distance_data
                 missing_labels = []
@@ -350,10 +366,6 @@ class peleAnalysis:
                             for i,l in enumerate(missing_labels):
                                 self.distances[protein][ligand][l] += list(d[:,i])
 
-
-                    for d in self.distances[protein][ligand]:
-                        print(d, len(self.distances[protein][ligand][d]))
-
                     # Convert distances into dataframe
                     self.distances[protein][ligand] = pd.DataFrame(self.distances[protein][ligand])
 
@@ -361,7 +373,11 @@ class peleAnalysis:
                     self.distances[protein][ligand].to_csv(distance_file)
 
                     # Set indexes for DataFrame
-                    self.distances[protein][ligand].set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps', 'Step'], inplace=True)
+                    index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                    if 'Step' in self.distances[protein][ligand].keys():
+                        index_columns.append('Step')
+                    self.distances[protein][ligand].set_index(index_columns, inplace=True)
+
 
     def calculateDistancesParallel(self, atom_pairs, overwrite=False, verbose=False, cpus=None):
         """
@@ -665,7 +681,7 @@ class peleAnalysis:
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None, size=1.0, labels_size=10.0, plot_label=None,
                                         xlim=None, ylim=None, metrics=None, labels=None, title=None, title_size=14.0, return_axis=False, dpi=300, show_legend=False,
                                         axis=None, xlabel=None, ylabel=None, vertical_line_color='k', vertical_line_width=0.5, marker_size=0.8, clim=None, show=False,
-                                        legend_font_size=6, no_xticks=False, no_yticks=False, no_cbar=False, no_xlabel=False, no_ylabel=False, **kwargs):
+                                        clabel=None, legend_font_size=6, no_xticks=False, no_yticks=False, no_cbar=False, no_xlabel=False, no_ylabel=False, **kwargs):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns. Data series can be filtered by specific metrics.
@@ -808,7 +824,9 @@ class peleAnalysis:
                 if new_axis:
                     if not no_cbar:
                         cbar = plt.colorbar(sc)
-                        cbar.set_label(label=color_column, size=labels_size*size)
+                        if clabel == None:
+                            clabel = color_column
+                        cbar.set_label(label=clabel, size=labels_size*size)
                         cbar.ax.tick_params(labelsize=labels_size*size)
             else:
                 sc = axis.scatter(ligand_series[x],
@@ -926,7 +944,7 @@ class peleAnalysis:
     def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None,
                                size=1.0, alpha=0.05, vertical_line_width=0.5, vertical_line_color='k',
                                title=None, no_xticks=False, no_yticks=False, no_xlabel=False, no_ylabel=False,
-                               no_cbar=False):
+                               no_cbar=False, xlabel=None, ylabel=None, clabel=None):
         """
         Plot binding energy as interactive plot.
         """
@@ -1053,13 +1071,14 @@ class peleAnalysis:
             interact(_bindingEnergyLandscape, color=color_object, ligand_series=fixed(ligand_series),
                      distance=fixed(distance), color_by_metric=fixed(color_by_metric), color_by_labels=fixed(color_by_labels),
                      Alpha=alpha, labels=fixed(labels), protein=fixed(protein), ligand=fixed(ligand), title=fixed(title),
-                     no_xticks=fixed(no_xticks), no_yticks=fixed(no_yticks), no_cbar=fixed(no_cbar),
-                     no_xlabel=fixed(no_xlabel), no_ylabel=fixed(no_ylabel), **metrics)
+                     no_xticks=fixed(no_xticks), no_yticks=fixed(no_yticks), no_cbar=fixed(no_cbar), clabel=fixed(clabel),
+                     no_xlabel=fixed(no_xlabel), no_ylabel=fixed(no_ylabel), xlabel=fixed(xlabel), ylabel=fixed(ylabel), **metrics)
 
         def _bindingEnergyLandscape(color, ligand_series, distance, protein, ligand,
                                     color_by_metric=False, color_by_labels=False,
                                     Alpha=0.10, labels=None, title=None, no_xticks=False,
                                     no_yticks=False, no_cbar=False, no_xlabel=True, no_ylabel=False,
+                                    xlabel=None, ylabel=None, clabel=None,
                                     **metrics):
 
             skip_fp = False
@@ -1085,7 +1104,8 @@ class peleAnalysis:
                                                             vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                             metrics=metrics, labels=labels, return_axis=return_axis, show=show,
                                                             title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
-                                                            no_xlabel=no_xlabel, no_ylabel=no_ylabel)
+                                                            no_xlabel=no_xlabel, no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel,
+                                                            clabel=clabel)
 
             # Make a second plot only coloring points passing the filters
             if color_by_metric:
@@ -1094,7 +1114,7 @@ class peleAnalysis:
                                                      vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                      metrics=color_metrics, labels=labels, axis=axis, show=True, alpha=Alpha,
                                                      no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
-                                                     no_ylabel=no_ylabel)
+                                                     no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel, clabel=clabel)
             elif color_by_labels:
                 all_labels = {}
                 for l in ligand_series.keys():
@@ -1110,7 +1130,7 @@ class peleAnalysis:
                                                                    vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                                    metrics=metrics, labels=labels, return_axis=return_axis, alpha=Alpha, show=show,
                                                                    no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
-                                                                   no_ylabel=no_ylabel)
+                                                                   no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel, clabel=clabel)
                             continue
                         elif i == len(all_labels[l])-1:
                             show = True
@@ -1119,7 +1139,7 @@ class peleAnalysis:
                                                                     vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                                     metrics=metrics, labels={l:v}, return_axis=return_axis, axis=axis, alpha=Alpha, show=show,
                                                                     show_legend=True, title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
-                                                                    no_xlabel=no_xlabel, no_ylabel=no_ylabel)
+                                                                    no_xlabel=no_xlabel, no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel, clabel=clabel)
 
         proteins = self.proteins
         proteins_ddm = Dropdown(options=proteins, description='Protein',
@@ -1615,10 +1635,11 @@ class peleAnalysis:
         metrics_sliders = {}
         labels_ddms = {}
         for m in metrics:
+            print()
             m_slider = FloatSlider(
                         value=initial_threshold,
-                        min=0,
-                        max=max_metric_threshold,
+                        min=min(0, self.data[m].min()-1),
+                        max=max(self.data[m].max()+1, 30),
                         step=0.1,
                         description=m+':',
                         disabled=False,
