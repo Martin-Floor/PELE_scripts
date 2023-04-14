@@ -189,7 +189,7 @@ class ligand_msm:
 
         return metric_data
 
-    def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100):
+    def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100, xlim=None, ylim=None):
         """
         """
         def getLigands(Protein, max_tica=10, metric_line=None):
@@ -241,7 +241,7 @@ class ligand_msm:
                 y_metric_line = metric_line
 
             _plot_Nice_PES(input_data1, input_data2, xlabel=X, ylabel=Y, bins=bins, size=size, sigma=sigma,
-                           x_metric_line=x_metric_line, y_metric_line=y_metric_line)
+                           x_metric_line=x_metric_line, y_metric_line=y_metric_line, xlim=xlim, ylim=ylim)
 
         interact(getLigands, Protein=sorted(self.pele_analysis.proteins)+['all'], max_tica=fixed(max_tica),
                  metric_line=fixed(metric_line))
