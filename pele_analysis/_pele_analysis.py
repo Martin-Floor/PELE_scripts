@@ -1823,6 +1823,77 @@ class peleAnalysis:
 
         interact(getLigands, Protein=sorted(self.proteins))
 
+    def getStepsMatrix(self, step='Accepted Pele Steps'):
+        """
+        Get the data for the last step of the last epoch of every protein and ligand trajectory.
+        The matrix are stored in self.steps_matrix as (protein, ligand) dictionary. To plot these
+        matrices use the plotTrajectoryLastSteps() matrix.
+        """
+
+        allowed_steps = ['Accepted Pele Steps', 'Step']
+        if step not in ['Accepted Pele Steps', 'Step']:
+            raise ValueError('The indicated step is not allowed. Try: %s' % allowed_steps)
+
+        self.steps_matrix = {}
+        for protein, ligand in self.pele_combinations:
+
+            protein_data = self.data[self.data.index.get_level_values('Protein') == protein]
+            ligand_data = protein_data[protein_data.index.get_level_values('Ligand') == ligand]
+
+            epochs = [e for e in ligand_data.index.levels[2]]
+            trajectories = [t for t in ligand_data.index.levels[3]]
+
+            M = np.zeros((len(trajectories), len(epochs)))
+
+            for i, epoch in enumerate(epochs):
+                epoch_data = ligand_data[ligand_data.index.get_level_values('Epoch') == epoch]
+
+                for j, traj in enumerate(trajectories):
+                    traj_data = epoch_data[epoch_data.index.get_level_values('Trajectory') == traj]
+
+                    if traj_data.empty:
+                        M[j][i] = np.nan
+                        continue
+
+                    M[j][i] = traj_data.index.get_level_values(step).to_numpy().max()
+
+            self.steps_matrix[(protein, ligand)] = M
+
+        return self.steps_matrix
+
+    def plotTrajectoryLastSteps(self):
+        """
+        Plot the last accepted step by each trajectory at each epoch
+        """
+
+        def getLigands(protein):
+            protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+            ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
+            ligands_ddm = Dropdown(options=ligands, description='Ligand',
+                                   style= {'description_width': 'initial'})
+
+            interact(plotLastSteps, protein=fixed(protein), ligand=ligands_ddm)
+
+        def plotLastSteps(protein, ligand):
+
+            M = self.steps_matrix[(protein, ligand)]
+            plt.matshow(M)
+            plt.xticks(range(M.shape[1]), labels=range(1,M.shape[1]+1))
+            plt.yticks(range(M.shape[0]), labels=range(1,M.shape[0]+1))
+            plt.xlabel('Epoch', size=15)
+            plt.ylabel('Trajectory', size=15)
+            cbar = plt.colorbar()
+            cbar.set_label(label='Step', size=15)
+            display(plt.show())
+
+        if self.steps_matrix == None:
+            getStepsMatrix(self)
+
+        proteins = Dropdown(options=self.proteins, description='Protein',
+                            style= {'description_width': 'initial'})
+
+        interact(getLigands, protein=proteins)
+
     def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False,
                       num_trajectories='all', epochs=None, trajectories=None):
         """
