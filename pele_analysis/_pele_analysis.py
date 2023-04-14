@@ -2036,11 +2036,27 @@ class peleAnalysis:
                 values = []
                 if labels != None:
                     label_values = []
-                for protein, ligand in sorted(self.pele_combinations):
+
+                protein_ligand = []
+                for i in [i[:2] for i in pele.data.index]:
+                    if i not in protein_ligand:
+                        protein_ligand.append(i)
+
+                for protein, ligand in protein_ligand:
+
+                    ligand_data = self.getProteinAndLigandData(protein, ligand)
 
                     # Get best distance values
                     distances = catalytic_labels[name][protein][ligand]
-                    values += self.distances[protein][ligand][distances].min(axis=1).tolist()
+                    distance_values = self.distances[protein][ligand][distances].min(axis=1)
+
+                    # Check that distances and ligand data matches
+                    assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
+
+                    if 'sequence00856' == protein and ligand == 'BTS':
+                        print(distance_values)
+
+                    values += distance_values.to_list()
 
                     if labels != None:
                         if name not in labels or protein not in labels[name] or ligand not in labels[name][protein]:
