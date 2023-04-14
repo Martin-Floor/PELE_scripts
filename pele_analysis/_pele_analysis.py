@@ -2038,7 +2038,7 @@ class peleAnalysis:
                     label_values = []
 
                 protein_ligand = []
-                for i in [i[:2] for i in pele.data.index]:
+                for i in [i[:2] for i in self.data.index]:
                     if i not in protein_ligand:
                         protein_ligand.append(i)
 
