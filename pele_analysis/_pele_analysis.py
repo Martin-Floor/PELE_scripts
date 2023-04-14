@@ -78,6 +78,7 @@ class peleAnalysis:
         self.data = None
         self.distances = {}
         self.nonbonded_energy = {}
+        self.steps_matrix = None
 
         # System name attributes
         self.proteins = []
@@ -1505,11 +1506,11 @@ class peleAnalysis:
     def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90,
                                                    matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json',
                                                    max_metric_threshold=30, pele_data=None, KT=5.93, to_csv=None,
-                                                   only_proteins=None, only_ligands=None, dpi=100):
+                                                   only_proteins=None, only_ligands=None, average_binding_energy=False):
 
         def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, models_file='catalytic_models.json',
                                      lig_label_rot=90, pele_data=None, only_proteins=None, only_ligands=None,
-                                     dpi=100, **metrics):
+                                     abc=False, avg_ebc=False, n_poses=10, **metrics):
 
             metrics_filter = {m:metrics[m] for m in metrics if m.startswith('metric_')}
             labels_filter = {l:metrics[l] for l in metrics if l.startswith('label_')}
@@ -1546,11 +1547,12 @@ class peleAnalysis:
 
                     if not ligand_series.empty:
 
-                        # Calculate partition function
-                        total_energy = ligand_series['Total Energy']
-                        energy_minimum = total_energy.min()
-                        relative_energy = total_energy-energy_minimum
-                        Z = np.sum(np.exp(-relative_energy/KT))
+                        if abc:
+                            # Calculate partition function
+                            total_energy = ligand_series['Total Energy']
+                            energy_minimum = total_energy.min()
+                            relative_energy = total_energy-energy_minimum
+                            Z = np.sum(np.exp(-relative_energy/KT))
 
                         # Calculate catalytic binding energy
                         catalytic_series = ligand_series
@@ -1563,12 +1565,22 @@ class peleAnalysis:
                             if labels_filter[l] != None:
                                 catalytic_series = catalytic_series[catalytic_series[l] == labels_filter[l]]
 
-                        total_energy = catalytic_series['Total Energy']
-                        relative_energy = total_energy-energy_minimum
-                        probability = np.exp(-relative_energy/KT)/Z
-                        M[i][j] = np.sum(probability*catalytic_series['Binding Energy'])
+                        if abc:
+                            total_energy = catalytic_series['Total Energy']
+                            relative_energy = total_energy-energy_minimum
+                            probability = np.exp(-relative_energy/KT)/Z
+                            M[i][j] = np.sum(probability*catalytic_series['Binding Energy'])
+                        elif avg_ebc:
+                            M[i][j] = catalytic_series.nsmallest(n_poses, 'Binding Energy')['Binding Energy'].mean()
                     else:
                         M[i][j] = np.nan
+
+            if abc:
+                binding_metric_label = '$A_{B}^{C}$'
+            elif avg_ebc:
+                binding_metric_label = '$\overline{E}_{B}^{C}$'
+            else:
+                raise ValueError('You should mark at least one option: $A_{B}^{C}$ or $\overline{E}_{B}^{C}$!')
 
             if store_values:
                 np.save(matrix_file, M)
@@ -1581,13 +1593,13 @@ class peleAnalysis:
                 catalytic_values = {}
                 catalytic_values['Model'] = []
                 catalytic_values['Ligand'] = []
-                catalytic_values['$E_{B}^{C}$'] = []
+                catalytic_values[binding_metric_label] = []
 
                 for i,m in zip(M, proteins):
                     for v, l in zip(i,  ligands):
                         catalytic_values['Model'].append(m)
                         catalytic_values['Ligand'].append(l)
-                        catalytic_values['$E_{B}^{C}$'].append(v)
+                        catalytic_values[binding_metric_label].append(v)
                 catalytic_values = pd.DataFrame(catalytic_values)
                 catalytic_values.set_index(['Model', 'Ligand'])
                 catalytic_values.to_csv(to_csv)
@@ -1601,9 +1613,9 @@ class peleAnalysis:
                 M = M[sort_indexes]
                 protein_labels = [proteins[x] for x in sort_indexes]
 
-            plt.figure(dpi=dpi, figsize=(0.28*len(ligands),0.2*len(proteins)))
+            plt.figure(dpi=100, figsize=(0.28*len(ligands),0.2*len(proteins)))
             plt.imshow(M, cmap='autumn')
-            plt.colorbar(label='$E_{B}^{C}$')
+            plt.colorbar(label=binding_metric_label)
 
             plt.xlabel('Ligands', fontsize=12)
             ax = plt.gca()
@@ -1635,11 +1647,10 @@ class peleAnalysis:
         metrics_sliders = {}
         labels_ddms = {}
         for m in metrics:
-            print()
             m_slider = FloatSlider(
                         value=initial_threshold,
-                        min=min(0, self.data[m].min()-1),
-                        max=max(self.data[m].max()+1, 30),
+                        min=0,
+                        max=max_metric_threshold,
                         step=0.1,
                         description=m+':',
                         disabled=False,
@@ -1674,6 +1685,28 @@ class peleAnalysis:
                               style= {'description_width': 'initial'})
         VB.append(ligand_ddm)
 
+        abc = Checkbox(value=True,
+                       description='$A_{B}^{C}$')
+        VB.append(abc)
+
+        if average_binding_energy:
+            avg_ebc = Checkbox(value=False,
+                               description='$\overline{E}_{B}^{C}$')
+
+            VB.append(avg_ebc)
+
+            Ebc_slider = IntSlider(
+                     value=10,
+                     min=1,
+                     max=1000,
+                     step=1,
+                     description='N poses (only $\overline{E}_{B}^{C}$):',
+                     disabled=False,
+                     continuous_update=False,
+                     orientation='horizontal',
+                     readout=True)
+            VB.append(Ebc_slider)
+
         KT_slider = FloatSlider(
                     value=KT,
                     min=0.593,
@@ -1692,10 +1725,18 @@ class peleAnalysis:
             VB.append(labels_ddms[m])
         VB.append(KT_slider)
 
-        plot = interactive_output(_bindingFreeEnergyMatrix, {'KT': KT_slider, 'sort_by_ligand' :ligand_ddm,
-                                  'pele_data' : fixed(pele_data), 'models_file': fixed(models_file),
-                                  'lig_label_rot' : fixed(lig_label_rot), 'only_proteins': fixed(only_proteins),
-                                  'only_ligands': fixed(only_ligands), 'dpi' : fixed(dpi), **metrics_sliders})
+        if average_binding_energy:
+            plot = interactive_output(_bindingFreeEnergyMatrix, {'KT': KT_slider, 'sort_by_ligand' :ligand_ddm,
+                                      'pele_data' : fixed(pele_data), 'models_file': fixed(models_file),
+                                      'lig_label_rot' : fixed(lig_label_rot), 'only_proteins': fixed(only_proteins),
+                                      'only_ligands': fixed(only_ligands), 'abc' : abc, 'avg_ebc' : avg_ebc,
+                                      'n_poses' : Ebc_slider, **metrics_sliders})
+        else:
+            plot = interactive_output(_bindingFreeEnergyMatrix, {'KT': KT_slider, 'sort_by_ligand' :ligand_ddm,
+                                      'pele_data' : fixed(pele_data), 'models_file': fixed(models_file),
+                                      'lig_label_rot' : fixed(lig_label_rot), 'only_proteins': fixed(only_proteins),
+                                      'only_ligands': fixed(only_ligands), 'abc' : abc, **metrics_sliders})
+
         VB.append(plot)
         VB = VBox(VB)
 
@@ -1781,6 +1822,77 @@ class peleAnalysis:
         # interactive_output(getLigands, {'Protein': protein})
 
         interact(getLigands, Protein=sorted(self.proteins))
+
+    def getStepsMatrix(self, step='Accepted Pele Steps'):
+        """
+        Get the data for the last step of the last epoch of every protein and ligand trajectory.
+        The matrix are stored in self.steps_matrix as (protein, ligand) dictionary. To plot these
+        matrices use the plotTrajectoryLastSteps() matrix.
+        """
+
+        allowed_steps = ['Accepted Pele Steps', 'Step']
+        if step not in ['Accepted Pele Steps', 'Step']:
+            raise ValueError('The indicated step is not allowed. Try: %s' % allowed_steps)
+
+        self.steps_matrix = {}
+        for protein, ligand in self.pele_combinations:
+
+            protein_data = self.data[self.data.index.get_level_values('Protein') == protein]
+            ligand_data = protein_data[protein_data.index.get_level_values('Ligand') == ligand]
+
+            epochs = [e for e in ligand_data.index.levels[2]]
+            trajectories = [t for t in ligand_data.index.levels[3]]
+
+            M = np.zeros((len(trajectories), len(epochs)))
+
+            for i, epoch in enumerate(epochs):
+                epoch_data = ligand_data[ligand_data.index.get_level_values('Epoch') == epoch]
+
+                for j, traj in enumerate(trajectories):
+                    traj_data = epoch_data[epoch_data.index.get_level_values('Trajectory') == traj]
+
+                    if traj_data.empty:
+                        M[j][i] = np.nan
+                        continue
+
+                    M[j][i] = traj_data.index.get_level_values(step).to_numpy().max()
+
+            self.steps_matrix[(protein, ligand)] = M
+
+        return self.steps_matrix
+
+    def plotTrajectoryLastSteps(self):
+        """
+        Plot the last accepted step by each trajectory at each epoch
+        """
+
+        def getLigands(protein):
+            protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+            ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
+            ligands_ddm = Dropdown(options=ligands, description='Ligand',
+                                   style= {'description_width': 'initial'})
+
+            interact(plotLastSteps, protein=fixed(protein), ligand=ligands_ddm)
+
+        def plotLastSteps(protein, ligand):
+
+            M = self.steps_matrix[(protein, ligand)]
+            plt.matshow(M)
+            plt.xticks(range(M.shape[1]), labels=range(1,M.shape[1]+1))
+            plt.yticks(range(M.shape[0]), labels=range(1,M.shape[0]+1))
+            plt.xlabel('Epoch', size=15)
+            plt.ylabel('Trajectory', size=15)
+            cbar = plt.colorbar()
+            cbar.set_label(label='Step', size=15)
+            display(plt.show())
+
+        if self.steps_matrix == None:
+            getStepsMatrix(self)
+
+        proteins = Dropdown(options=self.proteins, description='Protein',
+                            style= {'description_width': 'initial'})
+
+        interact(getLigands, protein=proteins)
 
     def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False,
                       num_trajectories='all', epochs=None, trajectories=None):
