@@ -78,6 +78,7 @@ class peleAnalysis:
         self.data = None
         self.distances = {}
         self.nonbonded_energy = {}
+        self.steps_matrix = None
 
         # System name attributes
         self.proteins = []
