@@ -942,7 +942,7 @@ class peleAnalysis:
         plt.xticks(rotation=90)
         plt.show()
 
-    def bindingEnergyLandscape(self, vertical_line=None, xlim=None, ylim=None, clim=None, color=None,
+    def bindingEnergyLandscape(self, initial_threshold=3.5, vertical_line=None, xlim=None, ylim=None, clim=None, color=None,
                                size=1.0, alpha=0.05, vertical_line_width=0.5, vertical_line_color='k',
                                title=None, no_xticks=False, no_yticks=False, no_xlabel=False, no_ylabel=False,
                                no_cbar=False, xlabel=None, ylabel=None, clabel=None):
@@ -1011,7 +1011,7 @@ class peleAnalysis:
                 metrics_sliders = {}
                 for m in metrics:
                     m_slider = FloatSlider(
-                                    value=4.0,
+                                    value=initial_threshold,
                                     min=0,
                                     max=30,
                                     step=0.1,
@@ -1197,7 +1197,7 @@ class peleAnalysis:
                 distances.append(d)
         return distances
 
-    def plotCatalyticPosesFraction(self, initial_threshold=4.5):
+    def plotCatalyticPosesFraction(self, initial_threshold=3.5):
         """
         Plot interactively the number of catalytic poses as a function of the threshold
         of the different catalytic metrics. The plot can be done by protein or by ligand.
@@ -1334,7 +1334,7 @@ class peleAnalysis:
 
         interact(selectLevel, By_protein=True, By_ligand=False)
 
-    def plotCatalyticBindingEnergyDistributions(self, initial_threshold=4.5):
+    def plotCatalyticBindingEnergyDistributions(self, initial_threshold=3.5):
         """
         Plot interactively the binding energy distributions as a function of the threshold
         of the different catalytic metrics. The plot can be done by protein or by ligand.
@@ -2064,7 +2064,8 @@ class peleAnalysis:
         Combinations are the metrics that should be merged and have the following structure:
 
             combinations = {
-                new_metric_name = { (comb_metric_1,comb_metric_2),...}}
+                new_metric_name = (comb_metric_1,comb_metric_2),
+                ...}
 
         Exclusions are the pairs of metrics that are mutually exclusive as a list of tuples.
 
@@ -2120,7 +2121,7 @@ class peleAnalysis:
         if drop:
             self.data.drop(all_metrics, axis=1, inplace=True)
 
-    def plotEnergyByResidue(self, initial_threshold=4.5):
+    def plotEnergyByResidue(self, initial_threshold=3.5):
         """
         Plot an energy by residue comparison between PELE runs. Two sets of selection
         are displayed to be compared in the same plot. The catalytic metrics are displayed
