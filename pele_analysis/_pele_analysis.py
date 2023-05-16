@@ -2377,6 +2377,52 @@ class peleAnalysis:
 
         d = display(VB)
 
+    def getProteinData(self, protein, equilibration=False):
+        """
+        Get PELE data for a protein and ligand combination.
+
+        Paramters
+        =========
+        protein : str
+            Protein name
+        equilibration : bool
+            Get equilibration data instead?
+
+        Returns
+        =======
+        protein_series : pandas.DataFrame
+            The pandas for the protein only data.
+        """
+        if equilibration:
+            data = self.equilibration_data
+        else:
+            data = self.data
+        protein_series = data[data.index.get_level_values('Protein') == protein]
+        return protein_series
+
+    def getLigandData(self, ligand, equilibration=False):
+        """
+        Get PELE data for a protein and ligand combination.
+
+        Paramters
+        =========
+        ligand : str
+            Ligand Name
+        equilibration : bool
+            Get equilibration data instead?
+
+        Returns
+        =======
+        ligand_series : pandas.DataFrame
+            The pandas for the ligand data.
+        """
+        if equilibration:
+            data = self.equilibration_data
+        else:
+            data = self.data
+        ligand_series = data[data.index.get_level_values('Ligand') == ligand]
+        return ligand_series
+
     def getProteinAndLigandData(self, protein, ligand, equilibration=False):
         """
         Get PELE data for a protein and ligand combination.
