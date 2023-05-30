@@ -1108,7 +1108,7 @@ class peleAnalysis:
             if color == 'Total Energy' and relative_total_energy:
                 relative_color_values = True
                 if clim == None:
-                    clim = (0,27.631021116) # Calculated for a probability of 1% at KT 6 (-(ln(0.01)*6)
+                    clim = (0,27.631021116) # Calculated for a probability contribution of 1% at KT 6 (-(ln(0.01)*6)
             else:
                 relative_color_values = None
 
