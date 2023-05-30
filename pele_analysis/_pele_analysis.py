@@ -1079,14 +1079,14 @@ class peleAnalysis:
                      Alpha=alpha, labels=fixed(labels), protein=fixed(protein), ligand=fixed(ligand), title=fixed(title),
                      no_xticks=fixed(no_xticks), no_yticks=fixed(no_yticks), no_cbar=fixed(no_cbar), clabel=fixed(clabel),
                      no_xlabel=fixed(no_xlabel), no_ylabel=fixed(no_ylabel), xlabel=fixed(xlabel), ylabel=fixed(ylabel),
-                     relative_total_energy=fixed(relative_total_energy), **metrics)
+                     relative_total_energy=fixed(relative_total_energy), clim=fixed(clim), **metrics)
 
         def _bindingEnergyLandscape(color, ligand_series, distance, protein, ligand,
                                     color_by_metric=False, color_by_labels=False,
                                     Alpha=0.10, labels=None, title=None, no_xticks=False,
                                     no_yticks=False, no_cbar=False, no_xlabel=True, no_ylabel=False,
-                                    xlabel=None, ylabel=None, clabel=None, relative_total_energy=False
-                                    **metrics):
+                                    xlabel=None, ylabel=None, clabel=None, relative_total_energy=False,
+                                    clim=None, **metrics):
 
             skip_fp = False
             show = True
@@ -1105,8 +1105,12 @@ class peleAnalysis:
                 return_axis = True
                 show = False
 
-            if color == 'Total energy' and relative_total_energy:
+            if color == 'Total Energy' and relative_total_energy:
                 relative_color_values = True
+                if clim == None:
+                    clim = (0,27.631021116) # Calculated for a probability of 1% at KT 6 (-(ln(0.01)*6)
+            else:
+                relative_color_values = None
 
             if not skip_fp:
                 axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
