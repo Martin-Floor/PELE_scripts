@@ -682,7 +682,8 @@ class peleAnalysis:
     def scatterPlotIndividualSimulation(self, protein, ligand, x, y, vertical_line=None, color_column=None, size=1.0, labels_size=10.0, plot_label=None,
                                         xlim=None, ylim=None, metrics=None, labels=None, title=None, title_size=14.0, return_axis=False, dpi=300, show_legend=False,
                                         axis=None, xlabel=None, ylabel=None, vertical_line_color='k', vertical_line_width=0.5, marker_size=0.8, clim=None, show=False,
-                                        clabel=None, legend_font_size=6, no_xticks=False, no_yticks=False, no_cbar=False, no_xlabel=False, no_ylabel=False, **kwargs):
+                                        clabel=None, legend_font_size=6, no_xticks=False, no_yticks=False, no_cbar=False, no_xlabel=False, no_ylabel=False,
+                                        relative_color_values=False, **kwargs):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns. Data series can be filtered by specific metrics.
@@ -813,6 +814,10 @@ class peleAnalysis:
             elif color_column in color_columns:
                 ligand_series = ligand_series.sort_values(color_column, ascending=ascending)
                 color_values = ligand_series[color_column]
+
+                if relative_color_values:
+                    color_values = color_values-np.min(color_values)
+
                 sc = axis.scatter(ligand_series[x],
                     ligand_series[y],
                     c=color_values,
@@ -945,7 +950,7 @@ class peleAnalysis:
     def bindingEnergyLandscape(self, initial_threshold=3.5, vertical_line=None, xlim=None, ylim=None, clim=None, color=None,
                                size=1.0, alpha=0.05, vertical_line_width=0.5, vertical_line_color='k',
                                title=None, no_xticks=False, no_yticks=False, no_xlabel=False, no_ylabel=False,
-                               no_cbar=False, xlabel=None, ylabel=None, clabel=None):
+                               no_cbar=False, xlabel=None, ylabel=None, clabel=None, relative_total_energy=False):
         """
         Plot binding energy as interactive plot.
         """
@@ -1073,13 +1078,14 @@ class peleAnalysis:
                      distance=fixed(distance), color_by_metric=fixed(color_by_metric), color_by_labels=fixed(color_by_labels),
                      Alpha=alpha, labels=fixed(labels), protein=fixed(protein), ligand=fixed(ligand), title=fixed(title),
                      no_xticks=fixed(no_xticks), no_yticks=fixed(no_yticks), no_cbar=fixed(no_cbar), clabel=fixed(clabel),
-                     no_xlabel=fixed(no_xlabel), no_ylabel=fixed(no_ylabel), xlabel=fixed(xlabel), ylabel=fixed(ylabel), **metrics)
+                     no_xlabel=fixed(no_xlabel), no_ylabel=fixed(no_ylabel), xlabel=fixed(xlabel), ylabel=fixed(ylabel),
+                     relative_total_energy=fixed(relative_total_energy), **metrics)
 
         def _bindingEnergyLandscape(color, ligand_series, distance, protein, ligand,
                                     color_by_metric=False, color_by_labels=False,
                                     Alpha=0.10, labels=None, title=None, no_xticks=False,
                                     no_yticks=False, no_cbar=False, no_xlabel=True, no_ylabel=False,
-                                    xlabel=None, ylabel=None, clabel=None,
+                                    xlabel=None, ylabel=None, clabel=None, relative_total_energy=False
                                     **metrics):
 
             skip_fp = False
@@ -1099,6 +1105,9 @@ class peleAnalysis:
                 return_axis = True
                 show = False
 
+            if color == 'Total energy' and relative_total_energy:
+                relative_color_values = True
+
             if not skip_fp:
                 axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
                                                             vertical_line=vertical_line, color_column=color, clim=clim, size=size,
@@ -1106,7 +1115,7 @@ class peleAnalysis:
                                                             metrics=metrics, labels=labels, return_axis=return_axis, show=show,
                                                             title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
                                                             no_xlabel=no_xlabel, no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel,
-                                                            clabel=clabel)
+                                                            clabel=clabel, relative_color_values=relative_color_values)
 
             # Make a second plot only coloring points passing the filters
             if color_by_metric:
