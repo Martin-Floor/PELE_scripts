@@ -33,12 +33,15 @@ class ligand_msm:
         self.all_tica_output = {}
         self.all_tica_concatenated = {}
         self.metric_features = {}
+        self.kmeans_clusters = {}
 
         # Get individual ligand-only trajectories
         print('Getting individual ligand trajectories')
         for protein, ligand in self.pele_analysis.pele_combinations:
 
-            self.trajectories[(protein, ligand)], self.topology[ligand] = self.pele_analysis.getLigandTrajectoryPerTrajectory(protein, ligand, return_paths=True)
+            self.topology.setdefault(protein, {})
+
+            self.trajectories[(protein, ligand)], self.topology[protein][ligand] = self.pele_analysis.getLigandTrajectoryPerTrajectory(protein, ligand, return_paths=True)
 
             # Gather all trajectories
             for t in self.trajectories[(protein, ligand)]:
@@ -46,12 +49,12 @@ class ligand_msm:
 
             # Get ligand atom names
             if ligand not in self.ligand_atoms:
-                top_traj = md.load(self.topology[ligand])
+                top_traj = md.load(self.topology[protein][ligand])
                 self.ligand_atoms[ligand] = [a.name for a in top_traj.topology.atoms]
 
             # Create featurizer
             if ligand not in self.features:
-                self.features[ligand] = pyemma.coordinates.featurizer(self.topology[ligand])
+                self.features[ligand] = pyemma.coordinates.featurizer(self.topology[protein][ligand])
 
     def addFeature(self, feature, ligand):
         """
@@ -113,12 +116,12 @@ class ligand_msm:
                                                     axis=1)
             self.all_data[ligand] += self.data[ligand][protein]
 
-    def calculateTICA(self, ligand, lag_time):
+    def calculateTICA(self, ligand, lag_time, dim=-1):
         """
         """
 
         # Create TICA based on all ligand simulations
-        self.all_tica[ligand] = pyemma.coordinates.tica(self.all_data[ligand], lag=lag_time)
+        self.all_tica[ligand] = pyemma.coordinates.tica(self.all_data[ligand], lag=lag_time, dim=dim)
         self.all_tica_output[ligand] = self.all_tica[ligand].get_output()
         self.all_tica_concatenated[ligand] = np.concatenate(self.all_tica_output[ligand])
         self.ndims = self.all_tica_concatenated[ligand].shape[1]
@@ -158,9 +161,13 @@ class ligand_msm:
             ylog=True)
         fig.tight_layout()
 
-    def plotTICADensity(self, ligand, ndims=4):
+    def plotTICADensity(self, ligand, ndims=None):
         """
         """
+
+        if ndims == None:
+            ndims = self.ndims
+
         IC = {}
         for i in range(ndims):
             IC[i] = self.all_tica_concatenated[ligand][:, i]
@@ -189,9 +196,111 @@ class ligand_msm:
 
         return metric_data
 
-    def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100, xlim=None, ylim=None):
+    def calculateKMeans(self, ligand, n_clusters=5, max_iter=500, stride=1, include_metrics=None):
         """
+        Calculate clusters for the sampled TICA space usign the kmeans algorithm.
+
+        Parameters
+        ==========
+        ligand : str
+            Name of the ligand to clusterise its trajectories.
+        n_clusters : int
+            Number of clusters to compute.
+        max_iter : int
+            Maximum number of iterations for the Kmean algorithm (pyemma.coordinates.cluster_kmeans)
+        stride : int
+            Stride paramter of the Kmean algorithm (pyemma.coordinates.cluster_kmeans)
+        include_metrics : (str, list)
+            Do you want to include metrics in the clustering? which ones?
         """
+
+        if isinstance(include_metrics, str):
+            include_metrics = [include_metrics]
+
+        if isinstance(include_metrics, type(None)):
+            include_metrics = []
+
+        if not isinstance(include_metrics, list):
+            raise ValueError('include_metrics should be a single metric string or a list of metric strings')
+
+        for i,m in enumerate(include_metrics):
+            if not m.startswith('metric_'):
+                include_metrics[i] = 'metric_'+m
+
+        self.kmeans = {}
+        self.kmeans_centers = {}
+        self.kmeans_metrics = {}
+        self.kmeans_metrics_conversion = {}
+
+        self.kmeans[ligand] = {}
+        self.kmeans_clusters[ligand] = {}
+        self.kmeans_centers[ligand] = {}
+        self.kmeans_metrics[ligand] = []
+        self.kmeans_metrics_conversion[ligand] = {}
+
+        for protein in self.pele_analysis.proteins:
+
+            self.kmeans_metrics_conversion[ligand][protein] = {}
+
+            # Get clustering data
+            data = self.tica_output[ligand][protein]
+
+            # Add normalised metrics if given
+            for m in include_metrics:
+                avg_m = np.average(self.pele_analysis.data[m])
+                std_m = np.std(self.pele_analysis.data[m])
+
+                n_metric = (self.pele_analysis.getProteinAndLigandData(protein, ligand)[m]-avg_m)/std_m
+
+                # Add average and std to recover clustering coordinates
+                self.kmeans_metrics[ligand].append(m)
+                self.kmeans_metrics_conversion[ligand][protein][m] = (avg_m, std_m)
+
+                # Add metric columns to each trajectory separatedly
+                for i,t in enumerate(n_metric.index.levels[3]):
+                    traj_data = n_metric[n_metric.index.get_level_values('Trajectory') == t]
+                    traj_data = traj_data.to_numpy() # convert to numpy
+                    traj_data = traj_data.reshape((traj_data.shape[0], 1)) # reshape for concatenation
+                    data[i] = np.concatenate([data[i], traj_data], axis=1) # Paste with the clustering data
+
+            # Calculate kmeans clusters
+            self.kmeans[ligand][protein] = pyemma.coordinates.cluster_kmeans(data,
+                                                                             k=n_clusters,
+                                                                             max_iter=max_iter,
+                                                                             stride=stride)
+
+            # Store kmeans data
+            self.kmeans_clusters[ligand][protein] = msm.kmeans[ligand][protein].dtrajs
+            self.kmeans_centers[ligand][protein] = self.kmeans[ligand][protein].clustercenters
+
+
+    def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100, xlim=None, ylim=None, 
+                       mark_cluster=None, plot_clusters=True):
+        """
+        Plot free energy maps employing the metrics or TICA dimmensions calculated
+
+        Paramters
+        =========
+        max_tica : int
+            Maximum number of TICA dimmensions to calculate
+        metric_line : float
+            Dashed line to plot for the selected metric
+        size : float
+            Size paramter to control overall size of the plot
+        sigma : float
+            Sigma parameter for the gaussian filter employed on the contour plot (scipy.ndimage.gaussian_filter)
+        bins : int
+            Number of bins to divide the contourplot
+        xlim : float
+            X-axis limit to show
+        ylim : float
+            Y-axis limit to show
+        mark_cluster : int
+            Index of the kmean cluster to show as a bigger red dot in the map.
+        plot_clusters : bool
+            Do you want to plot clusters?
+        """
+
         def getLigands(Protein, max_tica=10, metric_line=None):
             ligands = []
             for protein, ligand in self.pele_analysis.pele_combinations:
@@ -208,6 +317,9 @@ class ligand_msm:
                     metric_line=fixed(metric_line))
 
         def getCoordinates(Protein, Ligand, max_tica=10, metric_line=None):
+
+            if max_tica > self.ndims:
+                max_tica = self.ndims
 
             dimmensions = []
             # Add metrics
@@ -240,8 +352,46 @@ class ligand_msm:
                 input_data2 = np.concatenate(self.getMetricData(Ligand, Protein, Y))
                 y_metric_line = metric_line
 
-            _plot_Nice_PES(input_data1, input_data2, xlabel=X, ylabel=Y, bins=bins, size=size, sigma=sigma,
-                           x_metric_line=x_metric_line, y_metric_line=y_metric_line, xlim=xlim, ylim=ylim)
+            ax = _plot_Nice_PES(input_data1, input_data2, xlabel=X, ylabel=Y, bins=bins, size=size, sigma=sigma,
+                                x_metric_line=x_metric_line, y_metric_line=y_metric_line, xlim=xlim, ylim=ylim)
+
+            # Plot clusters if found
+            while True: # Used for stoping if statments
+
+                if not plot_clusters:
+                    break
+
+                if self.kmeans_clusters != {}:
+
+                    # Get cluster centers
+                    centers = self.kmeans_centers[Ligand][Protein]
+
+                    if X.startswith('metric_'):
+                        if X not in self.kmeans_metrics[Ligand]:
+                            break # Continue if metric has not been used in the clustering
+                        mi = self.kmeans_metrics[Ligand].index(X)
+                        x_avg, x_std = self.kmeans_metrics_conversion[Ligand][Protein][X]
+                        cpx = (centers[:,self.ndims+mi]*x_std)+x_avg # Convert cluster z-score back to metric values
+
+                    elif X.startswith('IC'):
+                        x_index = int(X.replace('IC', ''))-1
+                        cpx = centers[:,x_index]
+
+                    if Y.startswith('metric_'):
+                        if Y not in self.kmeans_metrics[Ligand]:
+                            break # Continue if metric has not been used in the clustering
+                        mi = self.kmeans_metrics[Ligand].index(Y)
+                        y_avg, y_std = self.kmeans_metrics_conversion[Ligand][Protein][Y]
+                        cpy = (centers[:,self.ndims+mi]*y_std)+y_avg # Convert cluster z-score back to metric values
+
+                    elif Y.startswith('IC'):
+                        y_index = int(Y.replace('IC', ''))-1
+                        cpy = centers[:,y_index]
+
+                    ax.scatter(cpx, cpy, c='k', s=5)
+                    if not isinstance(mark_cluster, type(None)):
+                        ax.scatter(cpx[mark_cluster], cpy[mark_cluster], c='r', s=10)
+                break
 
         interact(getLigands, Protein=sorted(self.pele_analysis.proteins)+['all'], max_tica=fixed(max_tica),
                  metric_line=fixed(metric_line))
@@ -328,3 +478,5 @@ def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, 
                    labelpad=5,
                    y=0.5)
     cax.axes.tick_params(labelsize=10*size)
+
+    return ax
