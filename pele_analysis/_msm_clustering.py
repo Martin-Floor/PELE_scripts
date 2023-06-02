@@ -231,9 +231,13 @@ class ligand_msm:
         self.kmeans_centers = {}
         self.kmeans_metrics = {}
         self.kmeans_metrics_conversion = {}
+        self.kmeans_clusters = {}
+        self.kmeans_clusters_concatenated = {}
+
 
         self.kmeans[ligand] = {}
         self.kmeans_clusters[ligand] = {}
+        self.kmeans_clusters_concatenated[ligand] = {}
         self.kmeans_centers[ligand] = {}
         self.kmeans_metrics[ligand] = []
         self.kmeans_metrics_conversion[ligand] = {}
@@ -270,11 +274,14 @@ class ligand_msm:
                                                                              stride=stride)
 
             # Store kmeans data
-            self.kmeans_clusters[ligand][protein] = msm.kmeans[ligand][protein].dtrajs
+            self.kmeans_clusters[ligand][protein] = self.kmeans[ligand][protein].dtrajs
+            self.kmeans_clusters_concatenated[ligand][protein] = np.concatenate(self.kmeans_clusters[ligand][protein])
             self.kmeans_centers[ligand][protein] = self.kmeans[ligand][protein].clustercenters
 
+            return self.kmeans
 
-    def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100, xlim=None, ylim=None, 
+
+    def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100, xlim=None, ylim=None,
                        mark_cluster=None, plot_clusters=True):
         """
         Plot free energy maps employing the metrics or TICA dimmensions calculated
