@@ -421,17 +421,32 @@ class peleAnalysis:
                             top=self.topology_files[protein][ligand])
         return traj
 
-    def calculateLigandRMSD(self, recalculate=False):
+    def calculateLigandRMSD(self, recalculate=False, production=True, equilibration=False, reference_pdb=None):
         """
-        Calculate ligand RMSD using as reference the lowest binding energy pose. It
-        is added as "Ligand RMSD" column in the pele data frame'
+        Calculate ligand RMSD using as reference the lowest binding energy pose or
+        a reference PDB if given. It is added as "Ligand RMSD" column in the pele data frame'
         """
 
+        if not production and not equilibration:
+            raise ValueError('You must at least set production or equilibration to True!')
+
+        calc_eq_rmsd = False
+        if equilibration:
+            if 'Ligand RMSD' in self.equilibration_data.keys() and not recalculate:
+                print('Ligand RMSD equilibration data already computed. Give recalculate=True to recompute.')
+            else:
+                calc_eq_rmsd = True
+                equilibration_RMSD = None
+
+        calc_prod_rmsd = False
         if 'Ligand RMSD' in self.data.keys() and not recalculate:
-            print('Ligand RMSD data already computed. Give recalculate=True to recompute.')
-            return
+            print('Ligand RMSD production data already computed. Give recalculate=True to recompute.')
         else:
+            calc_prod_rmsd = True
             RMSD = None
+
+        if reference_pdb == None:
+            reference_pdb = {}
 
         for protein in self.proteins:
 
@@ -441,34 +456,60 @@ class peleAnalysis:
                 if ligand not in self.topology_files[protein]:
                     continue
 
-                # Get topology trajectory as reference for alignment
-                topology_file = self.topology_files[protein][ligand]
-                top_traj = md.load(topology_file)
+                # Get topology PDB as reference for alignment
+                if protein in reference_pdb and ligand in reference_pdb:
+                    print('Comparing RMSD values to %s' % reference_pdb[protein][ligand])
+                    topology_file = reference_pdb[protein][ligand]
+                    top_traj = md.load(topology_file)
+                    ref_traj = top_traj
+                else:
+                    topology_file = self.topology_files[protein][ligand]
+                    top_traj = md.load(topology_file)
 
-                # Get best binding energy pose as reference
-                ligand_data = self.getProteinAndLigandData(protein, ligand)
-                ref_model = ligand_data.nsmallest(1, 'Binding Energy')
-                ref_trajectory = ref_model.index.get_level_values('Trajectory')[0]
-                ref_epoch = ref_model.index.get_level_values('Epoch')[0]
-                ref_step = ref_model.index.get_level_values('Accepted Pele Steps')[0]
-                ref_traj = self.getTrajectory(protein, ligand, ref_epoch, ref_trajectory)[ref_step]
+                    # Get best binding energy pose as reference
+                    ligand_data = self.getProteinAndLigandData(protein, ligand)
+                    ref_model = ligand_data.nsmallest(1, 'Binding Energy')
+                    ref_trajectory = ref_model.index.get_level_values('Trajectory')[0]
+                    ref_epoch = ref_model.index.get_level_values('Epoch')[0]
+                    ref_step = ref_model.index.get_level_values('Accepted Pele Steps')[0]
+                    ref_traj = self.getTrajectory(protein, ligand, ref_epoch, ref_trajectory)[ref_step]
 
-                # Calculate ligand RMSD
-                for epoch in sorted(self.trajectory_files[protein][ligand]):
-                    for trajectory in sorted(self.trajectory_files[protein][ligand][epoch]):
-                        traj = self.getTrajectory(protein, ligand, epoch, trajectory)
-                        traj.superpose(top_traj)
-                        ligand_atoms = traj.topology.select('resname '+self.ligand_names[ligand])
+                if equilibration and calc_eq_rmsd and not recalculate:
+                    # Calculate ligand RMSD
+                    for epoch in sorted(self.equilibration['trajectory'][protein][ligand]):
+                        for trajectory in sorted(self.equilibration['trajectory'][protein][ligand][epoch]):
+                            traj = self.getTrajectory(protein, ligand, epoch, trajectory, equilibration=True)
+                            traj.superpose(top_traj)
+                            ligand_atoms = traj.topology.select('resname '+self.ligand_names[ligand])
 
-                        # Calculate RMSD
-                        rmsd = md.rmsd(traj, ref_traj, atom_indices=ligand_atoms)*10
-                        if isinstance(RMSD, type(None)):
-                            RMSD = rmsd
-                        else:
-                            RMSD = np.concatenate((RMSD, rmsd))
+                            # Calculate RMSD
+                            rmsd = md.rmsd(traj, ref_traj, atom_indices=ligand_atoms)*10
+                            if isinstance(equilibration_RMSD, type(None)):
+                                equilibration_RMSD = rmsd
+                            else:
+                                equilibration_RMSD = np.concatenate((equilibration_RMSD, rmsd))
 
-        self.data['Ligand RMSD'] = RMSD
-        self._saveDataState(individually=True)
+                if production and calc_prod_rmsd and not recalculate:
+                    # Calculate ligand RMSD
+                    for epoch in sorted(self.trajectory_files[protein][ligand]):
+                        for trajectory in sorted(self.trajectory_files[protein][ligand][epoch]):
+                            traj = self.getTrajectory(protein, ligand, epoch, trajectory)
+                            traj.superpose(top_traj)
+                            ligand_atoms = traj.topology.select('resname '+self.ligand_names[ligand])
+
+                            # Calculate RMSD
+                            rmsd = md.rmsd(traj, ref_traj, atom_indices=ligand_atoms)*10
+                            if isinstance(RMSD, type(None)):
+                                RMSD = rmsd
+                            else:
+                                RMSD = np.concatenate((RMSD, rmsd))
+
+        if equilibration and calc_eq_rmsd:
+            self.equilibration_data['Ligand RMSD'] = equilibration_RMSD
+            self._saveDataState(individually=True, equilibration=True)
+        if production and calc_prod_rmsd:
+            self.data['Ligand RMSD'] = RMSD
+            self._saveDataState(individually=True)
 
     def calculateProteinRMSD(self, full_atom=True, equilibration=True, productive=True, recalculate=False):
         """
