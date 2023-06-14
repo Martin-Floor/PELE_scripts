@@ -1949,9 +1949,8 @@ class peleAnalysis:
         interact(getLigands, protein=proteins)
 
     def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False,
-                      num_trajectories='all', epochs=None, trajectories=None):
+                      num_trajectories='all', epochs=None, trajectories=None, equilibration=False):
         """
-
         """
 
         if not os.path.isdir(self.pele_folder):
@@ -1963,8 +1962,14 @@ class peleAnalysis:
         if isinstance(resids, int):
             resids = [resids]
 
-        traj_files = self.trajectory_files[protein][ligand]
-        trajs = [t for t in sorted(traj_files[0])]
+        if equilibration:
+            traj_files = self.equilibration['trajectory'][protein][ligand]
+            start_index = 1
+        else:
+            traj_files = self.trajectory_files[protein][ligand]
+            start_index = 0
+
+        trajs = [t for t in sorted(traj_files[start_index])]
 
         if num_trajectories == 'all' and isinstance(trajectories, type(None)):
             num_trajectories = len(trajs)
