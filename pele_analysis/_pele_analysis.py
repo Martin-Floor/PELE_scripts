@@ -24,7 +24,6 @@ from pkg_resources import resource_stream, Requirement, resource_listdir
 
 from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown, Checkbox
 import time
-import random
 
 class peleAnalysis:
     """
@@ -1981,8 +1980,7 @@ class peleAnalysis:
                 raise ValueError('trajectories must be given as a list')
 
         elif isinstance(num_trajectories, int):
-            trajectories = random.choices(trajs, k=num_trajectories)
-
+            trajectories = np.random.choice(trajs, size=num_trajectories, replace=False)
 
         if not isinstance(epochs, type(None)):
             if not isinstance(epochs, list):
