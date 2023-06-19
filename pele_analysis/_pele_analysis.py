@@ -3470,7 +3470,7 @@ class peleAnalysis:
                              spawning='independent', continuation=False, equilibration=True, skip_models=None, skip_ligands=None,
                              extend_iterations=False, only_models=None, only_ligands=None, ligand_templates=None, seed=12345, log_file=False,
                              simulation_type=None, nonbonded_energy=None, nonbonded_energy_type='all', nonbonded_new_flag=False,
-                             covalent_ligands=None, old_pele_folder=None, skip_ligands_prep=None):
+                             covalent_ligands=None, old_pele_folder=None, skip_ligands_prep=None, ligand_equilibration_cst=True):
         """
         Generates a PELE calculation for extracted poses. The function reads all the
         protein ligand poses and creates input for a PELE platform set up run.
@@ -3763,7 +3763,7 @@ class peleAnalysis:
                         # energy by residue is not implemented in PELE platform, therefore
                         # a scond script will modify the PELE.conf file to set up the energy
                         # by residue calculation.
-                        if debug or energy_by_residue or peptide or nonbonded_energy != None:
+                        if any([debug, energy_by_residue, peptide, nonbonded_energy != None, ligand_equilibration_cst]):
                             iyf.write("debug: true\n")
 
                         if distances != None:
@@ -3823,6 +3823,12 @@ class peleAnalysis:
                         _copyScriptFile(pele_folder, 'modifyPelePlatformForPeptide.py')
                         peptide_script_name = '._modifyPelePlatformForPeptide.py'
 
+                    if ligand_equilibration_cst:
+                        _copyScriptFile(pele_folder, 'addLigandConstraintsToPELEconf.py')
+                        equilibration_script_name = '._addLigandConstraintsToPELEconf.py'
+                        _copyScriptFile(pele_folder, 'changeAdaptiveIterations.py')
+                        adaptive_script_name = '._changeAdaptiveIterations.py'
+
 
                     # Create command
                     command = 'cd '+pele_folder+'/'+protein+separator+ligand+'\n'
@@ -3842,6 +3848,7 @@ class peleAnalysis:
                                 command += "sed -i s,LIGAND_TEMPLATE_PATH_ROT,$TMPLT_DIR/"+tf+",g "+yaml_file+"\n"
                             elif tf.endswith('z'):
                                 command += "sed -i s,LIGAND_TEMPLATE_PATH_Z,$TMPLT_DIR/"+tf+",g "+yaml_file+"\n"
+
                     if not continuation or covalent_ligands:
                         command += 'python -m pele_platform.main input.yaml\n'
                         if covalent_ligands:
@@ -3850,6 +3857,55 @@ class peleAnalysis:
                                 covalent_command += 'python ../._modifyProcessedForCovalentPELE.py '+str(covlig)+' \n'
                             covalent_command += 'cd ..\n'
                             command += covalent_command
+
+                        if ligand_equilibration_cst:
+
+                            # Copy input_yaml for equilibration
+                            of = open(pele_folder+'/'+protein+separator+ligand+'/input_equilibration.yaml', 'w')
+                            has_restart = False
+                            has_adaptive_restart = False
+                            with open(pele_folder+'/'+protein+separator+ligand+'/input.yaml') as iy:
+                                for l in iy:
+                                    if 'restart:' in l:
+                                        has_restart = True
+                                    if 'adaptive_restart:' in l:
+                                        has_adaptive_restart = True
+                                    if l.startswith('iterations:'):
+                                        l = 'iterations: 1\n'
+                                    if l.startswith('steps:'):
+                                        l = 'steps: 1\n'
+                                    of.write(l)
+                                if not has_restart:
+                                    of.write('restart: true\n')
+                                if not has_adaptive_restart:
+                                    of.write('adaptive_restart: true\n')
+                            of.close()
+
+                            # Add commands for adding ligand constraints
+                            command += 'cp output/pele.conf output/pele.conf.backup\n'
+                            command += 'cp output/adaptive.conf output/adaptive.conf.backup\n'
+
+                            # Modify pele.conf to add ligand constraints
+                            command += 'python ../'+equilibration_script_name+' '
+                            command += "output " # I think we should change this for a variable
+                            if isinstance(ligand_equilibration_cst, (int, float)) and ligand_equilibration_cst != 1.0:
+                                command += "--constraint_value "+str(float(ligand_equilibration_cst))
+                            command += '\n'
+
+                            # Modify adaptive.conf to remove simulation steps
+                            command += 'python ../'+adaptive_script_name+' '
+                            command += "output " # I think we should change this for a variable
+                            command += '--iterations 1 '
+                            command += '--steps 1\n'
+
+                            # Launch equilibration
+                            command += 'python -m pele_platform.main input_equilibration.yaml\n'
+
+                            # Recover conf files
+                            command += 'cp output/pele.conf.backup output/pele.conf\n'
+                            command += 'cp output/adaptive.conf.backup output/adaptive.conf\n'
+
+                            continuation = True
 
                     if continuation:
                         debug_line = False
@@ -3873,9 +3929,10 @@ class peleAnalysis:
                             extend_script_name = '._extendAdaptiveIteartions.py'
                             command += 'python ../'+extend_script_name+' output '+str(iterations)+'\n'
 
-                        command += 'python -m pele_platform.main input_restart.yaml\n'
+                        if not any([energy_by_residue, peptide, nonbonded_energy]):
+                            command += 'python -m pele_platform.main input_restart.yaml\n'
 
-                    elif energy_by_residue:
+                    if energy_by_residue:
                         command += 'python ../'+ebr_script_name+' output --energy_type '+energy_by_residue_type
                         if isinstance(ligand_energy_groups, dict):
                             command += ' --ligand_energy_groups ligand_energy_groups.json'
@@ -3894,7 +3951,7 @@ class peleAnalysis:
                                         l = 'restart: true\n'
                                     oyml.write(l)
                         command += 'python -m pele_platform.main input_restart.yaml\n'
-                    elif peptide:
+                    if peptide:
                         command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
                         with open(pele_folder+'/'+protein+separator+ligand+'/'+'input_restart.yaml', 'w') as oyml:
                             with open(pele_folder+'/'+protein+separator+ligand+'/'+'input.yaml') as iyml:
@@ -3904,6 +3961,7 @@ class peleAnalysis:
                                     oyml.write(l)
                         if nonbonded_energy == None:
                             command += 'python -m pele_platform.main input_restart.yaml\n'
+
                     elif extend_iterations and not continuation:
                         raise ValueEror('extend_iterations must be used together with the continuation keyword')
 
@@ -3929,6 +3987,7 @@ class peleAnalysis:
                     jobs.append(command)
 
         return jobs
+
 
     def removeTrajectoryFiles(self):
         """
