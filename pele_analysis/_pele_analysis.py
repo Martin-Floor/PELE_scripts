@@ -3932,6 +3932,9 @@ class peleAnalysis:
                         if not any([energy_by_residue, peptide, nonbonded_energy]):
                             command += 'python -m pele_platform.main input_restart.yaml\n'
 
+                        if ligand_equilibration_cst:
+                            continuation = False
+
                     if energy_by_residue:
                         command += 'python ../'+ebr_script_name+' output --energy_type '+energy_by_residue_type
                         if isinstance(ligand_energy_groups, dict):
