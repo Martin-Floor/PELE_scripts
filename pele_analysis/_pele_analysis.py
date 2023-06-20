@@ -3932,7 +3932,7 @@ class peleAnalysis:
                         if not any([energy_by_residue, peptide, nonbonded_energy]):
                             command += 'python -m pele_platform.main input_restart.yaml\n'
 
-                        if any([ligand_equilibration_cst]:
+                        if any([ligand_equilibration_cst]):
                             continuation = False
                             debug = False
 
