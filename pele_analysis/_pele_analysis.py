@@ -1559,7 +1559,8 @@ class peleAnalysis:
     def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90,
                                                    matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json',
                                                    max_metric_threshold=30, pele_data=None, KT=5.93, to_csv=None,
-                                                   only_proteins=None, only_ligands=None, average_binding_energy=False):
+                                                   only_proteins=None, only_ligands=None, average_binding_energy=False,
+                                                   nan_to_zero=False):
 
         def _bindingFreeEnergyMatrix(KT=KT, sort_by_ligand=None, models_file='catalytic_models.json',
                                      lig_label_rot=90, pele_data=None, only_proteins=None, only_ligands=None,
@@ -1627,6 +1628,9 @@ class peleAnalysis:
                             M[i][j] = catalytic_series.nsmallest(n_poses, 'Binding Energy')['Binding Energy'].mean()
                     else:
                         M[i][j] = np.nan
+
+            if nan_to_zero:
+                M[np.isnan(M)] = 0.0
 
             if abc:
                 binding_metric_label = '$A_{B}^{C}$'
