@@ -2114,9 +2114,6 @@ class peleAnalysis:
                     # Check that distances and ligand data matches
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
 
-                    if 'sequence00856' == protein and ligand == 'BTS':
-                        print(distance_values)
-
                     values += distance_values.to_list()
 
                     if labels != None:
