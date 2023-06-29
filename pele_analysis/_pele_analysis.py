@@ -1096,7 +1096,13 @@ class peleAnalysis:
                 color_columns = [k for k in color_columns if not k.startswith('metric_')]
                 color_columns = [k for k in color_columns if not k.startswith('label_')]
                 color_columns = [None, 'Epoch']+color_columns
-                del color_columns[color_columns.index('Binding Energy')]
+
+                if 'Binding Energy' in ligand_series:
+                    be_column = 'Binding Energy'
+                elif 'bindingEnergy' in ligand_series:
+                    be_column = 'bindingEnergy'
+
+                del color_columns[color_columns.index(be_column)]
 
                 color_ddm = Dropdown(options=color_columns, description='Color',
                                      style= {'description_width': 'initial'})
@@ -1152,8 +1158,13 @@ class peleAnalysis:
             else:
                 relative_color_values = None
 
+            if 'Binding Energy' in ligand_series:
+                be_column = 'Binding Energy'
+            elif 'bindingEnergy' in ligand_series:
+                be_column = 'bindingEnergy'
+
             if not skip_fp:
-                axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
+                axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, be_column, xlim=xlim, ylim=ylim,
                                                             vertical_line=vertical_line, color_column=color, clim=clim, size=size,
                                                             vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                             metrics=metrics, labels=labels, return_axis=return_axis, show=show,
@@ -1163,7 +1174,7 @@ class peleAnalysis:
 
             # Make a second plot only coloring points passing the filters
             if color_by_metric:
-                self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim,
+                self.scatterPlotIndividualSimulation(protein, ligand, distance, be_column, xlim=xlim, ylim=ylim,
                                                      vertical_line=vertical_line, color_column='r', clim=clim, size=size,
                                                      vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                      metrics=color_metrics, labels=labels, axis=axis, show=True, alpha=Alpha,
@@ -1179,7 +1190,7 @@ class peleAnalysis:
                     colors = iter([plt.cm.Set2(i) for i in range(len(all_labels[l]))])
                     for i,v in enumerate(all_labels[l]):
                         if i == 0:
-                            axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
+                            axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, be_column, xlim=xlim, ylim=ylim, plot_label=v,
                                                                    vertical_line=vertical_line, color_column=[next(colors)], clim=clim, size=size,
                                                                    vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                                    metrics=metrics, labels=labels, return_axis=return_axis, alpha=Alpha, show=show,
@@ -1188,7 +1199,7 @@ class peleAnalysis:
                             continue
                         elif i == len(all_labels[l])-1:
                             show = True
-                        axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, 'Binding Energy', xlim=xlim, ylim=ylim, plot_label=v,
+                        axis = self.scatterPlotIndividualSimulation(protein, ligand, distance, be_column, xlim=xlim, ylim=ylim, plot_label=v,
                                                                     vertical_line=vertical_line, color_column=[next(colors)], clim=clim, size=size,
                                                                     vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                                     metrics=metrics, labels={l:v}, return_axis=return_axis, axis=axis, alpha=Alpha, show=show,
