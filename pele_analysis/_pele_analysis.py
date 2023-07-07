@@ -3500,6 +3500,11 @@ class peleAnalysis:
         Missing!
         """
 
+        if continuation:
+            continue_all = True
+        else:
+            continue_all = False
+
         spawnings = ['independent', 'inverselyProportional', 'epsilon', 'variableEpsilon',
                      'independentMetric', 'UCB', 'FAST', 'ProbabilityMSM', 'MetastabilityMSM',
                      'IndependentMSM']
@@ -3944,7 +3949,7 @@ class peleAnalysis:
                         if not any([energy_by_residue, peptide, nonbonded_energy]):
                             command += 'python -m pele_platform.main input_restart.yaml\n'
 
-                        if any([ligand_equilibration_cst]):
+                        if any([ligand_equilibration_cst]) and not continue_all:
                             continuation = False
                             debug = False
 
