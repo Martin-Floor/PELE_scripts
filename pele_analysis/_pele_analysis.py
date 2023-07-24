@@ -131,7 +131,7 @@ class peleAnalysis:
 
 
         # Read PELE simulation report data
-        self._readReportData()
+        self._readReportData(energy_by_residue_type=energy_by_residue_type)
 
         if global_pele:
             self._readGlobalReportData()
@@ -1253,6 +1253,8 @@ class peleAnalysis:
             return distances
         elif ligand not in self.distances[protein]:
             return distances
+        if isinstance(self.distances[protein][ligand], type(None)):
+            return distances
 
         for d in self.distances[protein][ligand]:
             if 'distance' in d:
@@ -2229,7 +2231,7 @@ class peleAnalysis:
             ligand2 = Dropdown(options=ligands2)
 
             KT_slider1 = FloatSlider(
-                            value=0.593,
+                            value=5.93,
                             min=0.593,
                             max=20.0,
                             step=0.1,
@@ -2238,7 +2240,7 @@ class peleAnalysis:
                             readout_format='.1f')
 
             KT_slider2 = FloatSlider(
-                            value=0.593,
+                            value=5.93,
                             min=0.593,
                             max=20.0,
                             step=0.1,
@@ -3972,6 +3974,23 @@ class peleAnalysis:
                             command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
                         else:
                             command += '\n'
+
+                        # Create second PELE iterations
+                        if ligand_equilibration_cst:
+                            command += 'python ../'+adaptive_script_name+' '
+                            command += "output " # I think we should change this for a variable
+                            command += '--iterations 2 '
+                            command += '--steps '+str(steps)+'\n'
+                            command += 'python -m pele_platform.main input_restart.yaml\n'
+
+                            # Remove incomplete-header first iteration
+                            command += 'rm -r output/output/0\n' # Change first output for a variable
+                            # Move second iteration to first
+                            command += 'mv output/output/1 output/output/0\n' # Change first output for a variable
+
+                            # Add commands for recover original adaptive
+                            command += 'cp output/adaptive.conf.backup output/adaptive.conf\n'
+
                         command += 'python -m pele_platform.main input_restart.yaml\n'
                     if peptide:
                         command += 'python ../'+peptide_script_name+' output '+" ".join(models[model])+'\n'
@@ -4327,7 +4346,7 @@ class peleAnalysis:
 
         return pele_combinations
 
-    def _readReportData(self, equilibration=False):
+    def _readReportData(self, equilibration=False, energy_by_residue_type=None):
         """
         Read report data from PELE simulation report files.
         """
