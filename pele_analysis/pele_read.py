@@ -342,6 +342,11 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
 
     with open(report_file) as rf:
         for i,l in enumerate(rf):
+
+            # Remove C-language null characters if found. 
+            if '\x00' in l:
+                l = l.replace('\x00', '')
+
             if i == 0:
                 terms = [t for t in l[1:].strip().split('    ')]
                 for t in terms:
