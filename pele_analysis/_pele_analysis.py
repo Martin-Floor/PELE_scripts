@@ -37,7 +37,8 @@ class peleAnalysis:
 
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
-                 read_equilibration=True, data_folder_name=None, global_pele=False ,trajectories=False):
+                 read_equilibration=True, data_folder_name=None, global_pele=False, trajectories=False,
+                 remove_original_trajectory=False):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -64,6 +65,7 @@ class peleAnalysis:
         self.csv_equilibration_files = {}
         self.trajectory_files = {}
         self.topology_files = {}
+        self.ligand_files = {}
         self.equilibration = {}
         self.pele_combinations = []
         self.ligand_names = {}
@@ -118,7 +120,8 @@ class peleAnalysis:
         if trajectories:
             if self.verbose:
                 print('Copying PELE trajectory files')
-            self._copyPELETrajectories(overwrite=self.force_reading)
+            self._copyPELETrajectories(overwrite=self.force_reading,
+                                       remove_original_trajectory=remove_original_trajectory)
 
         # Set dictionary with Chain IDs to match mdtraj indexing
         self._setChainIDs()
@@ -4197,9 +4200,13 @@ class peleAnalysis:
         """
         Returns the input PDB for the PELE simulation.
         """
+
         # If PELE input folder is not found return None
         if protein not in self.pele_directories or ligand not in self.pele_directories[protein]:
-            return
+            if protein not in self.topology_files or ligand not in self.topology_files[protein]:
+                return
+            else:
+                return self.topology_files[protein][ligand]
 
         # Load input PDB with Bio.PDB and mdtraj
         pele_dir = self.pele_directories[protein][ligand]
@@ -4208,11 +4215,20 @@ class peleAnalysis:
             if d.endswith('processed.pdb'):
                 return folder+'/'+d
 
-    def _getInputLigandPDB(self, pele_dir):
+    def _getInputLigandPDB(self, protein, ligand):
         """
         Returns the input PDB for the PELE simulation.
         """
+
+        # If PELE input folder is not found return None
+        if protein not in self.pele_directories or ligand not in self.pele_directories[protein]:
+            if protein not in self.ligand_files or ligand not in self.ligand_files[protein]:
+                return
+            else:
+                return self.ligand_files[protein][ligand]
+
         # Load input PDB with Bio.PDB and mdtraj
+        pele_dir = self.pele_directories[protein][ligand]
         folder = pele_dir+'/'+self.pele_output_folder+'/input/'
         for d in os.listdir(folder):
             if d.endswith('ligand.pdb'):
@@ -4305,27 +4321,35 @@ class peleAnalysis:
                 for f in os.listdir(topology_dir+'/'+d):
                     if f.endswith('.pdb'):
                         self.topology_files[protein][ligand] = topology_dir+'/'+d+'/'+f
-        else:
-            # Create analysis folder
+
+        # Create analysis folder
+        if not os.path.exists(self.data_folder):
             os.mkdir(self.data_folder)
-
-            # Create PELE input folders
+        # Create PELE input folders
+        if not os.path.exists(self.data_folder+'/pele_inputs'):
             os.mkdir(self.data_folder+'/pele_inputs')
-
-            # Create PELE configuration folders
+        # Create PELE configuration folders
+        if not os.path.exists(self.data_folder+'/pele_configuration'):
             os.mkdir(self.data_folder+'/pele_configuration')
-
-            # Create PELE input folders
+        # Create PELE input folders
+        if not os.path.exists(self.data_folder+'/pele_trajectories'):
             if trajectories:
                 os.mkdir(self.data_folder+'/pele_trajectories')
 
-            # Create PELE input folders
+        # Create PELE toplogies folder
+        if not os.path.exists(self.data_folder+'/pele_topologies'):
             os.mkdir(self.data_folder+'/pele_topologies')
 
-            # Create PELE distances
+        # Create PELE ligands folders
+        if not os.path.exists(self.data_folder+'/pele_ligands'):
+            os.mkdir(self.data_folder+'/pele_ligands')
+
+        # Create PELE distances
+        if not os.path.exists(self.data_folder+'/distances'):
             os.mkdir(self.data_folder+'/distances')
 
-            # Create PELE non bonded energy
+        # Create PELE non bonded energy
+        if not os.path.exists(self.data_folder+'/nonbonded_energy'):
             os.mkdir(self.data_folder+'/nonbonded_energy')
 
     def _getProteinLigandCombinations(self):
@@ -4491,7 +4515,7 @@ class peleAnalysis:
 
                 # Check if output folder exists
                 if not os.path.exists(output_dir):
-                    print('Output folder not found for %s-%s PELE calculation.' % (protein, ligand))
+                    print('Output folder not found for %s%s%s PELE calculation.' % (protein, self.separator, ligand))
                     continue
 
                 dir = self.data_folder+'/pele_configuration/'+protein+self.separator+ligand
@@ -4511,6 +4535,8 @@ class peleAnalysis:
         """
         for protein in self.topology_files:
             for ligand in self.topology_files[protein]:
+
+                # Copy topologies
                 dir = self.data_folder+'/pele_topologies/'+protein+self.separator+ligand
                 if not os.path.exists(dir):
                     os.mkdir(dir)
@@ -4522,7 +4548,22 @@ class peleAnalysis:
                     shutil.copyfile(orig, dest)
                     self.topology_files[protein][ligand] = dest
 
-    def _copyPELETrajectories(self, overwrite=False):
+            for ligand in self.topology_files[protein]:
+                # Copy ligands (only one file per ligand)
+                dir = self.data_folder+'/pele_ligands/'+ligand
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+                dest = dir+'/'+ligand+'.pdb'
+                if os.path.exists(dest) and not overwrite:
+                    self.ligand_files.setdefault(protein, {})
+                    self.ligand_files[protein][ligand] = dest
+                    continue
+                orig = self.ligand_files[protein][ligand]
+                if orig != dest:
+                    shutil.copyfile(orig, dest)
+                    self.ligand_files[protein][ligand] = dest
+
+    def _copyPELETrajectories(self, overwrite=False, remove_original_trajectory=False):
         """
         Copy PELE output trajectories to analysis folder.
         """
@@ -4544,10 +4585,14 @@ class peleAnalysis:
                         orig = self.trajectory_files[protein][ligand][epoch][traj]
                         dest = epoch_folder+'/'+orig.split('/')[-1]
                         if os.path.exists(dest) and not overwrite:
+                            if remove_original_trajectory:
+                                os.remove(orig)
                             continue
                         if orig != dest: # Copy only they are not found in the analysis folder
                             shutil.copyfile(orig, dest)
                             self.trajectory_files[protein][ligand][epoch][traj] = dest
+                            if remove_original_trajectory:
+                                os.remove(orig)
 
         # Copy equilibration PELE trajectories
         for protein in self.equilibration['trajectory']:
@@ -4560,10 +4605,10 @@ class peleAnalysis:
                     if not os.path.exists(epoch_folder):
                         os.mkdir(epoch_folder)
                     for traj in self.equilibration['trajectory'][protein][ligand][epoch]:
+                        orig = self.equilibration['trajectory'][protein][ligand][epoch][traj]
                         dest = epoch_folder+'/'+orig.split('/')[-1]
                         if os.path.exists(dest) and not overwrite:
                             continue
-                        orig = self.equilibration['trajectory'][protein][ligand][epoch][traj]
                         if orig != dest: # Copy only they are not found in the analysis folder
                             shutil.copyfile(orig, dest)
                             self.equilibration['trajectory'][protein][ligand][epoch][traj] = dest
@@ -4606,6 +4651,8 @@ class peleAnalysis:
                     self.trajectory_files[protein] = {}
                 if protein not in self.topology_files:
                     self.topology_files[protein] = {}
+                if protein not in self.ligand_files:
+                    self.ligand_files[protein] = {}
                 if protein not in self.equilibration['report']:
                     self.equilibration['report'][protein] = {}
                 if protein not in self.equilibration['trajectory']:
@@ -4643,6 +4690,7 @@ class peleAnalysis:
                 # Get path to topology file
                 else:
                     self.topology_files[protein][ligand] = pele_read.getTopologyFile(input_dir)
+                    self.ligand_files[protein][ligand] = pele_read.getLigandFile(input_dir)
 
                 # Add protein and ligand to attribute lists
                 if protein not in self.proteins:
@@ -4673,25 +4721,36 @@ class peleAnalysis:
         self.ligand_structure = {}
         self.md_topology = {}
 
-        if not os.path.exists(self.data_folder+'/chains_ids.json') or not os.path.exists(self.data_folder+'/atom_indexes.json') or self.force_reading:
-            for protein in self.report_files:
-                if protein not in self.chain_ids:
-                    self.structure[protein] = {}
-                    self.ligand_structure[protein] = {}
-                    self.md_topology[protein] = {}
-                    self.chain_ids[protein] = {}
-                    self.atom_indexes[protein] = {}
-                for ligand in self.report_files[protein]:
-                    if ligand not in self.chain_ids[protein]:
-                        self.chain_ids[protein][ligand] = {}
+        # Check that chain ids match the number of proteins
+        if os.path.exists(self.data_folder+'/chains_ids.json'):
+            chain_ids = self._loadDictionaryFromJson(self.data_folder+'/chains_ids.json')
+            if len(chain_ids) != len(self.proteins):
+                os.remove(self.data_folder+'/chains_ids.json')
 
-                    if ligand not in self.atom_indexes[protein]:
-                        self.atom_indexes[protein][ligand] = {}
+        # Check that atom indexes match the number of proteins
+        if os.path.exists(self.data_folder+'/atom_indexes.json'):
+            atom_indexes = self._loadDictionaryFromJson(self.data_folder+'/atom_indexes.json')
+            if len(atom_indexes) != len(self.proteins):
+                os.remove(self.data_folder+'/atom_indexes.json')
+
+        if not os.path.exists(self.data_folder+'/chains_ids.json') or not os.path.exists(self.data_folder+'/atom_indexes.json') or self.force_reading:
+
+            for protein in self.proteins:
+                self.structure.setdefault(protein, {})
+                self.ligand_structure.setdefault(protein, {})
+                self.md_topology.setdefault(protein, {})
+                self.chain_ids.setdefault(protein, {})
+                self.atom_indexes.setdefault(protein, {})
+
+                for ligand in self.ligands:
+                    self.chain_ids[protein].setdefault(ligand, {})
+                    self.atom_indexes[protein].setdefault(ligand, {})
 
                     # Load input PDB with Bio.PDB and mdtraj
                     input_pdb = self._getInputPDB(protein, ligand)
+
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
-                    input_ligand_pdb = self._getInputLigandPDB(self.pele_directories[protein][ligand])
+                    input_ligand_pdb = self._getInputLigandPDB(protein, ligand)
                     self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
 
                     # Add ligand three letter code ligand_names
@@ -4754,7 +4813,7 @@ class peleAnalysis:
                         continue
 
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
-                    input_ligand_pdb = self._getInputLigandPDB(self.pele_directories[protein][ligand])
+                    input_ligand_pdb = self._getInputLigandPDB(protein, ligand)
                     self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
 
                     # Add ligand three letter code ligand_names
