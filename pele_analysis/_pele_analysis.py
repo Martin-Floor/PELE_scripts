@@ -2084,7 +2084,8 @@ class peleAnalysis:
 
         return 'vmd -e .load_vmd.tcl'
 
-    def combineDistancesIntoMetrics(self, catalytic_labels, labels=None, nonbonded_energy=False, overwrite=False):
+    def combineDistancesIntoMetrics(self, catalytic_labels, labels=None, nonbonded_energy=False,
+                                    overwrite=False, verbose=False):
         """
         Combine different equivalent distances into specific named metrics. The function
         takes as input a dictionary (catalytic_labels) composed of inner dictionaries as follows:
@@ -2120,6 +2121,9 @@ class peleAnalysis:
                         protein_ligand.append(i)
 
                 for protein, ligand in protein_ligand:
+
+                    if verbose:
+                        print(f'Reading protein {protein} and ligand {ligand} distances')
 
                     ligand_data = self.getProteinAndLigandData(protein, ligand)
 
