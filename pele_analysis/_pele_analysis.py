@@ -124,6 +124,7 @@ class peleAnalysis:
                                        remove_original_trajectory=remove_original_trajectory)
 
         # Set dictionary with Chain IDs to match mdtraj indexing
+        print('Setting Chain IDs and Atom Indexes')
         self._setChainIDs()
 
         # Get protein and ligand cominations wither from pele or analysis folders
@@ -131,7 +132,6 @@ class peleAnalysis:
 
         if self.verbose:
             print('Reading PELE information for:')
-
 
         # Read PELE simulation report data
         self._readReportData(energy_by_residue_type=energy_by_residue_type)
@@ -147,8 +147,6 @@ class peleAnalysis:
             self._readReportData(equilibration=True)
         else:
             print('Skipping equilibration information from report files.')
-
-
 
         # Sort protein and ligand names alphabetically for orderly iterations.
         self.proteins = sorted(self.proteins)
@@ -4590,13 +4588,15 @@ class peleAnalysis:
                         dest = epoch_folder+'/'+orig.split('/')[-1]
                         if os.path.exists(dest) and not overwrite:
                             if remove_original_trajectory:
-                                os.remove(orig)
+                                if self.pele_folder+'/' in orig: #Only remove pele folder (original)
+                                    os.remove(orig)
                             continue
-                        if orig != dest: # Copy only they are not found in the analysis folder
+                        elif orig != dest: # Copy only they are not found in the analysis folder
                             shutil.copyfile(orig, dest)
                             self.trajectory_files[protein][ligand][epoch][traj] = dest
                             if remove_original_trajectory:
-                                os.remove(orig)
+                                if self.pele_folder+'/' in orig: #Only remove pele folder (original)
+                                    os.remove(orig)
 
         # Copy equilibration PELE trajectories
         for protein in self.equilibration['trajectory']:
@@ -4729,16 +4729,17 @@ class peleAnalysis:
         if os.path.exists(self.data_folder+'/chains_ids.json'):
             chain_ids = self._loadDictionaryFromJson(self.data_folder+'/chains_ids.json')
             if len(chain_ids) != len(self.proteins):
+                # print(len(chain_ids), len(self.proteins))
                 os.remove(self.data_folder+'/chains_ids.json')
 
         # Check that atom indexes match the number of proteins
         if os.path.exists(self.data_folder+'/atom_indexes.json'):
             atom_indexes = self._loadDictionaryFromJson(self.data_folder+'/atom_indexes.json')
             if len(atom_indexes) != len(self.proteins):
+                # print(len(atom_indexes), len(self.proteins))
                 os.remove(self.data_folder+'/atom_indexes.json')
 
         if not os.path.exists(self.data_folder+'/chains_ids.json') or not os.path.exists(self.data_folder+'/atom_indexes.json') or self.force_reading:
-
             for protein in self.proteins:
                 self.structure.setdefault(protein, {})
                 self.ligand_structure.setdefault(protein, {})
