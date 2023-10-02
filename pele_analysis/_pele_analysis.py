@@ -4331,6 +4331,8 @@ class peleAnalysis:
 
             # Read conects if found
             conects_dir = self.data_folder+'/pele_conects'
+            if not os.path.exists(conects_dir):
+                os.mkdir(conects_dir)
             for d in os.listdir(conects_dir):
                 protein = d.split(self.separator)[-2].replace('.json', '')
                 ligand = d.split(self.separator)[-1]
