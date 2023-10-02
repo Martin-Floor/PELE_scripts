@@ -65,6 +65,8 @@ class peleAnalysis:
         self.csv_equilibration_files = {}
         self.trajectory_files = {}
         self.topology_files = {}
+        self.conect_files = {}
+        self.fixed_files = {}
         self.ligand_files = {}
         self.equilibration = {}
         self.pele_combinations = []
@@ -89,7 +91,6 @@ class peleAnalysis:
         ebr_types = ['all', 'sgb', 'lennard_jones', 'electrostatic']
         if energy_by_residue_type not in ebr_types:
             raise ValueError('Energy by residue type not valid. valid options are: '+' '.join(energy_by_residue_type))
-
 
         # Check data folder for paths to csv files
         if self.verbose:
@@ -2818,6 +2819,10 @@ class peleAnalysis:
                         io.set_structure(pdb_topology)
                         io.save(output_folder+'/'+protein+'/'+filename)
 
+                        if self.conects[protein][ligand] != []:
+                            conectLines._writeConectLines(output_folder+'/'+protein+'/'+filename,
+                                                          self.conects[protein][ligand])
+
     ### Clustering methods
 
     def getLigandTrajectoryPerTrajectory(self, protein, ligand,  overwrite=False,
@@ -4324,6 +4329,17 @@ class peleAnalysis:
                     if f.endswith('.pdb'):
                         self.topology_files[protein][ligand] = topology_dir+'/'+d+'/'+f
 
+            # Read conects if found
+            conects_dir = self.data_folder+'/pele_conects'
+            for d in os.listdir(conects_dir):
+                protein = d.split(self.separator)[-2].replace('.json', '')
+                ligand = d.split(self.separator)[-1]
+                if protein not in self.conect_files:
+                    self.conect_files[protein] = {}
+                for f in os.listdir(conects_dir+'/'+d):
+                    if f.endswith('.json'):
+                        self.conect_files[protein][ligand] = conects_dir+'/'+d+'/'+f
+
         # Create analysis folder
         if not os.path.exists(self.data_folder):
             os.mkdir(self.data_folder)
@@ -4341,6 +4357,10 @@ class peleAnalysis:
         # Create PELE toplogies folder
         if not os.path.exists(self.data_folder+'/pele_topologies'):
             os.mkdir(self.data_folder+'/pele_topologies')
+
+        # Create PELE conects folder
+        if not os.path.exists(self.data_folder+'/pele_conects'):
+            os.mkdir(self.data_folder+'/pele_conects')
 
         # Create PELE ligands folders
         if not os.path.exists(self.data_folder+'/pele_ligands'):
@@ -4655,6 +4675,8 @@ class peleAnalysis:
                     self.trajectory_files[protein] = {}
                 if protein not in self.topology_files:
                     self.topology_files[protein] = {}
+                if protein not in self.fixed_files:
+                    self.fixed_files[protein] = {}
                 if protein not in self.ligand_files:
                     self.ligand_files[protein] = {}
                 if protein not in self.equilibration['report']:
@@ -4694,6 +4716,7 @@ class peleAnalysis:
                 # Get path to topology file
                 else:
                     self.topology_files[protein][ligand] = pele_read.getTopologyFile(input_dir)
+                    self.fixed_files[protein][ligand] = pele_read.getFixedFile(input_dir)
                     self.ligand_files[protein][ligand] = pele_read.getLigandFile(input_dir)
 
                 # Add protein and ligand to attribute lists
@@ -4722,6 +4745,7 @@ class peleAnalysis:
 
         # Read complex chain ids
         self.structure = {}
+        self.conects = {}
         self.ligand_structure = {}
         self.md_topology = {}
 
@@ -4742,6 +4766,7 @@ class peleAnalysis:
         if not os.path.exists(self.data_folder+'/chains_ids.json') or not os.path.exists(self.data_folder+'/atom_indexes.json') or self.force_reading:
             for protein in self.proteins:
                 self.structure.setdefault(protein, {})
+                self.conects.setdefault(protein, {})
                 self.ligand_structure.setdefault(protein, {})
                 self.md_topology.setdefault(protein, {})
                 self.chain_ids.setdefault(protein, {})
@@ -4755,6 +4780,16 @@ class peleAnalysis:
                     input_pdb = self._getInputPDB(protein, ligand)
 
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
+                    fixed_pdb = self.fixed_files[protein][ligand]
+
+                    self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb)
+                    conect_folder =  conects_dir = self.data_folder+'/pele_conects/'
+                    conect_folder += protein+self.separator+ligand+'/'
+                    if not os.path.exists(conect_folder):
+                        os.mkdir(conect_folder)
+                    conect_file = conect_folder+protein+self.separator+ligand+'.json'
+                    self._saveDictionaryAsJson(self.conects[protein][ligand], conect_file)
+
                     input_ligand_pdb = self._getInputLigandPDB(protein, ligand)
                     self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
 
@@ -4831,6 +4866,19 @@ class peleAnalysis:
                     for chain in self.chain_ids[protein][ligand]:
                         chain_ids[protein][ligand][int(chain)] = self.chain_ids[protein][ligand][chain]
 
+                    # Read conect lines
+                    self.conects.setdefault(protein, {})
+                    self.conects[protein][ligand] = self._loadDictionaryFromJson(self.conect_files[protein][ligand])
+
+                    # Convert json lists to tuples for hashing
+                    conects = []
+                    for cl in self.conects[protein][ligand]:
+                        nc = []
+                        for atom in cl:
+                            nc.append(tuple(atom))
+                        conects.append(nc)
+                    self.conects[protein][ligand] = conects
+
             self.chain_ids = chain_ids
 
             self.atom_indexes = self._loadDictionaryFromJson(self.data_folder+'/atom_indexes.json')
@@ -4844,6 +4892,153 @@ class peleAnalysis:
                         ams = am.split('-')
                         atom_indexes[protein][ligand][(ams[0], int(ams[1]), ams[2])] = self.atom_indexes[protein][ligand][am]
             self.atom_indexes = atom_indexes
+
+class conectLines:
+
+    def _readPDBConectLines(pdb_file, only_hetatoms=False, change_water=True):
+        """
+        Read PDB file and get conect lines only
+        """
+
+        # Get atom indexes by tuple and objects
+        atoms = conectLines._getAtomIndexes(pdb_file, change_water=change_water)
+        if only_hetatoms:
+            atoms_objects = conectLines._getAtomIndexes(pdb_file, return_objects=True)
+        conects = []
+
+        # Read conect lines as dictionaries linking atoms
+        with open(pdb_file) as pdbf:
+            for l in pdbf:
+                if l.startswith('CONECT'):
+                    l = l.replace("CONECT", "")
+                    l = l.strip("\n").rstrip()
+                    num = len(l) / 5
+                    new_l = [int(l[i * 5:(i * 5) + 5]) for i in range(int(num))]
+                    if only_hetatoms:
+                        het_atoms = [True if atoms_objects[int(x)].get_parent().id[0] != ' ' else False for x in new_l]
+                        if True not in het_atoms:
+                            continue
+                    conects.append([atoms[int(x)] for x in new_l])
+
+        return conects
+
+    def _getAtomIndexes(pdb_file, invert=False, return_objects=False, change_water=False):
+
+        def _get_atom_tuple(atom):
+
+            return (atom.get_parent().get_parent().id,
+                    atom.get_parent().id[1],
+                    atom.name)
+
+        def _readPDB(name, pdb_file):
+            """
+            Read PDB file to a structure object
+            """
+            parser = PDB.PDBParser()
+            structure = parser.get_structure(name, pdb_file)
+            return structure
+
+        # Define atom name changes for water residues
+        if change_water:
+            water_name = {'O': 'OW', 'H1': '1HW', 'H2': '2HW'}
+
+        # Read PDB file
+        atom_indexes = {}
+        with open(pdb_file, 'r') as f:
+            for l in f:
+                if l.startswith('ATOM') or l.startswith('HETATM'):
+                    index, name, resname, chain, resid = (int(l[6:11]), l[12:16].strip(), l[17:20], l[21], int(l[22:26]))
+                    if change_water and resname == 'HOH':
+                        name =  water_name[name]
+                    atom_indexes[(chain, resid, name)] = index
+
+        # Read structure
+        structure = _readPDB('fixed', pdb_file)
+
+        # Assign PDB indexes to each Bio.PDB atom
+        atoms = {}
+        for chain in structure[0]:
+            for residue in chain:
+
+                for atom in residue:
+
+                    if change_water and residue.id[0] == 'W':
+                        atom.name = water_name[atom.name]
+
+                    # Get atom PDB index
+                    index = atom_indexes[(chain.id, residue.id[1], atom.name)]
+
+                    # Return atom objects instead of tuples
+                    if return_objects:
+                        _atom = atom
+                    else:
+                        _atom = _get_atom_tuple(atom)
+
+                    # Invert the returned dictionary
+                    if invert:
+                        atoms[_atom] = index
+                    else:
+                        atoms[index] = _atom
+        return atoms
+
+    def _writeConectLines(pdb_file, conects, atom_mapping=None, hydrogens=True):
+        """
+        Write stored conect lines for a particular model into the given PDB file.
+
+        Parameters
+        ==========
+        model : str
+            Model name
+        pdb_file : str
+            Path to PDB file to modify
+        """
+
+        def check_atom_in_atoms(atom, atoms, atom_mapping):
+
+            if atom not in atoms and atom_mapping != None and atom in atom_mapping:
+                if isinstance(atom_mapping[atom], str):
+                    atom = (atom[0], atom[1], atom_mapping[atom])
+                elif isinstance(atom_mapping[atom], tuple) and len(atom_mapping[atom]) == 3:
+                    atom = atom_mapping[atom]
+
+            if atom not in atoms:
+                residue_atoms = ' '.join([ac[-1] for ac in atoms if atom[1] == ac[1]])
+                message = "Conect atom %s not found in %s's topology\n\n" % (atom, pdb_file)
+                message += "Topology's residue %s atom names: %s" % (atom[1], residue_atoms)
+                raise ValueError(message)
+
+            return atom
+
+        # Get atom indexes map
+        atoms = conectLines._getAtomIndexes(pdb_file, invert=True)
+
+        # Check atoms not found in conects
+        with open(pdb_file+'.tmp', 'w') as tmp:
+            with open(pdb_file) as pdb:
+
+                # write all lines but skip END line
+                for line in pdb:
+                    if not line.startswith('END'):
+                        tmp.write(line)
+
+                # Write new conect line mapping
+                for entry in conects:
+                    line = 'CONECT'
+                    for x in entry:
+                        if not hydrogens:
+                            type_index = (x[2].find(next(filter(str.isalpha, x[2]))))
+                            if x[2][type_index] != 'H':
+                                x = check_atom_in_atoms(x, atoms, atom_mapping=atom_mapping)
+                                line += '%5s' % atoms[x]
+                        else:
+                            x = check_atom_in_atoms(x, atoms, atom_mapping=atom_mapping)
+                            line += '%5s' % atoms[x]
+
+                    line += '\n'
+                    tmp.write(line)
+            tmp.write('END\n')
+        shutil.move(pdb_file+'.tmp', pdb_file)
+
 
 def _copyScriptFile(output_folder, script_name, no_py=False, subfolder=None, hidden=True):
     """
