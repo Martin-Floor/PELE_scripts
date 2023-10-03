@@ -4565,8 +4565,24 @@ class peleAnalysis:
                 if not os.path.exists(dir):
                     os.mkdir(dir)
                 dest = dir+'/'+protein+self.separator+ligand+'.pdb'
+
+                # Skip found in pele data folder
                 if os.path.exists(dest) and not overwrite:
+                    # self.topology_files.setdefault(protein, {})
+                    # self.topology_files[protein][ligand] = dest
                     continue
+
+                # Skip if not found in pele folder
+                if protein not in self.topology_files:
+                    if os.path.exists(dest):
+                        self.topology_files.setdefault(protein, {})
+                        self.topology_files[protein][ligand] = dest
+                    continue
+                elif ligand not in self.topology_files[protein]:
+                    if os.path.exists(dest):
+                        self.topology_files[protein][ligand] = dest
+                    continue
+
                 orig = self.topology_files[protein][ligand]
                 if orig != dest:
                     shutil.copyfile(orig, dest)
@@ -4578,10 +4594,24 @@ class peleAnalysis:
                 if not os.path.exists(dir):
                     os.mkdir(dir)
                 dest = dir+'/'+ligand+'.pdb'
+
                 if os.path.exists(dest) and not overwrite:
                     self.ligand_files.setdefault(protein, {})
                     self.ligand_files[protein][ligand] = dest
                     continue
+
+                # Skip if not found in pele folder
+                if protein not in self.ligand_files:
+                    if os.path.exists(dest):
+                        self.ligand_files.setdefault(protein, {})
+                        self.ligand_files[protein][ligand] = dest
+                    continue
+
+                elif ligand not in self.ligand_files[protein]:
+                    if os.path.exists(dest):
+                        self.ligand_files[protein][ligand] = dest
+                    continue
+
                 orig = self.ligand_files[protein][ligand]
                 if orig != dest:
                     shutil.copyfile(orig, dest)
@@ -4782,15 +4812,16 @@ class peleAnalysis:
                     input_pdb = self._getInputPDB(protein, ligand)
 
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
-                    fixed_pdb = self.fixed_files[protein][ligand]
 
-                    self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb)
-                    conect_folder =  conects_dir = self.data_folder+'/pele_conects/'
-                    conect_folder += protein+self.separator+ligand+'/'
-                    if not os.path.exists(conect_folder):
-                        os.mkdir(conect_folder)
-                    conect_file = conect_folder+protein+self.separator+ligand+'.json'
-                    self._saveDictionaryAsJson(self.conects[protein][ligand], conect_file)
+                    if protein in self.fixed_files and ligand in self.fixed_files[protein]:
+                        fixed_pdb = self.fixed_files[protein][ligand]
+                        self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb)
+                        conect_folder =  conects_dir = self.data_folder+'/pele_conects/'
+                        conect_folder += protein+self.separator+ligand+'/'
+                        if not os.path.exists(conect_folder):
+                            os.mkdir(conect_folder)
+                        conect_file = conect_folder+protein+self.separator+ligand+'.json'
+                        self._saveDictionaryAsJson(self.conects[protein][ligand], conect_file)
 
                     input_ligand_pdb = self._getInputLigandPDB(protein, ligand)
                     self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
@@ -4869,17 +4900,18 @@ class peleAnalysis:
                         chain_ids[protein][ligand][int(chain)] = self.chain_ids[protein][ligand][chain]
 
                     # Read conect lines
-                    self.conects.setdefault(protein, {})
-                    self.conects[protein][ligand] = self._loadDictionaryFromJson(self.conect_files[protein][ligand])
+                    if protein in self.conect_files and ligand in self.conect_files[protein]:
+                        self.conects.setdefault(protein, {})
+                        self.conects[protein][ligand] = self._loadDictionaryFromJson(self.conect_files[protein][ligand])
 
-                    # Convert json lists to tuples for hashing
-                    conects = []
-                    for cl in self.conects[protein][ligand]:
-                        nc = []
-                        for atom in cl:
-                            nc.append(tuple(atom))
-                        conects.append(nc)
-                    self.conects[protein][ligand] = conects
+                        # Convert json lists to tuples for hashing
+                        conects = []
+                        for cl in self.conects[protein][ligand]:
+                            nc = []
+                            for atom in cl:
+                                nc.append(tuple(atom))
+                            conects.append(nc)
+                        self.conects[protein][ligand] = conects
 
             self.chain_ids = chain_ids
 
@@ -4951,7 +4983,8 @@ class conectLines:
                 if l.startswith('ATOM') or l.startswith('HETATM'):
                     index, name, resname, chain, resid = (int(l[6:11]), l[12:16].strip(), l[17:20], l[21], int(l[22:26]))
                     if change_water and resname == 'HOH':
-                        name =  water_name[name]
+                        if name not in water_name.values():
+                            name =  water_name[name]
                     atom_indexes[(chain, resid, name)] = index
 
         # Read structure
@@ -4965,7 +4998,8 @@ class conectLines:
                 for atom in residue:
 
                     if change_water and residue.id[0] == 'W':
-                        atom.name = water_name[atom.name]
+                        if name not in water_name.values():
+                            atom.name = water_name[atom.name]
 
                     # Get atom PDB index
                     index = atom_indexes[(chain.id, residue.id[1], atom.name)]
