@@ -224,7 +224,7 @@ class peleAnalysis:
 
                 if skip_missing and protein not in atom_pairs:
                     continue
-                elif skip_missing and ligand not in atom_pairs[ligand]:
+                elif skip_missing and ligand not in atom_pairs[protein]:
                     continue
 
                 for pair in atom_pairs[protein][ligand]:
