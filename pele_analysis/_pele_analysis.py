@@ -2695,7 +2695,8 @@ class peleAnalysis:
 
         return pele_data
 
-    def extractPELEPoses(self, pele_data, output_folder, separator=None, keep_chain_names=True, label_aware=True, remote_pele_path=None):
+    def extractPELEPoses(self, pele_data, output_folder, separator=None, keep_chain_names=True,
+                         label_aware=True, remote_pele_path=None, skip_missing=False):
         """
         Extract pele poses present in a pele dataframe. The PELE DataFrame
         contains the same structure as the self.data dataframe, attribute of
@@ -2713,6 +2714,8 @@ class peleAnalysis:
             Path if the trajectories are stored in a remote server. It should have the following structure:
                 server_name:path/to/my/pele/folder
             Note that this will only work if you have a ssh key setup. If you do not check the group guidelines.
+        skip_missing : bool
+            Skip if trajectory files are missing.
         """
 
         if separator == None:
@@ -2755,7 +2758,11 @@ class peleAnalysis:
 
                     # Check whether protein and ligand trajectories are available and if remote path was given.
                     if (protein not in self.trajectory_files or ligand not in self.trajectory_files[protein]) and remote_pele_path == None:
-                        raise ValueError('Trajectory files not found for protein %s and ligand %s.' % (protein, ligand))
+                        if skip_missing:
+                            print('Trajectory files not found for protein %s and ligand %s.' % (protein, ligand))
+                            continue
+                        else:
+                            raise ValueError('Trajectory files not found for protein %s and ligand %s.' % (protein, ligand))
 
                     elif (protein not in self.trajectory_files or ligand not in self.trajectory_files[protein]) and remote_pele_path != None:
                         traj = pele_trajectory.loadTrajectoryFrames(ligand_data,
@@ -2818,6 +2825,11 @@ class peleAnalysis:
                         # Save structure
                         io.set_structure(pdb_topology)
                         io.save(output_folder+'/'+protein+'/'+filename)
+
+                        if protein not in self.conects:
+                            continue
+                        elif ligand not in self.conects[protein]:
+                            continue
 
                         if self.conects[protein][ligand] != []:
                             conectLines._writeConectLines(output_folder+'/'+protein+'/'+filename,
