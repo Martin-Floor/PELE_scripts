@@ -153,7 +153,8 @@ class peleAnalysis:
         self.proteins = sorted(self.proteins)
         self.ligands = sorted(self.ligands)
 
-    def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False, verbose=False):
+    def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False, verbose=False,
+                           skip_missing=False):
         """
         Calculate distances between pairs of atoms for each pele (protein+ligand)
         simulation. The atom pairs are given as a dictionary with the following format:
@@ -173,6 +174,8 @@ class peleAnalysis:
             Display function messages
         overwrite : bool
             Force recalculation of distances.
+        skip_missing : bool
+            Skip models not found in the atom_pairs dictionary
         """
 
         if not os.path.exists(self.data_folder+'/distances'):
@@ -218,6 +221,12 @@ class peleAnalysis:
                 pairs = []
                 dist_label = {}
                 pair_lengths = []
+
+                if skip_missing and protien not in atom_pairs:
+                    continue
+                elif skip_missing and ligand not in atom_pairs[ligand]:
+                    continue
+
                 for pair in atom_pairs[protein][ligand]:
 
                     if len(pair) == 1:
@@ -381,7 +390,7 @@ class peleAnalysis:
                     self.distances[protein][ligand].set_index(index_columns, inplace=True)
 
 
-    def calculateDistancesParallel(self, atom_pairs, overwrite=False, verbose=False, cpus=None):
+    def calculateDistancesParallel(self, atom_pairs, overwrite=False, verbose=False, cpus=None, skip_missing=False):
         """
         Calculate distances between pairs of atoms for each pele (protein+ligand)
         simulation. The atom pairs are given as a dictionary with the following format:
@@ -404,7 +413,7 @@ class peleAnalysis:
         """
         distance_calculation = pele_distances.distances(self)
         distance_calculation.calculateDistances(atom_pairs, overwrite=overwrite,
-                                                verbose=verbose, cpus=cpus)
+                                                verbose=verbose, cpus=cpus, skip_missing=skip_missing)
 
     def getTrajectory(self, protein, ligand, step, trajectory, equilibration=False):
         """
