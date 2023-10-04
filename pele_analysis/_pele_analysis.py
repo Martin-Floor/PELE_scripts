@@ -222,7 +222,7 @@ class peleAnalysis:
                 dist_label = {}
                 pair_lengths = []
 
-                if skip_missing and protien not in atom_pairs:
+                if skip_missing and protein not in atom_pairs:
                     continue
                 elif skip_missing and ligand not in atom_pairs[ligand]:
                     continue
