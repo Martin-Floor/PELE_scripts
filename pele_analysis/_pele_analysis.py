@@ -250,8 +250,8 @@ class peleAnalysis:
 
                         i3 = self.atom_indexes[protein][ligand][pair[2]]
                         if len(pair) == 3:
-                            pairs.append((pair[0], pair[1], pair[2]))
-                            dist_label[(i1, i2, i3)] = 'angle_'
+                            pairs.append((i1, i2, i3))
+                            dist_label[(pair[0], pair[1], pair[2])] = 'angle_'
 
                     if len(pair) == 4:
                         # Check if atoms are in the protein+ligand PELE topology
@@ -352,9 +352,9 @@ class peleAnalysis:
                             if pair_lengths == 2:
                                 d = md.compute_distances(traj, pairs)*10
                             elif pair_lengths == 3:
-                                d = md.compute_angles(traj, pairs)*10
+                                d = md.compute_angles(traj, pairs)
                             elif pair_lengths == 4:
-                                d = md.compute_dihedrals(traj, pairs)*10
+                                d = md.compute_dihedrals(traj, pairs)
 
                             # Store data
                             if not skip_index_append:
@@ -1257,10 +1257,15 @@ class peleAnalysis:
             return distances
 
         for d in self.distances[protein][ligand]:
-            if 'distance' in d:
+            if 'distance_' in d:
+                distances.append(d)
+            elif 'angle_' in d:
+                distances.append(d)
+            elif 'torsion_' in d:
                 distances.append(d)
             elif '_coordinate' in d:
                 distances.append(d)
+
         return distances
 
     def plotCatalyticPosesFraction(self, initial_threshold=3.5):
