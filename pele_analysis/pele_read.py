@@ -188,7 +188,7 @@ def getEquilibrationTrajectoryFiles(pele_output_folder):
 def getTopologyFile(pele_input_folder):
     """
     Retrieves the path to the topology (pdb) file of the Adaptive-PELE Platform
-    output folder.
+    input folder.
 
     Parameters
     ==========
@@ -205,6 +205,48 @@ def getTopologyFile(pele_input_folder):
             topology_file = pele_input_folder+'/'+f
 
     return topology_file
+
+def getFixedFile(pele_input_folder):
+    """
+    Retrieves the path to the fixed (pdb) file of the Adaptive-PELE Platform
+    input folder.
+
+    Parameters
+    ==========
+    pele_output_folder : str
+        Adaptive-PELE Platform output folder
+
+    Returns
+    =======
+    topology_file : str
+        Path to the topology file
+    """
+    for f in os.listdir(pele_input_folder):
+        if f.endswith('fixed.pdb'):
+            fixed_file = pele_input_folder+'/'+f
+
+    return fixed_file
+
+def getLigandFile(pele_input_folder):
+    """
+    Retrieves the path to the ligand (pdb) file of the Adaptive-PELE Platform
+    input folder.
+
+    Parameters
+    ==========
+    pele_output_folder : str
+        Adaptive-PELE Platform output folder
+
+    Returns
+    =======
+    topology_file : str
+        Path to the topology file
+    """
+    for f in os.listdir(pele_input_folder):
+        if f == 'ligand.pdb':
+            ligand_file = pele_input_folder+'/'+f
+
+    return ligand_file
 
 def readReportFiles(report_files, protein, ligand, equilibration=False, force_reading=False,
                     ebr_threshold=0.1, data_folder_name='.pele_analysis', separator='-'):
@@ -343,7 +385,7 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
     with open(report_file) as rf:
         for i,l in enumerate(rf):
 
-            # Remove C-language null characters if found. 
+            # Remove C-language null characters if found.
             if '\x00' in l:
                 l = l.replace('\x00', '')
 

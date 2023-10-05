@@ -18,7 +18,7 @@ class distances:
         if not os.path.exists(self.data_folder+'/distances'):
             os.mkdir(self.data_folder+'/distances')
 
-    def calculateDistances(self, atom_pairs, overwrite=False, verbose=False, cpus=None):
+    def calculateDistances(self, atom_pairs, overwrite=False, verbose=False, cpus=None, skip_missing=False):
 
         # Iterate all PELE protein + ligand entries
 
@@ -48,6 +48,12 @@ class distances:
                 pairs = []
                 dist_label = {}
                 pair_lengths = []
+
+                if skip_missing and protein not in atom_pairs:
+                    continue
+                elif skip_missing and ligand not in atom_pairs[protein]:
+                    continue
+
                 for pair in atom_pairs[protein][ligand]:
                     if len(pair) >= 2:
                         # Check if atoms are in the protein+ligand PELE topology
