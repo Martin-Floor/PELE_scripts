@@ -4908,10 +4908,12 @@ class peleAnalysis:
 
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
                     input_ligand_pdb = self._getInputLigandPDB(protein, ligand)
-                    self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
+
+                    if input_ligand_pdb:
+                        self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
 
                     # Add ligand three letter code ligand_names
-                    if ligand not in self.ligand_names:
+                    if ligand not in self.ligand_names and ligand in self.ligand_structure[protein]:
                         for residue in self.ligand_structure[protein][ligand].get_residues():
                             self.ligand_names[ligand] = residue.resname
 
