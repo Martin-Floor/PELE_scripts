@@ -81,8 +81,8 @@ class distances:
 
                         i3 = self.atom_indexes[protein][ligand][pair[2]]
                         if len(pair) == 3:
-                            pairs.append((pair[0], pair[1], pair[2]))
-                            dist_label[(i1, i2, i3)] = 'angle_'
+                            pairs.append((i1, i2, i3))
+                            dist_label[(pair[0], pair[1], pair[2])] = 'angle_'
 
                     if len(pair) == 4:
                         # Check if atoms are in the protein+ligand PELE topology
@@ -108,8 +108,15 @@ class distances:
                 pair_lengths = list(pair_lengths)[0]
 
                 # Define labels
-                labels = [dist_label[p]+''.join([str(x) for x in p[0]])+'_'+\
-                                        ''.join([str(x) for x in p[1]]) for p in atom_pairs[protein][ligand]]
+                labels = []
+                for pair in atom_pairs[protein][ligand]:
+                    label = dist_label[pair]
+                    if len(pair) > 1:
+                        for p in pair:
+                            label += ''.join([str(x) for x in p])+'_'
+                    else:
+                        label += pair+'_'
+                    labels.append(label[:-1])
 
                 # Check if labels are already in distance_data
                 missing_labels = []
@@ -202,9 +209,9 @@ class distances:
                 if pair_lengths == 2:
                     d = md.compute_distances(traj, pairs)*10
                 elif pair_lengths == 3:
-                    d = md.compute_angles(traj, pairs)*10
+                    d = np.rad2deg(md.compute_angles(traj, pairs))
                 elif pair_lengths == 4:
-                    d = md.compute_dihedrals(traj, pairs)*10
+                    d = np.rad2deg(md.compute_dihedrals(traj, pairs))
 
                 # Store data
                 if not skip_index_append:
