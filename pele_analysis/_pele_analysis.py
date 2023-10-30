@@ -1585,7 +1585,8 @@ class peleAnalysis:
 
         interact(_bindingFreeEnergyMatrix, KT=KT_slider)
 
-    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90, observable='Binding Energy',
+    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, initial_threshold_filter=3.5, measured_metrics=None,
+                                                   store_values=False, lig_label_rot=90, observable='Binding Energy',
                                                    matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json',
                                                    max_metric_threshold=30, pele_data=None, KT=5.93, to_csv=None,
                                                    only_proteins=None, only_ligands=None, average_binding_energy=False,
@@ -1733,6 +1734,11 @@ class peleAnalysis:
         metrics_sliders = {}
         labels_ddms = {}
         for m in metrics:
+            if measured_metrics != None:
+                if m in measured_metrics:
+                    initial_threshold = initial_threshold
+                else:
+                    initial_threshold = initial_threshold_filter
             m_slider = FloatSlider(
                         value=initial_threshold,
                         min=0,
