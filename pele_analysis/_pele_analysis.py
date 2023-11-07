@@ -1590,7 +1590,7 @@ class peleAnalysis:
 
         interact(_bindingFreeEnergyMatrix, KT=KT_slider)
 
-    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90,
+    def bindingFreeEnergyCatalyticDifferenceMatrix(self, initial_threshold=3.5, store_values=False, lig_label_rot=90, observable='Binding Energy',
                                                    matrix_file='catalytic_matrix.npy', models_file='catalytic_models.json',
                                                    max_metric_threshold=30, pele_data=None, KT=5.93, to_csv=None,
                                                    only_proteins=None, only_ligands=None, average_binding_energy=False,
@@ -1657,9 +1657,9 @@ class peleAnalysis:
                             total_energy = catalytic_series['Total Energy']
                             relative_energy = total_energy-energy_minimum
                             probability = np.exp(-relative_energy/KT)/Z
-                            M[i][j] = np.sum(probability*catalytic_series['Binding Energy'])
+                            M[i][j] = np.sum(probability*catalytic_series[observable])
                         elif avg_ebc:
-                            M[i][j] = catalytic_series.nsmallest(n_poses, 'Binding Energy')['Binding Energy'].mean()
+                            M[i][j] = catalytic_series.nsmallest(n_poses, observable)[observable].mean()
                     else:
                         M[i][j] = np.nan
 
@@ -1849,7 +1849,7 @@ class peleAnalysis:
             for metric in metrics:
                 catalytic_series = catalytic_series[catalytic_series[metric] <= metrics[metric]]
 
-            catalytic_series = catalytic_series.nsmallest(n_smallest, 'Binding Energy')
+            catalytic_series = catalytic_series.nsmallest(n_smallest, observable)
 
             if catalytic_series.empty:
                 raise ValueError('No frames were selected for the selected thresholds.')
@@ -4918,10 +4918,12 @@ class peleAnalysis:
 
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
                     input_ligand_pdb = self._getInputLigandPDB(protein, ligand)
-                    self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
+
+                    if input_ligand_pdb:
+                        self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
 
                     # Add ligand three letter code ligand_names
-                    if ligand not in self.ligand_names:
+                    if ligand not in self.ligand_names and ligand in self.ligand_structure[protein]:
                         for residue in self.ligand_structure[protein][ligand].get_residues():
                             self.ligand_names[ligand] = residue.resname
 
