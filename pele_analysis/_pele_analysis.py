@@ -484,6 +484,11 @@ class peleAnalysis:
 
                     # Get best binding energy pose as reference
                     ligand_data = self.getProteinAndLigandData(protein, ligand)
+
+                    # Skip empty data frames
+                    if ligand_data.empty:
+                        continue
+
                     ref_model = ligand_data.nsmallest(1, 'Binding Energy')
                     ref_trajectory = ref_model.index.get_level_values('Trajectory')[0]
                     ref_epoch = ref_model.index.get_level_values('Epoch')[0]
