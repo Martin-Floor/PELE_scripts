@@ -38,7 +38,7 @@ class peleAnalysis:
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
                  read_equilibration=True, data_folder_name=None, global_pele=False, trajectories=False,
-                 remove_original_trajectory=False):
+                 remove_original_trajectory=False, change_water_names=False):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -126,7 +126,7 @@ class peleAnalysis:
 
         # Set dictionary with Chain IDs to match mdtraj indexing
         print('Setting Chain IDs and Atom Indexes')
-        self._setChainIDs()
+        self._setChainIDs(change_water_names=change_water_names)
 
         # Get protein and ligand cominations wither from pele or analysis folders
         self.pele_combinations = self._getProteinLigandCombinations()
@@ -152,6 +152,9 @@ class peleAnalysis:
         # Sort protein and ligand names alphabetically for orderly iterations.
         self.proteins = sorted(self.proteins)
         self.ligands = sorted(self.ligands)
+
+        if os.path.exists(self.data_folder+'/sitemap_data'):
+            self._readSiteMapData()
 
     def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False, verbose=False,
                            skip_missing=False):
@@ -180,6 +183,9 @@ class peleAnalysis:
 
         if not os.path.exists(self.data_folder+'/distances'):
             os.mkdir(self.data_folder+'/distances')
+
+        if not self.trajectory_files:
+            raise ValueError('No trajectories were found!')
 
         # Iterate all PELE protein + ligand entries
         for protein in sorted(self.trajectory_files):
@@ -2565,7 +2571,7 @@ class peleAnalysis:
     ### Extract poses methods
 
     def getBestPELEPoses(self, filter_values=None, proteins=None, ligands=None, column='Binding Energy',
-                         n_models=1, return_failed=False, cluster_aware=True, label_aware=True):
+                         n_models=1, return_failed=False, cluster_aware=True, label_aware=True, lower_limit=None):
         """
         Get best models based on the best column score and a set of metrics with specified thresholds.
         The filter thresholds must be provided with a dictionary using the metric names as keys
@@ -2610,6 +2616,8 @@ class peleAnalysis:
                             metric_name = metric
                         else:
                             metric_name = 'metric_'+metric
+                        if lower_limit:
+                            ligand_data = ligand_data[ligand_data[metric_name] > lower_limit]
                         ligand_data = ligand_data[ligand_data[metric_name] < filter_values[metric]]
 
                 if ligand_data.empty:
@@ -2655,7 +2663,8 @@ class peleAnalysis:
         return self.data[self.data.index.isin(bp)]
 
     def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None,
-                                    min_threshold=3.5, max_threshold=5.0, step_size=0.1, label_aware=True):
+                                    min_threshold=3.5, max_threshold=5.0, step_size=0.1, label_aware=True,
+                                    lower_limit=None):
         """
         Extract best poses iteratively using all given metrics simoultaneously.
         """
@@ -2671,7 +2680,7 @@ class peleAnalysis:
             filter_values = {m:t for m in metrics}
             best_poses = self.getBestPELEPoses(filter_values, column=column, n_models=1,
                                                proteins=proteins, ligands=ligands,
-                                               label_aware=label_aware)
+                                               label_aware=label_aware, lower_limit=lower_limit)
             mask = []
             if not isinstance(ligands, type(None)):
                 for level in best_poses.index.get_level_values('Ligand'):
@@ -2710,7 +2719,7 @@ class peleAnalysis:
         return pele_data
 
     def extractPELEPoses(self, pele_data, output_folder, separator=None, keep_chain_names=True,
-                         label_aware=True, remote_pele_path=None, skip_missing=False):
+                         label_aware=True, remote_pele_path=None, skip_missing=False, skip_connects=False):
         """
         Extract pele poses present in a pele dataframe. The PELE DataFrame
         contains the same structure as the self.data dataframe, attribute of
@@ -2845,7 +2854,7 @@ class peleAnalysis:
                         elif ligand not in self.conects[protein]:
                             continue
 
-                        if self.conects[protein][ligand] != []:
+                        if self.conects[protein][ligand] != [] and not skip_connects:
                             conectLines._writeConectLines(output_folder+'/'+protein+'/'+filename,
                                                           self.conects[protein][ligand])
 
@@ -4089,6 +4098,388 @@ class peleAnalysis:
                         if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
                             os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
 
+    def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
+                                site_box=10, resolution='fine', reportsize=100, sidechain=True,
+                                keep_volpts=False, remove_ligand=False, overwrite=False):
+        """
+        Sets up sitemap calculations for the whole PELE simulation, so, yes it does consume a lot of space and computation.
+        After the calculations are completed it is recommended to download only the log files, which contains the sitemap
+        scores, e.g.:
+
+        rsync -av --include='*/' --include='*.log' --exclude='*' cluster@user:sitemap_folder_path destination_path
+
+        Then read the log files with readSiteMapCalculation() which will incorporate the data to the main dataframe.
+        Any missing data point will be set to nan if it was not computed at all or if sitemap failed to compute a pocket for it.
+        After executing this last function the sitemap data will be stored in the data_folder, so now it would be a good idea
+        to remove all the calculation folder to save space for having fun with something else...
+
+        Parameters
+        ==========
+        job_folder : str
+            Path to the sitemap calculation folder.
+        residue_selection : list or tuple
+            List of residues as tuples: (chainid, resid) to be used as the pocket definition.
+        only_proteins : list
+            Limit the set up to only these models.
+        only_proteins : list
+            Limit the set up to only these ligand.
+        site_box : int
+            Sitemap site_box parameter.
+        resolution : str
+            Sitemap resolution parameter.
+        sidechain : bool
+            Use only the sidechain of the given residues to define the pocket.
+        reportsize : int
+            Sitemap resolution reportsize
+        keep_volpts : bool
+            Keep the volpts pdb files. Only use it to debug a few snapshots or if you are insane.
+        remove_ligand : bool
+            Remove the ligand from the structures to compute the pocket map without it interfering it.
+            Recommended!
+        overwrite : bool
+            Rewrite any input pdb file already created.
+
+        Returns
+        =======
+        jobs : list
+            List of jobs to execute to calculate sitemap for all structures.
+
+        ## TODO: Implement a dataframe so only those points are computed.
+        """
+
+
+        if not os.path.exists(job_folder):
+            os.mkdir(job_folder)
+
+        if only_proteins:
+            if isinstance(only_proteins, str):
+                only_proteins = [only_proteins]
+
+        if only_ligands:
+            if isinstance(only_ligands, str):
+                only_ligands = [only_ligands]
+
+        pele_analysis._pele_analysis._copyScriptFile(job_folder, 'prepareForSiteMap.py')
+        script_name =  '._prepareForSiteMap.py'
+
+        for protein, ligand in self.pele_combinations:
+
+            if only_proteins and protein not in only_proteins:
+                continue
+
+            if only_ligands and ligand not in only_ligands:
+                continue
+
+            protein_folder = job_folder+'/'+protein
+            if not os.path.exists(protein_folder):
+                os.mkdir(protein_folder)
+
+            ligand_folder = protein_folder+'/'+ligand
+            if not os.path.exists(ligand_folder):
+                os.mkdir(ligand_folder)
+
+            # Create prepwizard folder
+            prepwizard_folder = ligand_folder+'/prepwizard'
+            if not os.path.exists(prepwizard_folder):
+                os.mkdir(prepwizard_folder)
+
+            # Create prepwizard input folder
+            prepwizard_input_folder = prepwizard_folder+'/input_models'
+            if not os.path.exists(prepwizard_input_folder):
+                os.mkdir(prepwizard_input_folder)
+
+            # Create prepwizard output folder
+            prepwizard_output_folder = prepwizard_folder+'/output_models'
+            if not os.path.exists(prepwizard_output_folder):
+                os.mkdir(prepwizard_output_folder)
+
+            # Create sitemap folder
+            sitemap_folder = ligand_folder+'/sitemap'
+            if not os.path.exists(sitemap_folder):
+                os.mkdir(sitemap_folder)
+
+            # Create sitemap input folder
+            sitemap_input_folder = sitemap_folder+'/input_models'
+            if not os.path.exists(sitemap_input_folder):
+                os.mkdir(sitemap_input_folder)
+
+            # Create sitemap output folder
+            sitemap_output_folder = sitemap_folder+'/output_models'
+            if not os.path.exists(sitemap_output_folder):
+                os.mkdir(sitemap_output_folder)
+
+            epoch_zf = len(str(max(self.trajectory_files[protein][ligand])))
+            trajectory_zf = len(str(max(self.trajectory_files[protein][ligand][0])))
+            frame_zf = 5
+
+            jobs = []
+            for epoch in self.trajectory_files[protein][ligand]:
+                for trajectory in self.trajectory_files[protein][ligand][epoch]:
+                    traj_file = self.trajectory_files[protein][ligand][epoch][trajectory]
+                    traj = md.load(traj_file, top=self.topology_files[protein][ligand])
+
+                    if remove_ligand:
+                        atom_indexes = traj.topology.select('not (resname '+self.ligand_names[ligand]+')')
+                        traj = traj.atom_slice(atom_indexes)
+
+                    frame_zf = min(frame_zf, len(str(traj.n_frames))+1)
+                    for i,frame in enumerate(traj):
+
+                        # Write input PDB
+                        pdb_file = protein+self.separator
+                        pdb_file += ligand+self.separator
+                        pdb_file += str(epoch).zfill(epoch_zf)+self.separator
+                        pdb_file += str(trajectory).zfill(trajectory_zf)+self.separator
+                        pdb_file += str(i).zfill(frame_zf)+'.pdb'
+
+                        input_file = prepwizard_input_folder+'/'
+                        input_file += pdb_file
+
+                        if not os.path.exists(input_file) or overwrite:
+                            frame.save(input_file)
+
+                        # Write prepwizard command
+                        command = 'cd '+prepwizard_output_folder+'\n'
+                        command += '"${SCHRODINGER}/utilities/prepwizard" '
+                        command += '../input_models/'+pdb_file+' '
+                        command += pdb_file+' '
+                        command += '-keepfarwat '
+                        command += '-noepik '
+                        command += '-noprotassign '
+                        command += '-noimpref '
+                        command += '-JOBNAME '+pdb_file.replace('.pdb','')+' '
+                        command += '-HOST localhost:1 '
+                        command += '-WAIT\n'
+                        command += 'cd '+'../'*len(prepwizard_output_folder.split('/'))+'\n'
+
+                        # Write pdb to mae for sitemap command
+                        command += 'cd '+sitemap_input_folder+'\n'
+                        command += '"${SCHRODINGER}/run" '
+                        command += '../../../../'+script_name+' '
+                        command += '../../prepwizard/output_models/'+pdb_file+' '
+                        command += './ '
+                        command += '--protein_only \n'
+                        command += 'cd '+'../'*len(sitemap_input_folder.split('/'))+'\n'
+
+                        # Write sitemap command
+                        command += 'cd '+sitemap_output_folder+'\n'
+                        command += '"${SCHRODINGER}/sitemap" '
+                        command += '-j '+pdb_file+' '
+                        command += '-prot ../input_models/'+pdb_file.replace('.pdb','_protein.mae')+' '
+                        command += '-sitebox '+str(site_box)+' '
+                        command += '-resolution '+str(resolution)+' '
+                        if keep_volpts:
+                            command += '-keepvolpts yes '
+                        command += '-keeplogs yes '
+                        command += '-reportsize '+str(reportsize)+' '
+
+                        # For chain and residue index
+                        for r in residue_selection:
+                            if isinstance(r, tuple) and len(r) == 2:
+                                command += '-siteasl \"chain.name '+str(r[0])+' and res.num {'+str(r[1])+'} '
+                            else:
+                                raise ValueError('Incorrect residue definition!')
+
+                            if sidechain:
+                                command += 'and not (atom.pt ca,c,n,h,o)'
+                            command += '\" '
+                        command += '-HOST localhost:1 '
+                        command += '-TMPLAUNCHDIR '
+                        command += '-WAIT\n'
+
+                        command += 'cd '+'../'*len(sitemap_output_folder.split('/'))+'\n'
+                        jobs.append(command)
+
+        return jobs
+
+    def readSiteMapCalculation(self, sitemap_folder, separator=None, verbose=False):
+        """
+        Reads sitemap scores for the PELE trajectories. It also
+        stores the sitemap data at pele_data_folder/sitemap_data.
+
+        Parameters
+        ==========
+        sitemap_folder : str
+            Sitemap calculation folder
+
+        Returns
+        =======
+        self.pele.data : pandas.DataFrame
+            The pele dataframe with the sitemap data added.
+        """
+        def readSitemapLog(log_file):
+            cond = False
+            scores = {}
+            with open(log_file) as lf:
+                for l in lf:
+                    if l.startswith('SiteScore'):
+                        sm_scores = l.split()
+                        cond = True
+                        continue
+                    if cond:
+                        for s,v in zip(sm_scores, l.split()):
+                            try:
+                                scores[s] = int(v)
+                            except:
+                                scores[s] = float(v)
+                        cond = False
+            if len(scores) != 11:
+                return None
+
+            return scores
+
+        if not separator:
+            separator = self.separator
+
+        # Create sitemap data folder at pele data
+        sitemap_data_folder = self.data_folder+'/sitemap_data'
+        if not os.path.exists(sitemap_data_folder):
+            os.mkdir(sitemap_data_folder)
+
+        sitemap_data = {}
+        if verbose:
+            counts = {}
+        for protein in os.listdir(sitemap_folder):
+            protein_folder = sitemap_folder+'/'+protein
+            if not os.path.isdir(protein_folder):
+                continue
+
+            sitemap_data[protein] = {}
+            if verbose:
+                counts[protein] = {}
+            for ligand in os.listdir(protein_folder):
+                ligand_folder = protein_folder+'/'+ligand
+                if not os.path.isdir(ligand_folder):
+                    continue
+
+                sitemap_data[protein][ligand] = {}
+                sitemap_data[protein][ligand]['Epoch'] = []
+                sitemap_data[protein][ligand]['Trajectory'] = []
+                sitemap_data[protein][ligand]['Accepted Pele Steps'] = []
+
+                if verbose:
+                    counts[protein][ligand] = 0
+
+                sitemap_output_folder = ligand_folder+'/sitemap/output_models'
+
+                for f in sorted(os.listdir(sitemap_output_folder)):
+
+                    if f.endswith('.log'):
+
+                        scores = readSitemapLog(sitemap_output_folder+'/'+f)
+
+                        if not scores:
+                            continue
+
+                        if verbose:
+                            counts[protein][ligand] += 1
+
+                        # Get pele trajectory values
+                        split = f.split(separator)
+                        assert split[0] == protein and split[1] == ligand
+                        epoch = int(split[2:][0])
+                        trajectory = int(split[2:][1])
+                        step = int(split[2:][2].split('.')[0])
+
+                        # Add data
+                        sitemap_data[protein][ligand]['Epoch'].append(epoch)
+                        sitemap_data[protein][ligand]['Trajectory'].append(trajectory)
+                        sitemap_data[protein][ligand]['Accepted Pele Steps'].append(step)
+                        for s in scores:
+                            sitemap_data[protein][ligand].setdefault(s, [])
+                            sitemap_data[protein][ligand][s].append(scores[s])
+
+                # Convert to dataframe and store in the pele data folder.
+                sitemap_data[protein][ligand] = pd.DataFrame(sitemap_data[protein][ligand])
+                indexes = ['Epoch', 'Trajectory', 'Accepted Pele Steps']
+                sitemap_data[protein][ligand] = sitemap_data[protein][ligand].set_index(indexes)
+                sitemap_data[protein][ligand].to_csv(sitemap_data_folder+'/'+protein+self.separator+ligand+'.csv')
+
+        # Get mapping of all sitemap data
+        if verbose:
+            print('Points read:')
+        all_sitemap_values = {}
+        for protein in sitemap_data:
+            all_sitemap_values[protein] = {}
+            for ligand in sitemap_data[protein]:
+                if verbose:
+                    ligand_data = self.getProteinAndLigandData(protein, ligand)
+                    message = f'\t{protein} {ligand}: '
+                    message += '%.2f%%' % (100*(counts[protein][ligand]/ligand_data.shape[0]))
+                    message += f' ({counts[protein][ligand]}/{ligand_data.shape[0]})'
+                    print(message)
+                all_sitemap_values[protein][ligand] = {}
+                smd = sitemap_data[protein][ligand].to_dict()
+                for s in smd:
+                    for index in smd[s]:
+                        all_sitemap_values[protein][ligand].setdefault(index, [])
+                        all_sitemap_values[protein][ligand][index].append(smd[s][index])
+
+        # Compile data to merge with self.data
+        vectors = []
+        for index in self.data.index:
+            protein, ligand = index[:2]
+            if protein not in all_sitemap_values or ligand not in all_sitemap_values[protein]:
+                vectors.append([np.nan]*11)
+            elif index[2:-1] in all_sitemap_values[protein][ligand]:
+                vectors.append(all_sitemap_values[protein][ligand][index[2:-1]])
+            else:
+                vectors.append([np.nan]*11)
+
+        # Merge with self.data
+        vectors = np.array(vectors)
+        for i, s in zip(range(vectors.shape[1]), scores):
+            self.data[s] = vectors[:,i]
+
+        return self.data
+
+    def _readSiteMapData(self):
+        """
+        Read sitemap data in pele_data_folder.
+        """
+
+        sitemap_data_folder = self.data_folder+'/sitemap_data'
+        sitemap_data = {}
+        for f in os.listdir(sitemap_data_folder):
+            if f.endswith('.csv'):
+                protein, ligand = f.split(self.separator)
+                ligand = ligand.replace('.csv', '')
+                sitemap_data.setdefault(protein, {})
+                sitemap_data[protein][ligand] = pd.read_csv(sitemap_data_folder+'/'+f)
+                indexes = ['Epoch', 'Trajectory', 'Accepted Pele Steps']
+                sitemap_data[protein][ligand] = sitemap_data[protein][ligand].set_index(indexes)
+                scores = list(sitemap_data[protein][ligand].keys())
+
+        # Get mapping of all sitemap data
+        all_sitemap_values = {}
+        for protein in sitemap_data:
+            all_sitemap_values[protein] = {}
+            for ligand in sitemap_data[protein]:
+                all_sitemap_values[protein][ligand] = {}
+                smd = sitemap_data[protein][ligand].to_dict()
+                for s in smd:
+                    for index in smd[s]:
+                        all_sitemap_values[protein][ligand].setdefault(index, [])
+                        all_sitemap_values[protein][ligand][index].append(smd[s][index])
+
+        # Compile data to merge with self.data
+        vectors = []
+        for index in self.data.index:
+            protein, ligand = index[:2]
+            if protein not in all_sitemap_values or ligand not in all_sitemap_values[protein]:
+                vectors.append([np.nan]*11)
+            elif index[2:-1] in all_sitemap_values[protein][ligand]:
+                vectors.append(all_sitemap_values[protein][ligand][index[2:-1]])
+            else:
+                vectors.append([np.nan]*11)
+
+        # Merge with self.data
+        vectors = np.array(vectors)
+        for i, s in zip(range(vectors.shape[1]), scores):
+            self.data[s] = vectors[:,i]
+
+        return self.data
+
     def _saveDataState(self, equilibration=False, individually=False, only_proteins=None, only_ligands=None):
         """
         Save the data state of all protein and ligand into the CSV files.
@@ -4795,7 +5186,7 @@ class peleAnalysis:
             if protein in self.report_files  and self.report_files[protein] == {}:
                 self.report_files.pop(protein)
 
-    def _setChainIDs(self):
+    def _setChainIDs(self, change_water_names=False):
 
         # Crea Bio PDB parser and io
         parser = PDB.PDBParser()
@@ -4841,7 +5232,8 @@ class peleAnalysis:
 
                     if protein in self.fixed_files and ligand in self.fixed_files[protein]:
                         fixed_pdb = self.fixed_files[protein][ligand]
-                        self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb)
+                        self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb,
+                                                                                        change_water=change_water_names)
                         conect_folder =  conects_dir = self.data_folder+'/pele_conects/'
                         conect_folder += protein+self.separator+ligand+'/'
                         if not os.path.exists(conect_folder):
@@ -4957,7 +5349,7 @@ class peleAnalysis:
 
 class conectLines:
 
-    def _readPDBConectLines(pdb_file, only_hetatoms=False, change_water=True):
+    def _readPDBConectLines(pdb_file, only_hetatoms=False, change_water=False):
         """
         Read PDB file and get conect lines only
         """
