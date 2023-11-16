@@ -153,9 +153,6 @@ class peleAnalysis:
         self.proteins = sorted(self.proteins)
         self.ligands = sorted(self.ligands)
 
-        if os.path.exists(self.data_folder+'/sitemap_data'):
-            self._readSiteMapData()
-
     def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False, verbose=False,
                            skip_missing=False):
         """
@@ -437,7 +434,8 @@ class peleAnalysis:
                             top=self.topology_files[protein][ligand])
         return traj
 
-    def calculateLigandRMSD(self, recalculate=False, production=True, equilibration=False, reference_pdb=None):
+    def calculateLigandRMSD(self, recalculate=False, production=True, equilibration=False,
+                            reference_pdb=None, only_proteins=None, only_ligands=None):
         """
         Calculate ligand RMSD using as reference the lowest binding energy pose or
         a reference PDB if given. It is added as "Ligand RMSD" column in the pele data frame'
@@ -445,6 +443,12 @@ class peleAnalysis:
 
         if not production and not equilibration:
             raise ValueError('You must at least set production or equilibration to True!')
+
+        if isinstance(only_proteins, str):
+            only_proteins = [only_proteins]
+
+        if isinstance(only_ligands, str):
+            only_ligands = [only_ligands]
 
         calc_eq_rmsd = False
         if equilibration:
@@ -472,6 +476,26 @@ class peleAnalysis:
                 if ligand not in self.topology_files[protein]:
                     continue
 
+                if (only_proteins and protein not in only_proteins) or (only_ligands and ligand not in only_ligands):
+                    ligand_data = self.getProteinAndLigandData(protein, ligand)
+
+                    if equilibration:
+                        ligand_data = self.getProteinAndLigandData(protein, ligand, equilibration=True)
+                        rmsd_nan = np.array([np.nan]*ligand_data.shape[0])
+                        if isinstance(equilibration_RMSD, type(None)):
+                            equilibration_RMSD = rmsd_nan
+                        else:
+                            equilibration_RMSD = np.concatenate((equilibration_RMSD, rmsd_nan))
+
+                    if production:
+                        ligand_data = self.getProteinAndLigandData(protein, ligand)
+                        rmsd_nan = np.array([np.nan]*ligand_data.shape[0])
+                        if isinstance(RMSD, type(None)):
+                            RMSD = rmsd_nan
+                        else:
+                            RMSD = np.concatenate((RMSD, rmsd_nan))
+                    continue
+
                 # Get topology PDB as reference for alignment
                 if protein in reference_pdb and ligand in reference_pdb:
                     print('Comparing RMSD values to %s' % reference_pdb[protein][ligand])
@@ -495,7 +519,7 @@ class peleAnalysis:
                     ref_step = ref_model.index.get_level_values('Accepted Pele Steps')[0]
                     ref_traj = self.getTrajectory(protein, ligand, ref_epoch, ref_trajectory)[ref_step]
 
-                if equilibration and calc_eq_rmsd and not recalculate:
+                if equilibration and calc_eq_rmsd and recalculate:
                     # Calculate ligand RMSD
                     for epoch in sorted(self.equilibration['trajectory'][protein][ligand]):
                         for trajectory in sorted(self.equilibration['trajectory'][protein][ligand][epoch]):
@@ -510,7 +534,7 @@ class peleAnalysis:
                             else:
                                 equilibration_RMSD = np.concatenate((equilibration_RMSD, rmsd))
 
-                if production and calc_prod_rmsd and not recalculate:
+                if production and calc_prod_rmsd and recalculate:
                     # Calculate ligand RMSD
                     for epoch in sorted(self.trajectory_files[protein][ligand]):
                         for trajectory in sorted(self.trajectory_files[protein][ligand][epoch]):
@@ -2154,6 +2178,8 @@ class peleAnalysis:
                     # Get best distance values
                     distances = catalytic_labels[name][protein][ligand]
                     distance_values = self.distances[protein][ligand][distances].min(axis=1)
+
+                    print(protein, ligand, ligand_data.shape[0], distance_values.to_numpy().shape[0])
 
                     # Check that distances and ligand data matches
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
@@ -4104,8 +4130,8 @@ class peleAnalysis:
                             os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
 
     def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
-                                site_box=10, resolution='fine', reportsize=100, sidechain=True,
-                                keep_volpts=False, remove_ligand=False, overwrite=False):
+                            site_box=10, resolution='fine', reportsize=100, sidechain=True,
+                            keep_volpts=False, remove_ligand=False, overwrite=False, separator=None):
         """
         Sets up sitemap calculations for the whole PELE simulation, so, yes it does consume a lot of space and computation.
         After the calculations are completed it is recommended to download only the log files, which contains the sitemap
@@ -4152,6 +4178,32 @@ class peleAnalysis:
         ## TODO: Implement a dataframe so only those points are computed.
         """
 
+        def checkLogFiles(job_folder, separator):
+
+            log_files = {}
+            for p in os.listdir(job_folder):
+                protein_folder = job_folder+'/'+p
+                if not os.path.isdir(protein_folder):
+                    continue
+                log_files[p] = {}
+                for l in os.listdir(protein_folder):
+                    ligand_folder = protein_folder+'/'+l
+                    if not os.path.isdir(ligand_folder):
+                        continue
+                    log_files[p][l] = []
+                    sitemap_folder = ligand_folder+'/sitemap/output_models'
+                    for log in os.listdir(sitemap_folder):
+                        if not log.endswith('.log'):
+                            continue
+                        epoch, trajectory, step = log.split(separator)[2:]
+                        epoch = int(epoch)
+                        trajectory = int(trajectory)
+                        step = int(step.split('.')[0])
+                        log_files[p][l].append((epoch, trajectory, step))
+            return log_files
+
+        if not separator:
+            separator = self.separator
 
         if not os.path.exists(job_folder):
             os.mkdir(job_folder)
@@ -4164,15 +4216,25 @@ class peleAnalysis:
             if isinstance(only_ligands, str):
                 only_ligands = [only_ligands]
 
-        pele_analysis._pele_analysis._copyScriptFile(job_folder, 'prepareForSiteMap.py')
+        _copyScriptFile(job_folder, 'prepareForSiteMap.py')
         script_name =  '._prepareForSiteMap.py'
 
+        log_files = checkLogFiles(job_folder, separator)
+
+        jobs = []
         for protein, ligand in self.pele_combinations:
 
             if only_proteins and protein not in only_proteins:
                 continue
 
             if only_ligands and ligand not in only_ligands:
+                continue
+
+            # Check if finished
+            ligand_data = self.getProteinAndLigandData(protein, ligand)
+            total_points = ligand_data.shape[0]
+            if len(log_files[protein][ligand]) == total_points:
+                print(f'All sitemap calculations are done for {protein} and {ligand}')
                 continue
 
             protein_folder = job_folder+'/'+protein
@@ -4217,7 +4279,6 @@ class peleAnalysis:
             trajectory_zf = len(str(max(self.trajectory_files[protein][ligand][0])))
             frame_zf = 5
 
-            jobs = []
             for epoch in self.trajectory_files[protein][ligand]:
                 for trajectory in self.trajectory_files[protein][ligand][epoch]:
                     traj_file = self.trajectory_files[protein][ligand][epoch][trajectory]
@@ -4231,10 +4292,10 @@ class peleAnalysis:
                     for i,frame in enumerate(traj):
 
                         # Write input PDB
-                        pdb_file = protein+self.separator
-                        pdb_file += ligand+self.separator
-                        pdb_file += str(epoch).zfill(epoch_zf)+self.separator
-                        pdb_file += str(trajectory).zfill(trajectory_zf)+self.separator
+                        pdb_file = protein+separator
+                        pdb_file += ligand+separator
+                        pdb_file += str(epoch).zfill(epoch_zf)+separator
+                        pdb_file += str(trajectory).zfill(trajectory_zf)+separator
                         pdb_file += str(i).zfill(frame_zf)+'.pdb'
 
                         input_file = prepwizard_input_folder+'/'
@@ -4297,7 +4358,8 @@ class peleAnalysis:
 
         return jobs
 
-    def readSiteMapCalculation(self, sitemap_folder, separator=None, verbose=False):
+    def readSiteMapCalculation(self, sitemap_folder, separator=None, verbose=False,
+                               fill_with_zeros=False):
         """
         Reads sitemap scores for the PELE trajectories. It also
         stores the sitemap data at pele_data_folder/sitemap_data.
@@ -4306,11 +4368,17 @@ class peleAnalysis:
         ==========
         sitemap_folder : str
             Sitemap calculation folder
+        separator : str
+            String employed to separate the data in file names.
+        verbose : bool
+            Verbode mode
+        fill_with_zeros : bool
+            Fill with zeros data points where sites were not found.
 
         Returns
         =======
-        self.pele.data : pandas.DataFrame
-            The pele dataframe with the sitemap data added.
+        sitemap_data : pandas.DataFrame
+            The pele dataframe points with the sitemap data added.
         """
         def readSitemapLog(log_file):
             cond = False
@@ -4328,8 +4396,8 @@ class peleAnalysis:
                             except:
                                 scores[s] = float(v)
                         cond = False
-            if len(scores) != 11:
-                return None
+                    if l.startswith('Output files will not be written since no sites were found.'):
+                        return
 
             return scores
 
@@ -4344,12 +4412,16 @@ class peleAnalysis:
         sitemap_data = {}
         if verbose:
             counts = {}
+
+        not_found = {}
         for protein in os.listdir(sitemap_folder):
             protein_folder = sitemap_folder+'/'+protein
             if not os.path.isdir(protein_folder):
                 continue
 
             sitemap_data[protein] = {}
+            not_found[protein] = {}
+
             if verbose:
                 counts[protein] = {}
             for ligand in os.listdir(protein_folder):
@@ -4362,6 +4434,8 @@ class peleAnalysis:
                 sitemap_data[protein][ligand]['Trajectory'] = []
                 sitemap_data[protein][ligand]['Accepted Pele Steps'] = []
 
+                not_found[protein][ligand] = []
+
                 if verbose:
                     counts[protein][ligand] = 0
 
@@ -4371,14 +4445,6 @@ class peleAnalysis:
 
                     if f.endswith('.log'):
 
-                        scores = readSitemapLog(sitemap_output_folder+'/'+f)
-
-                        if not scores:
-                            continue
-
-                        if verbose:
-                            counts[protein][ligand] += 1
-
                         # Get pele trajectory values
                         split = f.split(separator)
                         assert split[0] == protein and split[1] == ligand
@@ -4386,10 +4452,20 @@ class peleAnalysis:
                         trajectory = int(split[2:][1])
                         step = int(split[2:][2].split('.')[0])
 
+                        scores = readSitemapLog(sitemap_output_folder+'/'+f)
+
+                        if not scores:
+                            not_found[protein][ligand].append((epoch, trajectory, step))
+                            continue
+
+                        if verbose:
+                            counts[protein][ligand] += 1
+
                         # Add data
                         sitemap_data[protein][ligand]['Epoch'].append(epoch)
                         sitemap_data[protein][ligand]['Trajectory'].append(trajectory)
                         sitemap_data[protein][ligand]['Accepted Pele Steps'].append(step)
+
                         for s in scores:
                             sitemap_data[protein][ligand].setdefault(s, [])
                             sitemap_data[protein][ligand][s].append(scores[s])
@@ -4410,9 +4486,11 @@ class peleAnalysis:
                 if verbose:
                     ligand_data = self.getProteinAndLigandData(protein, ligand)
                     message = f'\t{protein} {ligand}: '
-                    message += '%.2f%%' % (100*(counts[protein][ligand]/ligand_data.shape[0]))
-                    message += f' ({counts[protein][ligand]}/{ligand_data.shape[0]})'
+                    message += f'{counts[protein][ligand]} of {ligand_data.shape[0]} points '
+                    message += 'have sitemap data. '
+                    message += '(%.2f%%)' % (100*(counts[protein][ligand]/ligand_data.shape[0]))
                     print(message)
+
                 all_sitemap_values[protein][ligand] = {}
                 smd = sitemap_data[protein][ligand].to_dict()
                 for s in smd:
@@ -4426,6 +4504,11 @@ class peleAnalysis:
             protein, ligand = index[:2]
             if protein not in all_sitemap_values or ligand not in all_sitemap_values[protein]:
                 vectors.append([np.nan]*11)
+            elif index[2:-1] in not_found[protein][ligand]:
+                if fill_with_zeros:
+                    vectors.append([0.0]*11)
+                else:
+                    vectors.append([np.nan]*11)
             elif index[2:-1] in all_sitemap_values[protein][ligand]:
                 vectors.append(all_sitemap_values[protein][ligand][index[2:-1]])
             else:
@@ -4436,7 +4519,9 @@ class peleAnalysis:
         for i, s in zip(range(vectors.shape[1]), scores):
             self.data[s] = vectors[:,i]
 
-        return self.data
+        sitemap_data = self.data[~self.data['volume'].isna()]
+
+        return sitemap_data
 
     def _readSiteMapData(self):
         """
