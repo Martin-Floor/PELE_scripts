@@ -366,9 +366,11 @@ class peleAnalysis:
                             if pair_lengths == 2:
                                 d = md.compute_distances(traj, pairs)*10
                             elif pair_lengths == 3:
-                                d = md.compute_angles(traj, pairs)
+                                # d = md.compute_angles(traj, pairs)
+                                d = np.rad2deg(md.compute_angles(traj, pairs))
                             elif pair_lengths == 4:
-                                d = md.compute_dihedrals(traj, pairs)
+                                d = np.rad2deg(md.compute_dihedrals(traj, pairs))
+                                # d = md.compute_dihedrals(traj, pairs)
 
                             # Store data
                             if not skip_index_append:
@@ -1101,10 +1103,20 @@ class peleAnalysis:
                 metrics = [k for k in ligand_series.keys() if 'metric_' in k]
                 metrics_sliders = {}
                 for m in metrics:
+
+                    if self.metric_type[m] == 'distance':
+                        max_value = max(30, max(ligand_series[m]))
+                        min_value = 0
+                    elif self.metric_type[m] == 'angle':
+                        max_value = 180
+                        min_value = -180
+                    elif self.metric_type[m] == 'torsion':
+                        max_value = 180
+                        min_value = -180
                     m_slider = FloatSlider(
                                     value=initial_threshold,
-                                    min=0,
-                                    max=30,
+                                    min=min_value,
+                                    max=max_value,
                                     step=0.1,
                                     description=m+':',
                                     disabled=False,
@@ -2155,10 +2167,16 @@ class peleAnalysis:
             (for details see above).
         """
 
+        self.metric_type = {}
+        metric_type_file = self.data_folder+'/metric_type.json'
+
         for name in catalytic_labels:
             if 'metric_'+name in self.data.keys() and not overwrite:
                 print('Combined metric %s already added. Give overwrite=True to combine again the distances.' % name)
+                if os.path.exists(metric_type_file):
+                    self.metric_type = self._loadDictionaryFromJson(metric_type_file)
             else:
+                distance_types = []
                 values = []
                 if labels != None:
                     label_values = []
@@ -2177,6 +2195,7 @@ class peleAnalysis:
 
                     # Get best distance values
                     distances = catalytic_labels[name][protein][ligand]
+                    distance_types += [x.split('_')[0] for x  in catalytic_labels[name][protein][ligand]]
                     distance_values = self.distances[protein][ligand][distances].min(axis=1)
 
                     print(protein, ligand, ligand_data.shape[0], distance_values.to_numpy().shape[0])
@@ -2200,6 +2219,15 @@ class peleAnalysis:
                     self.data['label_'+name] = label_values
 
                 self._saveDataState()
+
+                if len(set(distance_types)) > 1:
+                    raise ValueError(f'Different distance types were combined under the metric {name}! Check your input!')
+                elif len(set(distance_types)) == 0:
+                    raise ValueError(f'No distance was found to be combined under the metric {name}! Check your input!')
+
+                self.metric_type['metric_'+name] = list(set(distance_types))[0]
+
+        self._saveDictionaryAsJson(self.metric_type, metric_type_file)
 
     def combineMetricsWithExclusions(self, combinations, exclusions, drop=True):
         """
