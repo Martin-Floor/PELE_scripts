@@ -4130,8 +4130,8 @@ class peleAnalysis:
                             os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
 
     def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
-                            site_box=10, resolution='fine', reportsize=100, sidechain=True,
-                            keep_volpts=False, remove_ligand=False, overwrite=False, separator=None):
+                                site_box=10, resolution='fine', reportsize=100, sidechain=True, verbose=False,
+                                keep_volpts=False, remove_ligand=False, overwrite=False, separator=None):
         """
         Sets up sitemap calculations for the whole PELE simulation, so, yes it does consume a lot of space and computation.
         After the calculations are completed it is recommended to download only the log files, which contains the sitemap
@@ -4202,6 +4202,34 @@ class peleAnalysis:
                         log_files[p][l].append((epoch, trajectory, step))
             return log_files
 
+        def checkInputPDBfiles(job_folder, separator):
+
+            step_zf = 5
+            pdb_input_files = {}
+            for p in os.listdir(job_folder):
+                protein_folder = job_folder+'/'+p
+                if not os.path.isdir(protein_folder):
+                    continue
+                pdb_input_files[p] = {}
+                for l in os.listdir(protein_folder):
+                    ligand_folder = protein_folder+'/'+l
+                    if not os.path.isdir(ligand_folder):
+                        continue
+                    pdb_input_files[p][l] = []
+                    prepwizard_folder = ligand_folder+'/prepwizard/input_models'
+                    for pdb in sorted(os.listdir(prepwizard_folder)):
+                        if not pdb.endswith('.pdb'):
+                            continue
+                        epoch, trajectory, step = pdb.split(separator)[2:]
+                        epoch = int(epoch)
+                        trajectory = int(trajectory)
+                        step = step.split('.')[0]
+                        step_zf = len(step)
+                        step = int(step)
+                        pdb_input_files[p][l].append((epoch, trajectory, step))
+
+            return pdb_input_files, step_zf
+
         if not separator:
             separator = self.separator
 
@@ -4219,7 +4247,9 @@ class peleAnalysis:
         _copyScriptFile(job_folder, 'prepareForSiteMap.py')
         script_name =  '._prepareForSiteMap.py'
 
+        # Check input and output files
         log_files = checkLogFiles(job_folder, separator)
+        pdb_input_files, step_zf = checkInputPDBfiles(job_folder, separator)
 
         jobs = []
         for protein, ligand in self.pele_combinations:
@@ -4233,9 +4263,14 @@ class peleAnalysis:
             # Check if finished
             ligand_data = self.getProteinAndLigandData(protein, ligand)
             total_points = ligand_data.shape[0]
-            if len(log_files[protein][ligand]) == total_points:
-                print(f'All sitemap calculations are done for {protein} and {ligand}')
-                continue
+
+            if protein in log_files and ligand in log_files[protein]:
+                if len(log_files[protein][ligand]) == total_points:
+                    if verbose:
+                        print(f'All sitemap calculations are done for {protein} and {ligand}')
+                    continue
+
+            print(f'Processing {protein} and {ligand}:')
 
             protein_folder = job_folder+'/'+protein
             if not os.path.exists(protein_folder):
@@ -4279,30 +4314,82 @@ class peleAnalysis:
             trajectory_zf = len(str(max(self.trajectory_files[protein][ligand][0])))
             frame_zf = 5
 
-            for epoch in self.trajectory_files[protein][ligand]:
-                for trajectory in self.trajectory_files[protein][ligand][epoch]:
-                    traj_file = self.trajectory_files[protein][ligand][epoch][trajectory]
-                    traj = md.load(traj_file, top=self.topology_files[protein][ligand])
+            for epoch in sorted(self.trajectory_files[protein][ligand]):
 
-                    if remove_ligand:
-                        atom_indexes = traj.topology.select('not (resname '+self.ligand_names[ligand]+')')
-                        traj = traj.atom_slice(atom_indexes)
+                # Check if epoch pdbs were already extracted
+                epoch_data = ligand_data[ligand_data.index.get_level_values('Epoch') == epoch]
 
-                    frame_zf = min(frame_zf, len(str(traj.n_frames))+1)
-                    for i,frame in enumerate(traj):
+                if protein in pdb_input_files  and ligand in pdb_input_files[protein]:
+                    epoch_pdbs = [p for p in pdb_input_files[protein][ligand] if p[0] == epoch]
+                    epoch_logs = [p for p in log_files[protein][ligand] if p[0] == epoch]
+                else:
+                    epoch_pdbs = []
+                    epoch_logs = []
 
-                        # Write input PDB
-                        pdb_file = protein+separator
-                        pdb_file += ligand+separator
-                        pdb_file += str(epoch).zfill(epoch_zf)+separator
-                        pdb_file += str(trajectory).zfill(trajectory_zf)+separator
-                        pdb_file += str(i).zfill(frame_zf)+'.pdb'
+                if len(epoch_logs) == epoch_data.shape[0]:
+                    if verbose:
+                        print(f'\tAll sitemap calculations for epoch {epoch} and {protein} and {ligand}')
+                    continue
+
+                for trajectory in sorted(self.trajectory_files[protein][ligand][epoch]):
+
+                    # Check if trajectory pdbs were already extracted
+                    trajectory_data = epoch_data[epoch_data.index.get_level_values('Trajectory') == trajectory]
+                    trajectory_pdbs = [p for p in epoch_pdbs if p[1] == trajectory]
+                    trajectory_logs = [p for p in epoch_logs if p[1] == trajectory]
+
+                    if len(trajectory_logs) == trajectory_data.shape[0]:
+                        if verbose:
+                            print(f'\tAll sitemap calculations for epoch {epoch} and trajectory {trajectory} and {protein} and {ligand}')
+                        continue
+
+                    if verbose:
+                        print(f'\tExtracting models for epoch {epoch} and trajectory {trajectory}', end='\r')
+
+                    pdb_files = []
+                    extract_pdbs = True
+                    if len(trajectory_pdbs) == trajectory_data.shape[0]:
+                        extract_pdbs = False
+                        for p in trajectory_pdbs:
+                            if p in trajectory_logs:
+                                continue
+                            pdb_file = protein+separator
+                            pdb_file += ligand+separator
+                            pdb_file += str(epoch).zfill(epoch_zf)+separator
+                            pdb_file += str(trajectory).zfill(trajectory_zf)+separator
+                            pdb_file += str(p[2]).zfill(step_zf)+'.pdb'
+                            pdb_files.append(pdb_file)
+
+                    if extract_pdbs:
+                        traj_file = self.trajectory_files[protein][ligand][epoch][trajectory]
+                        traj = md.load(traj_file, top=self.topology_files[protein][ligand])
+
+                        if remove_ligand:
+                            atom_indexes = traj.topology.select('not (resname '+self.ligand_names[ligand]+')')
+                            traj = traj.atom_slice(atom_indexes)
+
+                        frame_zf = min(frame_zf, len(str(traj.n_frames))+1)
+
+                        for i,frame in enumerate(traj):
+
+                            # Write input PDB
+                            pdb_file = protein+separator
+                            pdb_file += ligand+separator
+                            pdb_file += str(epoch).zfill(epoch_zf)+separator
+                            pdb_file += str(trajectory).zfill(trajectory_zf)+separator
+                            pdb_file += str(i).zfill(frame_zf)+'.pdb'
+                            pdb_files.append(pdb_file)
+
+                            input_file = prepwizard_input_folder+'/'
+                            input_file += pdb_file
+
+                            if not os.path.exists(input_file) or overwrite:
+                                frame.save(input_file)
+
+                    for pdb_file in pdb_files:
 
                         input_file = prepwizard_input_folder+'/'
                         input_file += pdb_file
-
-                        if not os.path.exists(input_file) or overwrite:
-                            frame.save(input_file)
 
                         # Write prepwizard command
                         command = 'cd '+prepwizard_output_folder+'\n'
