@@ -4158,7 +4158,7 @@ class peleAnalysis:
                         if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
                             os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
 
-def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
+    def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
                                 site_box=10, resolution='fine', reportsize=100, sidechain=True, verbose=False,
                                 keep_volpts=False, remove_ligand=False, overwrite=False, separator=None,
                                 dataframe=None, recalculate=False):
