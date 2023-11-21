@@ -470,6 +470,7 @@ class peleAnalysis:
         if reference_pdb == None:
             reference_pdb = {}
 
+        RMSD = None
         for protein in self.proteins:
 
             for ligand in self.ligands:
@@ -4157,9 +4158,10 @@ class peleAnalysis:
                         if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
                             os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
 
-    def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
+def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
                                 site_box=10, resolution='fine', reportsize=100, sidechain=True, verbose=False,
-                                keep_volpts=False, remove_ligand=False, overwrite=False, separator=None):
+                                keep_volpts=False, remove_ligand=False, overwrite=False, separator=None,
+                                dataframe=None, recalculate=False):
         """
         Sets up sitemap calculations for the whole PELE simulation, so, yes it does consume a lot of space and computation.
         After the calculations are completed it is recommended to download only the log files, which contains the sitemap
@@ -4197,6 +4199,8 @@ class peleAnalysis:
             Recommended!
         overwrite : bool
             Rewrite any input pdb file already created.
+        dataframe : pandas.DataFrame
+            Restrict calculations to indexes in the given dataframe.
 
         Returns
         =======
@@ -4232,7 +4236,6 @@ class peleAnalysis:
 
         def checkInputPDBfiles(job_folder, separator):
 
-            step_zf = 5
             pdb_input_files = {}
             for p in os.listdir(job_folder):
                 protein_folder = job_folder+'/'+p
@@ -4251,12 +4254,10 @@ class peleAnalysis:
                         epoch, trajectory, step = pdb.split(separator)[2:]
                         epoch = int(epoch)
                         trajectory = int(trajectory)
-                        step = step.split('.')[0]
-                        step_zf = len(step)
-                        step = int(step)
+                        step = int(step.split('.')[0])
                         pdb_input_files[p][l].append((epoch, trajectory, step))
 
-            return pdb_input_files, step_zf
+            return pdb_input_files
 
         if not separator:
             separator = self.separator
@@ -4272,12 +4273,24 @@ class peleAnalysis:
             if isinstance(only_ligands, str):
                 only_ligands = [only_ligands]
 
+        if not isinstance(dataframe, type(None)):
+            selected_indexes = {}
+            for index in dataframe.index:
+                protein, ligand = index[:2]
+                selected_indexes.setdefault(protein, {})
+                selected_indexes[protein].setdefault(ligand, [])
+                selected_indexes[protein][ligand].append(index[2:-1])
+
         _copyScriptFile(job_folder, 'prepareForSiteMap.py')
         script_name =  '._prepareForSiteMap.py'
 
         # Check input and output files
         log_files = checkLogFiles(job_folder, separator)
-        pdb_input_files, step_zf = checkInputPDBfiles(job_folder, separator)
+        pdb_input_files = checkInputPDBfiles(job_folder, separator)
+
+        epoch_zf = 4
+        trajectory_zf = 4
+        step_zf = 5
 
         jobs = []
         for protein, ligand in self.pele_combinations:
@@ -4288,12 +4301,19 @@ class peleAnalysis:
             if only_ligands and ligand not in only_ligands:
                 continue
 
+            # Skip if not in the given dataframe
+            if not isinstance(dataframe, type(None)):
+                if protein not in selected_indexes:
+                    continue
+                if ligand not in selected_indexes[protein]:
+                    continue
+
             # Check if finished
             ligand_data = self.getProteinAndLigandData(protein, ligand)
             total_points = ligand_data.shape[0]
 
             if protein in log_files and ligand in log_files[protein]:
-                if len(log_files[protein][ligand]) == total_points:
+                if len(log_files[protein][ligand]) == total_points and not recalculate:
                     if verbose:
                         print(f'All sitemap calculations are done for {protein} and {ligand}')
                     continue
@@ -4338,10 +4358,6 @@ class peleAnalysis:
             if not os.path.exists(sitemap_output_folder):
                 os.mkdir(sitemap_output_folder)
 
-            epoch_zf = len(str(max(self.trajectory_files[protein][ligand])))
-            trajectory_zf = len(str(max(self.trajectory_files[protein][ligand][0])))
-            frame_zf = 5
-
             for epoch in sorted(self.trajectory_files[protein][ligand]):
 
                 # Check if epoch pdbs were already extracted
@@ -4354,9 +4370,9 @@ class peleAnalysis:
                     epoch_pdbs = []
                     epoch_logs = []
 
-                if len(epoch_logs) == epoch_data.shape[0]:
+                if len(epoch_logs) == epoch_data.shape[0] and not recalculate:
                     if verbose:
-                        print(f'\tAll sitemap calculations for epoch {epoch} and {protein} and {ligand}')
+                        print(f'\tAll sitemap calculations for epoch {epoch} are done')
                     continue
 
                 for trajectory in sorted(self.trajectory_files[protein][ligand][epoch]):
@@ -4366,9 +4382,9 @@ class peleAnalysis:
                     trajectory_pdbs = [p for p in epoch_pdbs if p[1] == trajectory]
                     trajectory_logs = [p for p in epoch_logs if p[1] == trajectory]
 
-                    if len(trajectory_logs) == trajectory_data.shape[0]:
+                    if len(trajectory_logs) == trajectory_data.shape[0] and not recalculate:
                         if verbose:
-                            print(f'\tAll sitemap calculations for epoch {epoch} and trajectory {trajectory} and {protein} and {ligand}')
+                            print(f'\tAll sitemap calculations for epoch {epoch} and trajectory {trajectory} are done')
                         continue
 
                     if verbose:
@@ -4377,10 +4393,18 @@ class peleAnalysis:
                     pdb_files = []
                     extract_pdbs = True
                     if len(trajectory_pdbs) == trajectory_data.shape[0]:
+
                         extract_pdbs = False
+
                         for p in trajectory_pdbs:
-                            if p in trajectory_logs:
+                            if p in trajectory_logs and not recalculate:
                                 continue
+
+                            # Skip if not in dataframe
+                            if not isinstance(dataframe, type(None)):
+                                if p not in selected_indexes[protein][ligand]:
+                                    continue
+
                             pdb_file = protein+separator
                             pdb_file += ligand+separator
                             pdb_file += str(epoch).zfill(epoch_zf)+separator
@@ -4396,16 +4420,21 @@ class peleAnalysis:
                             atom_indexes = traj.topology.select('not (resname '+self.ligand_names[ligand]+')')
                             traj = traj.atom_slice(atom_indexes)
 
-                        frame_zf = min(frame_zf, len(str(traj.n_frames))+1)
-
                         for i,frame in enumerate(traj):
+
+                            # Check this code
+                            index = (epoch, trajectory, frame)
+                            # Skip if not in dataframe
+                            if not isinstance(dataframe, type(None)):
+                                if index not in selected_indexes[protein][ligand]:
+                                    continue
 
                             # Write input PDB
                             pdb_file = protein+separator
                             pdb_file += ligand+separator
                             pdb_file += str(epoch).zfill(epoch_zf)+separator
                             pdb_file += str(trajectory).zfill(trajectory_zf)+separator
-                            pdb_file += str(i).zfill(frame_zf)+'.pdb'
+                            pdb_file += str(i).zfill(step_zf)+'.pdb'
                             pdb_files.append(pdb_file)
 
                             input_file = prepwizard_input_folder+'/'
@@ -4474,7 +4503,7 @@ class peleAnalysis:
         return jobs
 
     def readSiteMapCalculation(self, sitemap_folder, separator=None, verbose=False,
-                               fill_with_zeros=False):
+                               fill_with_zeros=False, force_reading=False):
         """
         Reads sitemap scores for the PELE trajectories. It also
         stores the sitemap data at pele_data_folder/sitemap_data.
@@ -4489,6 +4518,9 @@ class peleAnalysis:
             Verbode mode
         fill_with_zeros : bool
             Fill with zeros data points where sites were not found.
+        force_reading : bool
+            Force reading data from log files even if CSV files are found for the
+            protein and ligand combination.
 
         Returns
         =======
@@ -4519,6 +4551,9 @@ class peleAnalysis:
         if not separator:
             separator = self.separator
 
+        sitemap_scores = ['SiteScore', 'size', 'Dscore', 'volume', 'exposure', 'enclosure',
+                          'contact', 'phobic', 'philic', 'balance', 'don/acc']
+
         # Create sitemap data folder at pele data
         sitemap_data_folder = self.data_folder+'/sitemap_data'
         if not os.path.exists(sitemap_data_folder):
@@ -4527,69 +4562,82 @@ class peleAnalysis:
         sitemap_data = {}
         if verbose:
             counts = {}
+            read_from_csv = {}
 
-        not_found = {}
-        for protein in os.listdir(sitemap_folder):
+        for protein in self.proteins:
+
             protein_folder = sitemap_folder+'/'+protein
-            if not os.path.isdir(protein_folder):
-                continue
-
-            sitemap_data[protein] = {}
-            not_found[protein] = {}
 
             if verbose:
                 counts[protein] = {}
-            for ligand in os.listdir(protein_folder):
+                read_from_csv[protein] = {}
+
+            for ligand in self.ligands:
+
+                csv_file = sitemap_data_folder+'/'+protein+self.separator+ligand+'.csv'
+
                 ligand_folder = protein_folder+'/'+ligand
-                if not os.path.isdir(ligand_folder):
+                if not os.path.isdir(ligand_folder) and not os.path.exists(csv_file):
                     continue
 
+                sitemap_data.setdefault(protein, {})
                 sitemap_data[protein][ligand] = {}
                 sitemap_data[protein][ligand]['Epoch'] = []
                 sitemap_data[protein][ligand]['Trajectory'] = []
                 sitemap_data[protein][ligand]['Accepted Pele Steps'] = []
 
-                not_found[protein][ligand] = []
-
                 if verbose:
                     counts[protein][ligand] = 0
+                    read_from_csv[protein][ligand] = False
 
+                # Check if sitemap data is available as CSV file
                 sitemap_output_folder = ligand_folder+'/sitemap/output_models'
+                if (not os.path.exists(csv_file) or force_reading) and os.path.exists(sitemap_output_folder):
 
-                for f in sorted(os.listdir(sitemap_output_folder)):
+                    for f in sorted(os.listdir(sitemap_output_folder)):
 
-                    if f.endswith('.log'):
+                        if f.endswith('.log'):
 
-                        # Get pele trajectory values
-                        split = f.split(separator)
-                        assert split[0] == protein and split[1] == ligand
-                        epoch = int(split[2:][0])
-                        trajectory = int(split[2:][1])
-                        step = int(split[2:][2].split('.')[0])
+                            # Get pele trajectory values
+                            split = f.split(separator)
+                            assert split[0] == protein and split[1] == ligand
+                            epoch = int(split[2:][0])
+                            trajectory = int(split[2:][1])
+                            step = int(split[2:][2].split('.')[0])
 
-                        scores = readSitemapLog(sitemap_output_folder+'/'+f)
+                            scores = readSitemapLog(sitemap_output_folder+'/'+f)
 
-                        if not scores:
-                            not_found[protein][ligand].append((epoch, trajectory, step))
-                            continue
+                            if verbose:
+                                counts[protein][ligand] += 1
 
-                        if verbose:
-                            counts[protein][ligand] += 1
+                            # Add data
+                            sitemap_data[protein][ligand]['Epoch'].append(epoch)
+                            sitemap_data[protein][ligand]['Trajectory'].append(trajectory)
+                            sitemap_data[protein][ligand]['Accepted Pele Steps'].append(step)
 
-                        # Add data
-                        sitemap_data[protein][ligand]['Epoch'].append(epoch)
-                        sitemap_data[protein][ligand]['Trajectory'].append(trajectory)
-                        sitemap_data[protein][ligand]['Accepted Pele Steps'].append(step)
+                            if not scores:
+                                for s in sitemap_scores:
+                                    sitemap_data[protein][ligand].setdefault(s, [])
+                                    if fill_with_zeros:
+                                        sitemap_data[protein][ligand][s].append(0.0)
+                                    else:
+                                        sitemap_data[protein][ligand][s].append(np.nan)
+                            else:
+                                for s in scores:
+                                    sitemap_data[protein][ligand].setdefault(s, [])
+                                    sitemap_data[protein][ligand][s].append(scores[s])
 
-                        for s in scores:
-                            sitemap_data[protein][ligand].setdefault(s, [])
-                            sitemap_data[protein][ligand][s].append(scores[s])
-
-                # Convert to dataframe and store in the pele data folder.
-                sitemap_data[protein][ligand] = pd.DataFrame(sitemap_data[protein][ligand])
-                indexes = ['Epoch', 'Trajectory', 'Accepted Pele Steps']
-                sitemap_data[protein][ligand] = sitemap_data[protein][ligand].set_index(indexes)
-                sitemap_data[protein][ligand].to_csv(sitemap_data_folder+'/'+protein+self.separator+ligand+'.csv')
+                    # Convert to dataframe and store in the pele data folder.
+                    sitemap_data[protein][ligand] = pd.DataFrame(sitemap_data[protein][ligand])
+                    indexes = ['Epoch', 'Trajectory', 'Accepted Pele Steps']
+                    sitemap_data[protein][ligand] = sitemap_data[protein][ligand].set_index(indexes)
+                    sitemap_data[protein][ligand].to_csv(csv_file)
+                else:
+                    sitemap_data[protein][ligand] = pd.read_csv(csv_file)
+                    indexes = ['Epoch', 'Trajectory', 'Accepted Pele Steps']
+                    sitemap_data[protein][ligand] = sitemap_data[protein][ligand].set_index(indexes)
+                    if verbose:
+                        read_from_csv[protein][ligand] = True
 
         # Get mapping of all sitemap data
         if verbose:
@@ -4598,12 +4646,17 @@ class peleAnalysis:
         for protein in sitemap_data:
             all_sitemap_values[protein] = {}
             for ligand in sitemap_data[protein]:
+
                 if verbose:
-                    ligand_data = self.getProteinAndLigandData(protein, ligand)
                     message = f'\t{protein} {ligand}: '
-                    message += f'{counts[protein][ligand]} of {ligand_data.shape[0]} points '
-                    message += 'have sitemap data. '
-                    message += '(%.2f%%)' % (100*(counts[protein][ligand]/ligand_data.shape[0]))
+                    if read_from_csv[protein][ligand]:
+                        csv_file = sitemap_data_folder+'/'+protein+self.separator+ligand+'.csv'
+                        message += f'data read from CSV: {csv_file}'
+                    else:
+                        ligand_data = self.getProteinAndLigandData(protein, ligand)
+                        message += f'{counts[protein][ligand]} of {ligand_data.shape[0]} points '
+                        message += 'have sitemap data. '
+                        message += '(%.2f%%)' % (100*(counts[protein][ligand]/ligand_data.shape[0]))
                     print(message)
 
                 all_sitemap_values[protein][ligand] = {}
@@ -4619,19 +4672,16 @@ class peleAnalysis:
             protein, ligand = index[:2]
             if protein not in all_sitemap_values or ligand not in all_sitemap_values[protein]:
                 vectors.append([np.nan]*11)
-            elif index[2:-1] in not_found[protein][ligand]:
-                if fill_with_zeros:
-                    vectors.append([0.0]*11)
-                else:
-                    vectors.append([np.nan]*11)
+            elif index[2:-1] not in all_sitemap_values[protein][ligand]:
+                vectors.append([np.nan]*11)
             elif index[2:-1] in all_sitemap_values[protein][ligand]:
                 vectors.append(all_sitemap_values[protein][ligand][index[2:-1]])
             else:
-                vectors.append([np.nan]*11)
+                raise ValueError('Check this loop.')
 
         # Merge with self.data
         vectors = np.array(vectors)
-        for i, s in zip(range(vectors.shape[1]), scores):
+        for i, s in zip(range(vectors.shape[1]), sitemap_scores):
             self.data[s] = vectors[:,i]
 
         sitemap_data = self.data[~self.data['volume'].isna()]
