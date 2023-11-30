@@ -2200,7 +2200,7 @@ class peleAnalysis:
                     distance_types += [x.split('_')[0] for x  in catalytic_labels[name][protein][ligand]]
                     distance_values = self.distances[protein][ligand][distances].min(axis=1)
 
-                    print(protein, ligand, ligand_data.shape[0], distance_values.to_numpy().shape[0])
+                    # print(protein, ligand, ligand_data.shape[0], distance_values.to_numpy().shape[0])
 
                     # Check that distances and ligand data matches
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
