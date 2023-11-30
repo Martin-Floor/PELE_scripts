@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import itertools
 from scipy.ndimage import gaussian_filter
 from ipywidgets import interact, fixed #FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown, Checkbox
+from pyemma.util.contexts import settings
 
 class ligand_msm:
 
@@ -33,6 +34,7 @@ class ligand_msm:
         self.all_tica_output = {}
         self.all_tica_concatenated = {}
         self.metric_features = {}
+        self.metrics_concatenated = {}
         self.kmeans_clusters = {}
 
         # Get individual ligand-only trajectories
@@ -56,7 +58,7 @@ class ligand_msm:
             if ligand not in self.features:
                 self.features[ligand] = pyemma.coordinates.featurizer(self.topology[protein][ligand])
 
-    def addFeature(self, feature, ligand):
+    def addFeature(self, feature, ligand, only_metrics=None):
         """
         """
         implemented_features = ['positions', 'metrics']
@@ -67,16 +69,27 @@ class ligand_msm:
         if feature == 'positions':
             self.features[ligand].add_selection(self.features[ligand].select('all'))
 
+        if only_metrics:
+            if isinstance(only_metrics, str):
+                only_metrics = [only_metrics]
+
+        self.only_metrics = only_metrics
+
         if feature == 'metrics':
 
             # Add metric features to ligand
             if ligand not in self.metric_features:
                 self.metric_features[ligand] = {}
 
+            if ligand not in self.metrics_concatenated:
+                self.metrics_concatenated[ligand] = {}
+
             # Get metrics
             metrics = []
             for m in self.pele_analysis.data.keys():
                 if m.startswith('metric_'):
+                    if only_metrics and m.replace('metric_', '') not in only_metrics:
+                        continue
                     metrics.append(m)
 
             # Get metrics data
@@ -91,6 +104,12 @@ class ligand_msm:
                 for trajectory in ligand_data.index.levels[3]:
                     trajectory_data = protein_data[protein_data.index.get_level_values('Trajectory') == trajectory]
                     self.metric_features[ligand][protein].append(trajectory_data[metrics].to_numpy())
+
+                # Get concatenated metric vectors
+                metrics_concatenated = []
+                for t in self.metric_features[ligand][protein]:
+                    metrics_concatenated.append(t)
+                self.metrics_concatenated[ligand][protein] = np.concatenate(metrics_concatenated)
 
     def getFeaturesData(self, ligand):
         """
@@ -135,10 +154,10 @@ class ligand_msm:
             self.tica_output[ligand][protein] = self.all_tica[ligand].transform(self.data[ligand][protein])
             self.tica_concatenated[ligand][protein] = np.concatenate(self.tica_output[ligand][protein])
 
-    def plotLagTimeVsTICADim(self, ligand, max_lag_time):
+    def plotLagTimeVsTICADim(self, ligand, min_lag_time=1, max_lag_time=50):
         lag_times = []
         dims = []
-        for lt in range(1, max_lag_time+1):
+        for lt in range(min_lag_time, max_lag_time+1):
             self.calculateTICA(ligand,lt)
             ndim = self.all_tica_concatenated[ligand].shape[1]
             lag_times.append(lt)
@@ -196,7 +215,50 @@ class ligand_msm:
 
         return metric_data
 
-    def calculateKMeans(self, ligand, n_clusters=5, max_iter=500, stride=1, include_metrics=None):
+    def evaluateNumberOfClusters(self, protein, ligand, lag_time=1, iterations=5,
+                                 order=3, include_metrics=None):
+        """
+        Calculate VAMP-2 scores for different number of clusters.
+
+        Parameters
+        ==========
+        protein : str
+            Name of the protein
+        ligand : str
+            Name of the ligand
+        min_n : int
+            Minimum number of clusters to try
+        max_n : int
+            Maximum number of clusters to try
+        stride : int
+            stride to create the range of clusters to try
+        include_metrics : str or list
+            Metrics to be included in the kmeans algorithm
+        """
+
+        # Define number of clusters to evaluate
+        for o in range(1, order+1):
+            if o == 1:
+                n_clustercenters = np.arange(1, 10, 1)
+            else:
+                n_clustercenters = np.concatenate([n_clustercenters, np.arange(10**(o-1), 10**(o), 10**(o-1))])
+        n_clustercenters = np.concatenate([n_clustercenters, np.array([10**o])])
+
+        # Calculate the VAMP2 score of a MSM calculated with different number of k-means clusters.
+        scores = np.zeros((len(n_clustercenters), iterations))
+        for n, k in enumerate(n_clustercenters):
+            for m in range(iterations):
+                with settings(show_progress_bars=False):
+
+                    _cl = self.calculateKMeans(ligand, n_clusters=k, include_metrics=include_metrics)
+                    _cl = _cl[ligand][protein]
+
+                    _msm = pyemma.msm.estimate_markov_model(_cl.dtrajs, lag_time)
+                    scores[n, m] = _msm.score_cv(_cl.dtrajs, n=1, score_method='VAMP2', score_k=min(10, k))
+
+        return n_clustercenters, scores
+
+    def calculateKMeans(self, ligand, n_clusters=5, max_iter=500, stride=1, include_metrics=None, only_proteins=None):
         """
         Calculate clusters for the sampled TICA space usign the kmeans algorithm.
 
@@ -212,6 +274,8 @@ class ligand_msm:
             Stride paramter of the Kmean algorithm (pyemma.coordinates.cluster_kmeans)
         include_metrics : (str, list)
             Do you want to include metrics in the clustering? which ones?
+        only_proteins : str or list
+            Only compute kmeans for the given proteins
         """
 
         if isinstance(include_metrics, str):
@@ -226,6 +290,10 @@ class ligand_msm:
         for i,m in enumerate(include_metrics):
             if not m.startswith('metric_'):
                 include_metrics[i] = 'metric_'+m
+
+        if only_proteins:
+            if isinstance(only_proteins, str):
+                only_proteins = [only_proteins]
 
         self.kmeans = {}
         self.kmeans_centers = {}
@@ -243,6 +311,9 @@ class ligand_msm:
         self.kmeans_metrics_conversion[ligand] = {}
 
         for protein in self.pele_analysis.proteins:
+
+            if only_proteins and protein not in only_proteins:
+                continue
 
             self.kmeans_metrics_conversion[ligand][protein] = {}
 
@@ -278,7 +349,7 @@ class ligand_msm:
             self.kmeans_clusters_concatenated[ligand][protein] = np.concatenate(self.kmeans_clusters[ligand][protein])
             self.kmeans_centers[ligand][protein] = self.kmeans[ligand][protein].clustercenters
 
-            return self.kmeans
+        return self.kmeans
 
 
     def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100, xlim=None, ylim=None,
