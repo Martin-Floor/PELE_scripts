@@ -484,19 +484,31 @@ class peleAnalysis:
 
                     if equilibration:
                         ligand_data = self.getProteinAndLigandData(protein, ligand, equilibration=True)
-                        rmsd_nan = np.array([np.nan]*ligand_data.shape[0])
-                        if isinstance(equilibration_RMSD, type(None)):
-                            equilibration_RMSD = rmsd_nan
+                        if 'Ligand RMSD' in ligand_data:
+                            rmsd = ligand_data['Ligand RMSD'].to_numpy()
+                            if any(np.isnan(rmsd)):
+                                rmsd = np.array([np.nan]*ligand_data.shape[0])
                         else:
-                            equilibration_RMSD = np.concatenate((equilibration_RMSD, rmsd_nan))
+                            rmsd = np.array([np.nan]*ligand_data.shape[0])
+                        if isinstance(equilibration_RMSD, type(None)):
+                            equilibration_RMSD = rmsd
+                        else:
+                            equilibration_RMSD = np.concatenate((equilibration_RMSD, rmsd))
 
                     if production:
                         ligand_data = self.getProteinAndLigandData(protein, ligand)
-                        rmsd_nan = np.array([np.nan]*ligand_data.shape[0])
-                        if isinstance(RMSD, type(None)):
-                            RMSD = rmsd_nan
+                        if 'Ligand RMSD' in ligand_data:
+                            rmsd = ligand_data['Ligand RMSD'].to_numpy()
+                            if any(np.isnan(rmsd)):
+                                rmsd = np.array([np.nan]*ligand_data.shape[0])
                         else:
-                            RMSD = np.concatenate((RMSD, rmsd_nan))
+                            rmsd = np.array([np.nan]*ligand_data.shape[0])
+
+                        if isinstance(RMSD, type(None)):
+                            RMSD = rmsd
+                        else:
+                            RMSD = np.concatenate((RMSD, rmsd))
+
                     continue
 
                 # Get topology PDB as reference for alignment
@@ -537,7 +549,7 @@ class peleAnalysis:
                             else:
                                 equilibration_RMSD = np.concatenate((equilibration_RMSD, rmsd))
 
-                if production and calc_prod_rmsd and recalculate:
+                if (production and calc_prod_rmsd) or recalculate:
                     # Calculate ligand RMSD
                     for epoch in sorted(self.trajectory_files[protein][ligand]):
                         for trajectory in sorted(self.trajectory_files[protein][ligand][epoch]):
@@ -772,7 +784,7 @@ class peleAnalysis:
                                         xlim=None, ylim=None, metrics=None, labels=None, title=None, title_size=14.0, return_axis=False, dpi=300, show_legend=False,
                                         axis=None, xlabel=None, ylabel=None, vertical_line_color='k', vertical_line_width=0.5, marker_size=0.8, clim=None, show=False,
                                         clabel=None, legend_font_size=6, no_xticks=False, no_yticks=False, no_cbar=False, no_xlabel=False, no_ylabel=False,
-                                        relative_color_values=False, **kwargs):
+                                        relative_color_values=False, dataframe=None, **kwargs):
         """
         Creates a scatter plot for the selected protein and ligand using the x and y
         columns. Data series can be filtered by specific metrics.
@@ -810,12 +822,17 @@ class peleAnalysis:
             The axis to use for plotting the data.
         """
 
-        protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+        if not isinstance(dataframe, type(None)):
+            protein_series = dataframe[dataframe.index.get_level_values('Protein') == protein]
+        else:
+            protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+
         if protein_series.empty:
             raise ValueError('Protein name %s not found in data!' % protein)
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
         if ligand_series.empty:
             raise ValueError("Ligand name %s not found in protein's %s data!" % (ligand, protein))
+
 
         # Add distance data to ligand_series
         if len(ligand_series) != 0:
@@ -824,7 +841,12 @@ class peleAnalysis:
                     if not isinstance(self.distances[protein][ligand], type(None)):
                         for distance in self.distances[protein][ligand]:
                             #if distance.startswith('distance_'):
-                            ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
+
+                            if not isinstance(dataframe, type(None)):
+                                indexes = dataframe.reset_index().set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps']).index
+                                ligand_series[distance] = self.distances[protein][ligand][self.distances[protein][ligand].index.isin(indexes)]
+                            else:
+                                ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
 
         # Filter points by metric
         if not isinstance(metrics, type(None)):
@@ -1037,7 +1059,7 @@ class peleAnalysis:
         plt.show()
 
     def bindingEnergyLandscape(self, initial_threshold=3.5, vertical_line=None, xlim=None, ylim=None, clim=None, color=None,
-                               size=1.0, alpha=0.05, vertical_line_width=0.5, vertical_line_color='k',
+                               size=1.0, alpha=0.05, vertical_line_width=0.5, vertical_line_color='k', dataframe=None,
                                title=None, no_xticks=False, no_yticks=False, no_xlabel=False, no_ylabel=False,
                                no_cbar=False, xlabel=None, ylabel=None, clabel=None, relative_total_energy=False):
         """
@@ -1050,8 +1072,13 @@ class peleAnalysis:
             else:
                 raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
 
-        def getLigands(protein):
-            protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+        def getLigands(protein, dataframe=None):
+
+            if not isinstance(dataframe, type(None)):
+                protein_series = dataframe[dataframe.index.get_level_values('Protein') == protein]
+            else:
+                protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+
             ligands = list(set(protein_series.index.get_level_values('Ligand').tolist()))
             ligands_ddm = Dropdown(options=ligands, description='Ligand',
                                    style= {'description_width': 'initial'})
@@ -1229,7 +1256,7 @@ class peleAnalysis:
                                                             metrics=metrics, labels=labels, return_axis=return_axis, show=show,
                                                             title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
                                                             no_xlabel=no_xlabel, no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel,
-                                                            clabel=clabel, relative_color_values=relative_color_values)
+                                                            clabel=clabel, relative_color_values=relative_color_values, dataframe=ligand_series)
 
             # Make a second plot only coloring points passing the filters
             if color_by_metric:
@@ -1238,7 +1265,7 @@ class peleAnalysis:
                                                      vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                      metrics=color_metrics, labels=labels, axis=axis, show=True, alpha=Alpha,
                                                      no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
-                                                     no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel, clabel=clabel)
+                                                     no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel, clabel=clabel, dataframe=ligand_series)
             elif color_by_labels:
                 all_labels = {}
                 for l in ligand_series.keys():
@@ -1254,7 +1281,7 @@ class peleAnalysis:
                                                                    vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                                    metrics=metrics, labels=labels, return_axis=return_axis, alpha=Alpha, show=show,
                                                                    no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar, no_xlabel=no_xlabel,
-                                                                   no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel, clabel=clabel)
+                                                                   no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel, clabel=clabel, dataframe=ligand_series)
                             continue
                         elif i == len(all_labels[l])-1:
                             show = True
@@ -1263,13 +1290,14 @@ class peleAnalysis:
                                                                     vertical_line_color=vertical_line_color, vertical_line_width=vertical_line_width,
                                                                     metrics=metrics, labels={l:v}, return_axis=return_axis, axis=axis, alpha=Alpha, show=show,
                                                                     show_legend=True, title=title, no_xticks=no_xticks, no_yticks=no_yticks, no_cbar=no_cbar,
-                                                                    no_xlabel=no_xlabel, no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel, clabel=clabel)
+                                                                    no_xlabel=no_xlabel, no_ylabel=no_ylabel, xlabel=xlabel, ylabel=ylabel, clabel=clabel,
+                                                                    dataframe=ligand_series)
 
         proteins = self.proteins
         proteins_ddm = Dropdown(options=proteins, description='Protein',
                                 style= {'description_width': 'initial'})
 
-        interact(getLigands, protein=proteins_ddm)
+        interact(getLigands, protein=proteins_ddm, dataframe=fixed(dataframe))
 
     def plotDistributions(self):
         """
