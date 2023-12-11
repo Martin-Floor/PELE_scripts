@@ -38,7 +38,7 @@ class peleAnalysis:
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
                  read_equilibration=True, data_folder_name=None, global_pele=False, trajectories=False,
-                 remove_original_trajectory=False, change_water_names=False):
+                 remove_original_trajectory=False, only_proteins=None, only_ligands=None, change_water_names=False):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -95,7 +95,8 @@ class peleAnalysis:
         # Check data folder for paths to csv files
         if self.verbose:
             print('Checking PELE analysis folder: %s' % self.data_folder)
-        self._checkDataFolder(trajectories=trajectories)
+        self._checkDataFolder(trajectories=trajectories, only_proteins=only_proteins,
+                              only_ligands=only_ligands)
 
         # Check PELE folder for paths to pele data
         if self.verbose:
@@ -2227,7 +2228,7 @@ class peleAnalysis:
                     distance_types += [x.split('_')[0] for x  in catalytic_labels[name][protein][ligand]]
                     distance_values = self.distances[protein][ligand][distances].min(axis=1)
 
-                    print(protein, ligand, ligand_data.shape[0], distance_values.to_numpy().shape[0])
+                    # print(protein, ligand, ligand_data.shape[0], distance_values.to_numpy().shape[0])
 
                     # Check that distances and ligand data matches
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
@@ -4968,7 +4969,7 @@ class peleAnalysis:
         if folder.count(self.separator) > 1:
             raise ValueError('Separator %s appears more than once in the PELE folder %s' % (self.separator, folder))
 
-    def _checkDataFolder(self, trajectories=True):
+    def _checkDataFolder(self, trajectories=True, only_proteins=None, only_ligands=None):
         """
         Check protein and ligand information contained in the CSV files of the
         PELE data folder.
@@ -4980,6 +4981,15 @@ class peleAnalysis:
                 if d.endswith('.csv') and d.startswith('data_'):
                     protein = d.split(self.separator)[-2].replace('data_','')
                     ligand = d.split(self.separator)[-1].replace('.csv','')
+
+                    # Skip if protein not found in given only_proteins
+                    if only_proteins and protein not in only_proteins:
+                        continue
+
+                    # Skip if ligand not found in given only_ligands
+                    if only_ligands and ligand not in only_ligands:
+                        continue
+
                     if protein not in self.csv_files:
                         self.csv_files[protein] = {}
                     if ligand not in self.csv_files[protein]:
@@ -5369,7 +5379,7 @@ class peleAnalysis:
                             shutil.copyfile(orig, dest)
                             self.equilibration['trajectory'][protein][ligand][epoch][traj] = dest
 
-    def _checkPELEFolder(self):
+    def _checkPELEFolder(self, only_proteins=None, only_ligands=None):
         """
         Check for the paths to files in the PELE folder.
         """
@@ -5395,6 +5405,14 @@ class peleAnalysis:
                 # Get protein and ligand name based on separator
                 protein = d.split(self.separator)[0]
                 ligand = d.split(self.separator)[1]
+
+                # Skip protein if not found in given only_proteins
+                if only_proteins and protein not in only_proteins:
+                    continue
+
+                # Skip ligand if not found in given only_ligands
+                if only_ligands and ligand not in only_ligands:
+                    continue
 
                 # Add protein name ligand names to dictionaries
                 if protein not in self.pele_directories:
