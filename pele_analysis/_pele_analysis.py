@@ -848,8 +848,8 @@ class peleAnalysis:
                             #if distance.startswith('distance_'):
 
                             if not isinstance(dataframe, type(None)):
-                                indexes = dataframe.reset_index().set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps']).index
-                                ligand_series[distance] = self.distances[protein][ligand][self.distances[protein][ligand].index.isin(indexes)]
+                                indexes = dataframe.reset_index().set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step']).index
+                                ligand_series[distance] = self.distances[protein][ligand][self.distances[protein][ligand].index.isin(indexes)][distance].tolist()
                             else:
                                 ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
 
@@ -2231,8 +2231,6 @@ class peleAnalysis:
                     distances = catalytic_labels[name][protein][ligand]
                     distance_types += [x.split('_')[0] for x  in catalytic_labels[name][protein][ligand]]
                     distance_values = self.distances[protein][ligand][distances].min(axis=1)
-
-                    print(protein, ligand, ligand_data.shape[0], distance_values.to_numpy().shape[0])
 
                     # Check that distances and ligand data matches
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
@@ -5515,6 +5513,10 @@ class peleAnalysis:
 
                     # Load input PDB with Bio.PDB and mdtraj
                     input_pdb = self._getInputPDB(protein, ligand)
+
+                    # Skip combinations with missing input PDB 
+                    if not input_pdb:
+                        continue
 
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
 
