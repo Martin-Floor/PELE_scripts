@@ -2703,7 +2703,7 @@ class peleAnalysis:
 
                 if filter_values != None:
                     for metric in filter_values:
-                        if metric in ['RMSD', 'Ligand SASA', 'Total Energy', 'Binding Energy']:
+                        if metric in ['RMSD', 'Ligand SASA', 'Total Energy', 'Binding Energy', 'Ligand RMSD']:
                             metric_name = metric
                         else:
                             metric_name = 'metric_'+metric
@@ -5514,7 +5514,7 @@ class peleAnalysis:
                     # Load input PDB with Bio.PDB and mdtraj
                     input_pdb = self._getInputPDB(protein, ligand)
 
-                    # Skip combinations with missing input PDB 
+                    # Skip combinations with missing input PDB
                     if not input_pdb:
                         continue
 
