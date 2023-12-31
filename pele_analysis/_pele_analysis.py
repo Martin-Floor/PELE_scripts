@@ -513,15 +513,14 @@ class peleAnalysis:
                     continue
 
                 # Get topology PDB as reference for alignment
-                if protein in reference_pdb and ligand in reference_pdb:
+                topology_file = self.topology_files[protein][ligand]
+                top_traj = md.load(topology_file)
+                if protein in reference_pdb and ligand in reference_pdb[protein]:
                     print('Comparing RMSD values to %s' % reference_pdb[protein][ligand])
-                    topology_file = reference_pdb[protein][ligand]
-                    top_traj = md.load(topology_file)
-                    ref_traj = top_traj
+                    reference_file = reference_pdb[protein][ligand]
+                    ref_traj = md.load(reference_file)
+                    
                 else:
-                    topology_file = self.topology_files[protein][ligand]
-                    top_traj = md.load(topology_file)
-
                     # Get best binding energy pose as reference
                     ligand_data = self.getProteinAndLigandData(protein, ligand)
 
