@@ -519,7 +519,7 @@ class peleAnalysis:
                     print('Comparing RMSD values to %s' % reference_pdb[protein][ligand])
                     reference_file = reference_pdb[protein][ligand]
                     ref_traj = md.load(reference_file)
-                    
+
                 else:
                     # Get best binding energy pose as reference
                     ligand_data = self.getProteinAndLigandData(protein, ligand)
@@ -2754,7 +2754,7 @@ class peleAnalysis:
 
     def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None,
                                     min_threshold=3.5, max_threshold=5.0, step_size=0.1, label_aware=True,
-                                    lower_limit=None):
+                                    lower_limit=None, verbose=False):
         """
         Extract best poses iteratively using all given metrics simoultaneously.
         """
@@ -2767,6 +2767,8 @@ class peleAnalysis:
             labels = []
 
         for t in np.arange(min_threshold, max_threshold+(step_size/10), step_size):
+            if verbose:
+                print(f'Getting best poses at threshold {t}', end='\r')
             filter_values = {m:t for m in metrics}
             best_poses = self.getBestPELEPoses(filter_values, column=column, n_models=1,
                                                proteins=proteins, ligands=ligands,
