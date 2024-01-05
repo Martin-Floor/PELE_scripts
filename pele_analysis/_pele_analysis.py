@@ -351,7 +351,7 @@ class peleAnalysis:
 
                                 # Get all ligand atom coordinates
                                 for r in traj.topology.residues:
-                                    if r.name == self.ligand_names[ligand]:
+                                    if r.name == self.ligand_names[protein][ligand]:
                                         ligand_atoms = [a.index for a in r.atoms]
 
                                 # Get the requested coordinates
@@ -433,7 +433,7 @@ class peleAnalysis:
                             top=self.topology_files[protein][ligand])
         else:
             traj = md.load(self.trajectory_files[protein][ligand][step][trajectory],
-                            top=self.topology_files[protein][ligand])
+                           top=self.topology_files[protein][ligand])
         return traj
 
     def calculateLigandRMSD(self, recalculate=False, production=True, equilibration=False,
@@ -540,7 +540,7 @@ class peleAnalysis:
                         for trajectory in sorted(self.equilibration['trajectory'][protein][ligand][epoch]):
                             traj = self.getTrajectory(protein, ligand, epoch, trajectory, equilibration=True)
                             traj.superpose(top_traj)
-                            ligand_atoms = traj.topology.select('resname '+self.ligand_names[ligand])
+                            ligand_atoms = traj.topology.select('resname '+self.ligand_names[protein][ligand])
 
                             # Calculate RMSD
                             rmsd = md.rmsd(traj, ref_traj, atom_indices=ligand_atoms)*10
@@ -558,7 +558,7 @@ class peleAnalysis:
                                 print(f'\tfor epoch {epoch} and trajectory {trajectory}', end='\r')
                             traj = self.getTrajectory(protein, ligand, epoch, trajectory)
                             traj.superpose(top_traj)
-                            ligand_atoms = traj.topology.select('resname '+self.ligand_names[ligand])
+                            ligand_atoms = traj.topology.select('resname '+self.ligand_names[protein][ligand])
 
                             # Calculate RMSD
                             rmsd = md.rmsd(traj, ref_traj, atom_indices=ligand_atoms)*10
@@ -1933,7 +1933,7 @@ class peleAnalysis:
                                                         self.trajectory_files[Protein][Ligand],
                                                         self.topology_files[Protein][Ligand])
 
-            ligand_atoms = traj.topology.select('resname '+self.ligand_names[Ligand])
+            ligand_atoms = traj.topology.select('resname '+self.ligand_names[protein][ligand])
             neighbors = md.compute_neighbors(traj, 0.5, ligand_atoms)
             chain_ids = self.chain_ids[Protein][Ligand]
 
@@ -1942,7 +1942,7 @@ class peleAnalysis:
             for frame in neighbors:
                 for x in frame:
                     residue = traj.topology.atom(x).residue
-                    if residue.name != self.ligand_names[Ligand]:
+                    if residue.name != self.ligand_names[protein][ligand]:
                         chain = chain_ids[residue.chain.index]
                         resid = residue.resSeq
                         # The chain_ids dictiona must be done per residue
@@ -3004,7 +3004,7 @@ class peleAnalysis:
         reference = md.load(topology_file)
 
         # Append to ligand-only trajectory
-        ligand_atoms = reference.topology.select('resname '+self.ligand_names[ligand])
+        ligand_atoms = reference.topology.select('resname '+self.ligand_names[protein][ligand])
 
         if not os.path.exists(ligand_top_path):
             lig_ref = reference.atom_slice(ligand_atoms)
@@ -3108,7 +3108,7 @@ class peleAnalysis:
             reference = md.load(topology_file)
 
             # Append to ligand-only trajectory
-            ligand_atoms = reference.topology.select('resname '+self.ligand_names[ligand])
+            ligand_atoms = reference.topology.select('resname '+self.ligand_names[protein][ligand])
             i = 0
             sum = 0
             for epoch in sorted(trajectory_files):
@@ -4449,7 +4449,7 @@ class peleAnalysis:
                         traj = md.load(traj_file, top=self.topology_files[protein][ligand])
 
                         if remove_ligand:
-                            atom_indexes = traj.topology.select('not (resname '+self.ligand_names[ligand]+')')
+                            atom_indexes = traj.topology.select('not (resname '+self.ligand_names[protein][ligand]+')')
                             traj = traj.atom_slice(atom_indexes)
 
                         for i,frame in enumerate(traj):
@@ -5536,9 +5536,10 @@ class peleAnalysis:
                     self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
 
                     # Add ligand three letter code ligand_names
-                    if ligand not in self.ligand_names:
+                    if protein not in self.ligand_names or ligand not in self.ligand_names[protein]:
+                        self.ligand_names.setdefault(protein, {})
                         for residue in self.ligand_structure[protein][ligand].get_residues():
-                            self.ligand_names[ligand] = residue.resname
+                            self.ligand_names[protein][ligand] = residue.resname
 
                     # Read topology mdtraj trajectory object
                     self.md_topology[protein][ligand] = md.load(input_pdb)
@@ -5601,9 +5602,10 @@ class peleAnalysis:
                         self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
 
                     # Add ligand three letter code ligand_names
-                    if ligand not in self.ligand_names and ligand in self.ligand_structure[protein]:
+                    if (protein not in self.ligand_names or ligand not in self.ligand_names[protein]) and ligand in self.ligand_structure[protein]:
+                        self.ligand_names.setdefault(protein, {})
                         for residue in self.ligand_structure[protein][ligand].get_residues():
-                            self.ligand_names[ligand] = residue.resname
+                            self.ligand_names[protein][ligand] = residue.resname
 
                     # Read topology mdtraj trajectory object
                     self.md_topology[protein][ligand] = md.load(input_pdb)
