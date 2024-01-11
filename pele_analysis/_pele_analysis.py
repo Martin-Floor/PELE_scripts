@@ -4259,7 +4259,7 @@ class peleAnalysis:
                     for log in os.listdir(sitemap_folder):
                         if not log.endswith('.log'):
                             continue
-                        epoch, trajectory, step = log.split(separator)[2:]
+                        epoch, trajectory, step = log.split(separator)[-3:]
                         epoch = int(epoch)
                         trajectory = int(trajectory)
                         step = int(step.split('.')[0])
@@ -4283,7 +4283,7 @@ class peleAnalysis:
                     for pdb in sorted(os.listdir(prepwizard_folder)):
                         if not pdb.endswith('.pdb'):
                             continue
-                        epoch, trajectory, step = pdb.split(separator)[2:]
+                        epoch, trajectory, step = pdb.split(separator)[-3:]
                         epoch = int(epoch)
                         trajectory = int(trajectory)
                         step = int(step.split('.')[0])
