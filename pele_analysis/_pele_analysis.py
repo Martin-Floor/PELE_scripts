@@ -4193,7 +4193,7 @@ class peleAnalysis:
     def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
                                 site_box=10, resolution='fine', reportsize=100, sidechain=True, verbose=False,
                                 keep_volpts=False, remove_ligand=False, overwrite=False, separator=None,
-                                dataframe=None, recalculate=False):
+                                dataframe=None, recalculate=False, skip_models=None, skip_ligands=None):
         """
         Sets up sitemap calculations for the whole PELE simulation, so, yes it does consume a lot of space and computation.
         After the calculations are completed it is recommended to download only the log files, which contains the sitemap
@@ -4305,6 +4305,14 @@ class peleAnalysis:
             if isinstance(only_ligands, str):
                 only_ligands = [only_ligands]
 
+        if skip_models:
+            if isinstance(skip_models, str):
+                skip_models = [skip_models]
+
+        if skip_ligands:
+            if isinstance(skip_ligands, str):
+                skip_ligands = [skip_ligands]
+
         if not isinstance(dataframe, type(None)):
             selected_indexes = {}
             for index in dataframe.index:
@@ -4331,6 +4339,12 @@ class peleAnalysis:
                 continue
 
             if only_ligands and ligand not in only_ligands:
+                continue
+
+            if skip_models and protein in skip_models:
+                continue
+
+            if skip_ligands and protein in skip_ligands:
                 continue
 
             # Skip if not in the given dataframe
