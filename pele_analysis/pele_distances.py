@@ -2,6 +2,7 @@ import pandas as pd
 from multiprocessing import Pool, cpu_count
 import os
 import mdtraj as md
+import numpy as np
 
 class distances:
 
@@ -210,8 +211,11 @@ class distances:
                     d = md.compute_distances(traj, pairs)*10
                 elif pair_lengths == 3:
                     d = np.rad2deg(md.compute_angles(traj, pairs))
+                    # d = md.compute_angles(traj, pairs)
+
                 elif pair_lengths == 4:
                     d = np.rad2deg(md.compute_dihedrals(traj, pairs))
+                    # d = md.compute_dihedrals(traj, pairs)
 
                 # Store data
                 if not skip_index_append:
