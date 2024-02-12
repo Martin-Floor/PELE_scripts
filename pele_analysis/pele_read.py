@@ -281,9 +281,11 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
 
         if equilibration:
             distance_data = None
+            angle_data = None
             nonbonded_energy_data = None
         else:
             csv_distances_file = data_folder_name+'/distances/'+protein+separator+ligand+'.csv'
+            csv_angles_file = data_folder_name+'/angles/'+protein+separator+ligand+'.csv'
             csv_nonbonded_energy_file = data_folder_name+'/nonbonded_energy/'+protein+separator+ligand+'.csv'
 
             if os.path.exists(csv_distances_file):
@@ -296,6 +298,16 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
             else:
                 distance_data = None
 
+            if os.path.exists(csv_angles_file):
+                angle_data = pd.read_csv(csv_angles_file)
+                angle_data = angle_data.loc[:, ~angle_data.columns.str.contains('^Unnamed')]
+                indexes = ['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps']
+                if 'Step' in angle_data.keys():
+                    indexes.append('Step')
+                angle_data.set_index(indexes, inplace=True)
+            else:
+                angle_data = None
+
             if os.path.exists(csv_nonbonded_energy_file):
                 nonbonded_energy_data = pd.read_csv(csv_nonbonded_energy_file)
                 nonbonded_energy_data = nonbonded_energy_data.loc[:, ~nonbonded_energy_data.columns.str.contains('^Unnamed')]
@@ -306,6 +318,7 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
     elif report_files != None:
         report_data = []
         distance_data = []
+        angle_data = []
         nonbonded_energy_data = []
 
         for epoch in sorted(report_files):
@@ -324,16 +337,18 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
                     print(m)
                     continue
 
-                rd, dd, nbed = report_return
+                rd, dd, ad, nbed = report_return
 
                 report_data.append(rd)
                 distance_data.append(dd)
+                angle_data.append(ad)
                 nonbonded_energy_data.append(nbed)
 
         # Check pele data can be read by the library
         try:
             report_data = pd.concat(report_data)
             distance_data = pd.concat(distance_data)
+            angle_data = pd.concat(angle_data)
             nonbonded_energy_data = pd.concat(nonbonded_energy_data)
 
         except:
@@ -349,6 +364,7 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
 
         report_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
         distance_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
+        angle_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
         nonbonded_energy_data.set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step'], inplace=True)
 
         _saveDataToCSV(report_data, protein, ligand, equilibration=equilibration,
@@ -356,9 +372,10 @@ def readReportFiles(report_files, protein, ligand, equilibration=False, force_re
     else:
         report_data = None
         distance_data = None
+        angle_data = None
         nonbonded_energy_data = None
 
-    return report_data, distance_data, nonbonded_energy_data
+    return report_data, distance_data, angle_data, nonbonded_energy_data
 
 def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein=None,
                     ligand=None, epoch=None, trajectory=None):
@@ -378,6 +395,7 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
 
     report_values = {}
     distance_values = {}
+    angle_values = {}
     nonbonded_energy_values = {}
     all_values = []
     int_terms = ['Step', 'Accepted Pele Steps']
@@ -406,10 +424,13 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
 
                     if t in int_terms:
                         distance_values[t] = []
+                        angle_values[t] = []
                         report_values[t] = []
                         nonbonded_energy_values[t] = []
                     elif t.startswith('distance_'):
                         distance_values[t] = []
+                    elif t.startswith('angle_'):
+                        angle_values[t] = []
                     elif t.endswith(':all') or t.endswith(':lennard_jones') or t.endswith(':sgb') or t.endswith(':electrostatic'):
                         nonbonded_energy_values[t] = []
                     else:
@@ -423,10 +444,13 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
                     if t in int_terms:
                         report_values[t].append(int(x))
                         distance_values[t].append(int(x))
+                        angle_values[t].append(int(x))
                         nonbonded_energy_values[t].append(int(x))
                     else:
                         if t.startswith('distance_'):
                             distance_values[t].append(float(x))
+                        elif t.startswith('angle_'):
+                            angle_values[t].append(float(x))
                         elif t.endswith(':all') or t.endswith(':lennard_jones') or t.endswith(':sgb') or t.endswith(':electrostatic'):
                             nonbonded_energy_values[t].append(float(x))
                         else:
@@ -445,6 +469,7 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
 
         report_values = pd.DataFrame(report_values)
         distance_values = pd.DataFrame(distance_values)
+        angle_values = pd.DataFrame(angle_values)
         nonbonded_energy_values = pd.DataFrame(nonbonded_energy_values)
 
         if report_values.empty:
@@ -463,13 +488,19 @@ def _readReportFile(report_file, equilibration=False, ebr_threshold=0.1, protein
         distance_values['Epoch'] = epoch
         distance_values['Trajectory'] = trajectory
 
+        # Add epoch and trajectory to angles DF
+        angle_values['Protein'] = protein
+        angle_values['Ligand'] = ligand
+        angle_values['Epoch'] = epoch
+        angle_values['Trajectory'] = trajectory
+
         # Add epoch and trajectory to nonbonded energy DF
         nonbonded_energy_values['Protein'] = protein
         nonbonded_energy_values['Ligand'] = ligand
         nonbonded_energy_values['Epoch'] = epoch
         nonbonded_energy_values['Trajectory'] = trajectory
 
-    return report_values, distance_values, nonbonded_energy_values
+    return report_values, distance_values, angle_values, nonbonded_energy_values
 
 def _saveDataToCSV(dataframe, protein, ligand, equilibration=False, separator='-', data_folder_name='.pele_analysis'):
     if not os.path.exists(data_folder_name):

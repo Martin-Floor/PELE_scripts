@@ -80,6 +80,7 @@ class peleAnalysis:
         self.energy_by_residue = energy_by_residue
         self.data = None
         self.distances = {}
+        self.angles = {}
         self.nonbonded_energy = {}
         self.steps_matrix = None
 
@@ -366,7 +367,7 @@ class peleAnalysis:
                             if pair_lengths == 2:
                                 d = md.compute_distances(traj, pairs)*10
                             elif pair_lengths == 3:
-                                # d = md.compute_angles(traj, pairs)
+                                d = md.compute_angles(traj, pairs)
                                 d = np.rad2deg(md.compute_angles(traj, pairs))
                             elif pair_lengths == 4:
                                 d = np.rad2deg(md.compute_dihedrals(traj, pairs))
@@ -393,7 +394,6 @@ class peleAnalysis:
                     if 'Step' in self.distances[protein][ligand].keys():
                         index_columns.append('Step')
                     self.distances[protein][ligand].set_index(index_columns, inplace=True)
-
 
     def calculateDistancesParallel(self, atom_pairs, overwrite=False, verbose=False, cpus=None, skip_missing=False):
         """
@@ -838,8 +838,8 @@ class peleAnalysis:
             raise ValueError("Ligand name %s not found in protein's %s data!" % (ligand, protein))
 
 
-        # Add distance data to ligand_series
         if len(ligand_series) != 0:
+            # Add distance data to ligand_series
             if protein in self.distances:
                 if ligand in self.distances[protein]:
                     if not isinstance(self.distances[protein][ligand], type(None)):
@@ -852,10 +852,25 @@ class peleAnalysis:
                             else:
                                 ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
 
+            # Add angle data to ligand_series
+            if protein in self.angles:
+                if ligand in self.angles[protein]:
+                    if not isinstance(self.angles[protein][ligand], type(None)):
+                        for angle in self.angles[protein][ligand]:
+                            if not isinstance(dataframe, type(None)):
+                                indexes = dataframe.reset_index().set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step']).index
+                                ligand_series[angle] = self.angles[protein][ligand][self.angles[protein][ligand].index.isin(indexes)][angle].tolist()
+                            else:
+                                ligand_series[angle] = self.angles[protein][ligand][angle].tolist()
+
         # Filter points by metric
         if not isinstance(metrics, type(None)):
             for metric in metrics:
-                mask = ligand_series[metric] <= metrics[metric]
+                if isinstance(metrics[metric], float):
+                    mask = ligand_series[metric] <= metrics[metric]
+                elif isinstance(metrics[metric], tuple):
+                    mask = (ligand_series[metric] >= metrics[metric][0]).to_numpy()
+                    mask = mask & ((ligand_series[metric] <= metrics[metric][1]).to_numpy())
                 ligand_series = ligand_series[mask]
 
         if not isinstance(labels, type(None)):
@@ -879,6 +894,7 @@ class peleAnalysis:
         color_columns = [k for k in ligand_series.keys()]
         color_columns = [k for k in color_columns if ':' not in k]
         color_columns = [k for k in color_columns if 'distance' not in k]
+        color_columns = [k for k in color_columns if 'angle' not in k]
         color_columns = [k for k in color_columns if not k.startswith('metric_')]
         # color_columns.pop(color_columns.index('Step'))
 
@@ -1115,6 +1131,12 @@ class peleAnalysis:
                         elif '_coordinate' in d:
                             distances.append(d)
 
+                # Add angle
+                if ligand in self.angles[protein] and not isinstance(self.angles[protein][ligand], type(None)):
+                    for d in self.angles[protein][ligand]:
+                        if 'angle' in d:
+                            distances.append(d)
+
                 if 'Ligand RMSD' in self.data:
                     distances.append('Ligand RMSD')
 
@@ -1137,26 +1159,47 @@ class peleAnalysis:
                 for m in metrics:
 
                     if self.metric_type[m] == 'distance':
-                        max_value = max(30, max(ligand_series[m]))
-                        min_value = 0
+                        m_slider = FloatSlider(
+                                        value=initial_threshold,
+                                        min=0,
+                                        max=max(30, max(ligand_series[m])),
+                                        step=0.1,
+                                        description=m+':',
+                                        disabled=False,
+                                        continuous_update=False,
+                                        orientation='horizontal',
+                                        readout=True,
+                                        readout_format='.2f',
+                                    )
+
                     elif self.metric_type[m] == 'angle':
-                        max_value = 180
-                        min_value = -180
+                        m_slider = FloatRangeSlider(
+                                        value=[110, 130],
+                                        min=-180,
+                                        max=180,
+                                        step=0.1,
+                                        description=m+':',
+                                        disabled=False,
+                                        continuous_update=False,
+                                        orientation='horizontal',
+                                        readout=True,
+                                        readout_format='.2f',
+                                    )
+
                     elif self.metric_type[m] == 'torsion':
-                        max_value = 180
-                        min_value = -180
-                    m_slider = FloatSlider(
-                                    value=initial_threshold,
-                                    min=min_value,
-                                    max=max_value,
-                                    step=0.1,
-                                    description=m+':',
-                                    disabled=False,
-                                    continuous_update=False,
-                                    orientation='horizontal',
-                                    readout=True,
-                                    readout_format='.2f',
-                                )
+                        m_slider = FloatRangeSlider(
+                                        value=[90, 120],
+                                        min=-180,
+                                        max=180,
+                                        step=0.1,
+                                        description=m+':',
+                                        disabled=False,
+                                        continuous_update=False,
+                                        orientation='horizontal',
+                                        readout=True,
+                                        readout_format='.2f',
+                                    )
+
                     metrics_sliders[m] = m_slider
 
             else:
@@ -2228,8 +2271,13 @@ class peleAnalysis:
 
                     # Get best distance values
                     distances = catalytic_labels[name][protein][ligand]
-                    distance_types += [x.split('_')[0] for x  in catalytic_labels[name][protein][ligand]]
-                    distance_values = self.distances[protein][ligand][distances].min(axis=1)
+                    distance_type = [x.split('_')[0] for x  in catalytic_labels[name][protein][ligand]][0]
+                    distance_types += [distance_type]
+
+                    if distance_type == 'distance':
+                        distance_values = self.distances[protein][ligand][distances].min(axis=1)
+                    elif distance_type == 'angle':
+                        distance_values = self.angles[protein][ligand][distances].min(axis=1)
 
                     # Check that distances and ligand data matches
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
@@ -5090,6 +5138,10 @@ class peleAnalysis:
         if not os.path.exists(self.data_folder+'/distances'):
             os.mkdir(self.data_folder+'/distances')
 
+        # Create PELE angles
+        if not os.path.exists(self.data_folder+'/angles'):
+            os.mkdir(self.data_folder+'/angles')
+
         # Create PELE non bonded energy
         if not os.path.exists(self.data_folder+'/nonbonded_energy'):
             os.mkdir(self.data_folder+'/nonbonded_energy')
@@ -5142,13 +5194,13 @@ class peleAnalysis:
                 start = time.time()
 
             # Read report files into panda dataframes
-            data, distance_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
-                                                            protein,
-                                                            ligand,
-                                                            ebr_threshold=0.1,
-                                                            separator=self.separator,
-                                                            equilibration=equilibration,
-                                                            data_folder_name=self.data_folder)
+            data, distance_data, angle_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
+                                                                                                protein,
+                                                                                                ligand,
+                                                                                                ebr_threshold=0.1,
+                                                                                                separator=self.separator,
+                                                                                                equilibration=equilibration,
+                                                                                                data_folder_name=self.data_folder)
 
             # Skip of dataframe is None
             if isinstance(data, type(None)):
@@ -5167,11 +5219,13 @@ class peleAnalysis:
             if self.verbose:
                 print('\t in %.2f seconds.' % (time.time()-start))
 
-            # Save distance and nonbonded energy data
+            # Save distance, angles and nonbonded energy data
             if not equilibration:
                 self.distances.setdefault(protein,{})
                 self.distances[protein][ligand] = distance_data
 
+                self.angles.setdefault(protein,{})
+                self.angles[protein][ligand] = angle_data
 
                 if not isinstance(distance_data, type(None)) and not distance_data.empty:
 
@@ -5180,6 +5234,14 @@ class peleAnalysis:
 
                     # Save distances to CSV file
                     self.distances[protein][ligand].to_csv(distance_file)
+
+                if not isinstance(angle_data, type(None)) and not angle_data.empty:
+
+                    # Define a different angle output file for each pele run
+                    angle_file = self.data_folder+'/angles/'+protein+self.separator+ligand+'.csv'
+
+                    # Save angles to CSV file
+                    self.angles[protein][ligand].to_csv(angle_file)
 
                 self.nonbonded_energy.setdefault(protein,{})
                 self.nonbonded_energy[protein][ligand] = nonbonded_energy_data
@@ -5801,7 +5863,6 @@ class conectLines:
                     tmp.write(line)
             tmp.write('END\n')
         shutil.move(pdb_file+'.tmp', pdb_file)
-
 
 def _copyScriptFile(output_folder, script_name, no_py=False, subfolder=None, hidden=True):
     """
