@@ -4241,7 +4241,8 @@ class peleAnalysis:
     def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
                                 site_box=10, resolution='fine', reportsize=100, sidechain=True, verbose=False,
                                 keep_volpts=False, remove_ligand=False, overwrite=False, separator=None,
-                                dataframe=None, recalculate=False, skip_models=None, skip_ligands=None):
+                                dataframe=None, recalculate=False, skip_models=None, skip_ligands=None,
+                                check_separator=True):
         """
         Sets up sitemap calculations for the whole PELE simulation, so, yes it does consume a lot of space and computation.
         After the calculations are completed it is recommended to download only the log files, which contains the sitemap
@@ -4394,6 +4395,11 @@ class peleAnalysis:
 
             if skip_ligands and protein in skip_ligands:
                 continue
+
+            if check_separator and separator in protein:
+                raise ValueError(f'Separator "{separator}" was found in protein name. Please use a different one')
+            if check_separator and separator in ligand:
+                raise ValueError(f'Separator "{separator}" was found in ligand name. Please use a different one')
 
             # Skip if not in the given dataframe
             if not isinstance(dataframe, type(None)):
@@ -4694,10 +4700,26 @@ class peleAnalysis:
 
                             # Get pele trajectory values
                             split = f.split(separator)
-                            assert split[0] == protein and split[1] == ligand
-                            epoch = int(split[2:][0])
-                            trajectory = int(split[2:][1])
-                            step = int(split[2:][2].split('.')[0])
+
+                            # Check problems if incorrect separtor was used
+                            if len(f.split(separator)) < 5:
+                                raise ValueError(f'Are sure the used separator "{separator}" is the correct one?')
+                            elif len(f.split(separator)) > 5:
+                                protein_splits = []
+                                ligand_splits = []
+                                for s in split[:-3]:
+                                    if s in protein:
+                                        protein_splits.append(s)
+                                    elif s in ligand:
+                                        ligand_splits.append(s)
+                                assert separator.join(protein_splits) == protein
+                                assert separator.join(ligand_splits) == ligand
+                            else:
+                                assert split[0] == protein and split[1] == ligand
+
+                            epoch = int(split[-3:][0])
+                            trajectory = int(split[-3:][1])
+                            step = int(split[-3:][2].split('.')[0])
 
                             scores = readSitemapLog(sitemap_output_folder+'/'+f)
 
