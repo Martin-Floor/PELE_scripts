@@ -54,7 +54,7 @@ def formatPELESpawnings(pele_folder, separator='-'):
         if os.path.exists(pele+'/metrics.json'):
             shutil.copy(pele+'/metrics.json', tmp+'/metrics.json')
         if os.path.exists(pele+'/metrics_thresholds.json'):
-            shutil.copy(pele+'/metrics.json', tmp+'/metrics_thresholds.json')
+            shutil.copy(pele+'/metrics_thresholds.json', tmp+'/metrics_thresholds.json')
 
         # Get latest epoch at first spawning
         epochs = []

@@ -65,6 +65,7 @@ class peleAnalysis:
         self.csv_equilibration_files = {}
         self.trajectory_files = {}
         self.topology_files = {}
+        self.spawning_files = {}
         self.conect_files = {}
         self.fixed_files = {}
         self.ligand_files = {}
@@ -149,6 +150,9 @@ class peleAnalysis:
             self._readReportData(equilibration=True)
         else:
             print('Skipping equilibration information from report files.')
+
+        ### Read spawning infortmation
+        self._checkSpawningInformation()
 
         # Sort protein and ligand names alphabetically for orderly iterations.
         self.proteins = sorted(self.proteins)
@@ -5152,6 +5156,10 @@ class peleAnalysis:
         if not os.path.exists(self.data_folder+'/pele_conects'):
             os.mkdir(self.data_folder+'/pele_conects')
 
+        # Create PELE conects folder
+        if not os.path.exists(self.data_folder+'/pele_spawnings'):
+            os.mkdir(self.data_folder+'/pele_spawnings')
+
         # Create PELE ligands folders
         if not os.path.exists(self.data_folder+'/pele_ligands'):
             os.mkdir(self.data_folder+'/pele_ligands')
@@ -5509,6 +5517,8 @@ class peleAnalysis:
                     self.trajectory_files[protein] = {}
                 if protein not in self.topology_files:
                     self.topology_files[protein] = {}
+                if protein not in self.spawning_files:
+                    self.spawning_files[protein] = {}
                 if protein not in self.fixed_files:
                     self.fixed_files[protein] = {}
                 if protein not in self.ligand_files:
@@ -5522,6 +5532,9 @@ class peleAnalysis:
                 # Set names for output and input folders
                 output_dir = pele_dir+'/'+self.pele_output_folder+'/output'
                 input_dir = pele_dir+'/'+self.pele_output_folder+'/input'
+
+                # Check for spawning dictionaries
+                self.spawning_files[protein][ligand] = pele_read.getSpawningDictionaries(pele_dir)
 
                 # Check if output folder exists
                 if not os.path.exists(output_dir):
@@ -5737,6 +5750,79 @@ class peleAnalysis:
                         ams = am.split('-')
                         atom_indexes[protein][ligand][(ams[0], int(ams[1]), ams[2])] = self.atom_indexes[protein][ligand][am]
             self.atom_indexes = atom_indexes
+
+    def _checkSpawningInformation(self):
+
+        # Compute spawning membership
+        spawning_values = []
+        regional_values = []
+        for protein, ligand in self.pele_combinations:
+
+            ligand_data = self.getProteinAndLigandData(protein, ligand)
+
+            if self.spawning_files[protein][ligand]:
+
+                with open(self.spawning_files[protein][ligand]['metrics']) as jf:
+                    metrics = json.load(jf)
+
+                with open(self.spawning_files[protein][ligand]['thresholds']) as jf:
+                    metrics_thresholds = json.load(jf)
+
+                with open(self.spawning_files[protein][ligand]['mappings']) as jf:
+                    spawning_mapping = json.load(jf)
+
+                # Add spawning information
+                spawning_mapping = {int(e):spawning_mapping[e] for e in spawning_mapping}
+                spawning_values += [spawning_mapping[e] for e in ligand_data.index.get_level_values('Epoch')]
+
+                # Add regional membership
+                metric_data = ligand_data.copy()
+                acceptance = np.ones(metric_data.shape[0], dtype=bool)
+                for metric in metrics:
+
+                    # Skip undefined metrics
+                    if metric not in metrics_thresholds:
+                        continue
+
+                    # Check how metrics will be combined
+                    distances = False
+                    angles = False
+                    for x in metrics[metric]:
+                        if 'distance_' in x:
+                            distances = True
+                        elif 'angle' in x:
+                            angles = True
+
+                    if distances and angles:
+                        raise ValueError(f'Metric {metric} combines distances and angles which is not supported.')
+
+                    # Combine metrics
+                    if distances:
+                        distances = self.distances[protein][ligand][metrics[metric]]
+                        metric_data[metric] = distances.min(axis=1).tolist()
+
+                    elif angles:
+                        angles = self.angles[protein][ligand][metrics[metric]]
+                        if len(metrics[metric]) > 1:
+                            raise ValueError('Combining more than one angle into a metric is not currently supported.')
+                        metric_data[metric] = angles.min(axis=1).tolist()
+
+                    if isinstance(metrics_thresholds[metric], float):
+                        acceptance = acceptance & ((metric_data[metric] <= metrics_thresholds[metric]).to_numpy())
+
+                    elif isinstance(metrics_thresholds[metric], (list, tuple)):
+                        acceptance = acceptance & ((metric_data[metric] >= metrics_thresholds[metric][0]).to_numpy())
+                        acceptance = acceptance & ((metric_data[metric] <= metrics_thresholds[metric][1]).to_numpy())
+
+                regional_values += list(acceptance)
+            else:
+                spawning_values += ligand_data.shape[0]*[None]
+                regional_values += ligand_data.shape[0]*[None]
+
+        if any(spawning_values):
+            self.data['Regional spawning'] = spawning_values
+            self.data['Regional membership'] = regional_values
+
 
 class conectLines:
 

@@ -206,6 +206,32 @@ def getTopologyFile(pele_input_folder):
 
     return topology_file
 
+def getSpawningDictionaries(pele_folder):
+    """
+    Retrieves the path to the regional spawning metrics dictionaries if found
+
+    Parameters
+    ==========
+    pele_folder : str
+        Base protein and ligand PELE folder
+
+    Returns
+    =======
+    spawning_files : dict
+        Path to the spawning 'metrics' and 'thresholds' dictionaries
+    """
+
+    spawning_files = {}
+    for f in os.listdir(pele_folder):
+        if f == 'metrics.json':
+            spawning_files['metrics'] = pele_folder+'/'+f
+        elif f == 'metrics_thresholds.json':
+            spawning_files['thresholds'] = pele_folder+'/'+f
+        elif f == '._spawning_mapping.json':
+            spawning_files['mappings'] = pele_folder+'/'+f
+
+    return spawning_files
+
 def getFixedFile(pele_input_folder):
     """
     Retrieves the path to the fixed (pdb) file of the Adaptive-PELE Platform
