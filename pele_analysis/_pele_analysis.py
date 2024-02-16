@@ -5101,6 +5101,8 @@ class peleAnalysis:
             traj_dir = self.data_folder+'/pele_trajectories'
             if os.path.exists(traj_dir):
                 for d in os.listdir(traj_dir):
+                    if d.startswith("."):
+                        continue
                     protein = d.split(self.separator)[-2]
                     ligand = d.split(self.separator)[-1]
                     if protein not in self.trajectory_files:
@@ -5113,6 +5115,8 @@ class peleAnalysis:
             # Read PELE topology if found
             topology_dir = self.data_folder+'/pele_topologies'
             for d in os.listdir(topology_dir):
+                if d.startswith("."):
+                    continue
                 protein = d.split(self.separator)[-2].replace('.pdb', '')
                 ligand = d.split(self.separator)[-1]
                 if protein not in self.topology_files:
@@ -5126,6 +5130,8 @@ class peleAnalysis:
             if not os.path.exists(conects_dir):
                 os.mkdir(conects_dir)
             for d in os.listdir(conects_dir):
+                if d.startswith("."):
+                    continue
                 protein = d.split(self.separator)[-2].replace('.json', '')
                 ligand = d.split(self.separator)[-1]
                 if protein not in self.conect_files:
