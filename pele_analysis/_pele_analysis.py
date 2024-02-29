@@ -65,6 +65,7 @@ class peleAnalysis:
         self.csv_equilibration_files = {}
         self.trajectory_files = {}
         self.topology_files = {}
+        self.spawning_files = {}
         self.conect_files = {}
         self.fixed_files = {}
         self.ligand_files = {}
@@ -80,6 +81,7 @@ class peleAnalysis:
         self.energy_by_residue = energy_by_residue
         self.data = None
         self.distances = {}
+        self.angles = {}
         self.nonbonded_energy = {}
         self.steps_matrix = None
 
@@ -148,6 +150,9 @@ class peleAnalysis:
             self._readReportData(equilibration=True)
         else:
             print('Skipping equilibration information from report files.')
+
+        ### Read spawning infortmation
+        self._checkSpawningInformation()
 
         # Sort protein and ligand names alphabetically for orderly iterations.
         self.proteins = sorted(self.proteins)
@@ -366,7 +371,7 @@ class peleAnalysis:
                             if pair_lengths == 2:
                                 d = md.compute_distances(traj, pairs)*10
                             elif pair_lengths == 3:
-                                # d = md.compute_angles(traj, pairs)
+                                d = md.compute_angles(traj, pairs)
                                 d = np.rad2deg(md.compute_angles(traj, pairs))
                             elif pair_lengths == 4:
                                 d = np.rad2deg(md.compute_dihedrals(traj, pairs))
@@ -393,7 +398,6 @@ class peleAnalysis:
                     if 'Step' in self.distances[protein][ligand].keys():
                         index_columns.append('Step')
                     self.distances[protein][ligand].set_index(index_columns, inplace=True)
-
 
     def calculateDistancesParallel(self, atom_pairs, overwrite=False, verbose=False, cpus=None, skip_missing=False):
         """
@@ -838,8 +842,8 @@ class peleAnalysis:
             raise ValueError("Ligand name %s not found in protein's %s data!" % (ligand, protein))
 
 
-        # Add distance data to ligand_series
         if len(ligand_series) != 0:
+            # Add distance data to ligand_series
             if protein in self.distances:
                 if ligand in self.distances[protein]:
                     if not isinstance(self.distances[protein][ligand], type(None)):
@@ -852,10 +856,25 @@ class peleAnalysis:
                             else:
                                 ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
 
+            # Add angle data to ligand_series
+            if protein in self.angles:
+                if ligand in self.angles[protein]:
+                    if not isinstance(self.angles[protein][ligand], type(None)):
+                        for angle in self.angles[protein][ligand]:
+                            if not isinstance(dataframe, type(None)):
+                                indexes = dataframe.reset_index().set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step']).index
+                                ligand_series[angle] = self.angles[protein][ligand][self.angles[protein][ligand].index.isin(indexes)][angle].tolist()
+                            else:
+                                ligand_series[angle] = self.angles[protein][ligand][angle].tolist()
+
         # Filter points by metric
         if not isinstance(metrics, type(None)):
             for metric in metrics:
-                mask = ligand_series[metric] <= metrics[metric]
+                if isinstance(metrics[metric], float):
+                    mask = ligand_series[metric] <= metrics[metric]
+                elif isinstance(metrics[metric], tuple):
+                    mask = (ligand_series[metric] >= metrics[metric][0]).to_numpy()
+                    mask = mask & ((ligand_series[metric] <= metrics[metric][1]).to_numpy())
                 ligand_series = ligand_series[mask]
 
         if not isinstance(labels, type(None)):
@@ -879,6 +898,7 @@ class peleAnalysis:
         color_columns = [k for k in ligand_series.keys()]
         color_columns = [k for k in color_columns if ':' not in k]
         color_columns = [k for k in color_columns if 'distance' not in k]
+        color_columns = [k for k in color_columns if 'angle' not in k]
         color_columns = [k for k in color_columns if not k.startswith('metric_')]
         # color_columns.pop(color_columns.index('Step'))
 
@@ -1115,6 +1135,12 @@ class peleAnalysis:
                         elif '_coordinate' in d:
                             distances.append(d)
 
+                # Add angle
+                if ligand in self.angles[protein] and not isinstance(self.angles[protein][ligand], type(None)):
+                    for d in self.angles[protein][ligand]:
+                        if 'angle' in d:
+                            distances.append(d)
+
                 if 'Ligand RMSD' in self.data:
                     distances.append('Ligand RMSD')
 
@@ -1137,26 +1163,47 @@ class peleAnalysis:
                 for m in metrics:
 
                     if self.metric_type[m] == 'distance':
-                        max_value = max(30, max(ligand_series[m]))
-                        min_value = 0
+                        m_slider = FloatSlider(
+                                        value=initial_threshold,
+                                        min=0,
+                                        max=max(30, max(ligand_series[m])),
+                                        step=0.1,
+                                        description=m+':',
+                                        disabled=False,
+                                        continuous_update=False,
+                                        orientation='horizontal',
+                                        readout=True,
+                                        readout_format='.2f',
+                                    )
+
                     elif self.metric_type[m] == 'angle':
-                        max_value = 180
-                        min_value = -180
+                        m_slider = FloatRangeSlider(
+                                        value=[110, 130],
+                                        min=-180,
+                                        max=180,
+                                        step=0.1,
+                                        description=m+':',
+                                        disabled=False,
+                                        continuous_update=False,
+                                        orientation='horizontal',
+                                        readout=True,
+                                        readout_format='.2f',
+                                    )
+
                     elif self.metric_type[m] == 'torsion':
-                        max_value = 180
-                        min_value = -180
-                    m_slider = FloatSlider(
-                                    value=initial_threshold,
-                                    min=min_value,
-                                    max=max_value,
-                                    step=0.1,
-                                    description=m+':',
-                                    disabled=False,
-                                    continuous_update=False,
-                                    orientation='horizontal',
-                                    readout=True,
-                                    readout_format='.2f',
-                                )
+                        m_slider = FloatRangeSlider(
+                                        value=[90, 120],
+                                        min=-180,
+                                        max=180,
+                                        step=0.1,
+                                        description=m+':',
+                                        disabled=False,
+                                        continuous_update=False,
+                                        orientation='horizontal',
+                                        readout=True,
+                                        readout_format='.2f',
+                                    )
+
                     metrics_sliders[m] = m_slider
 
             else:
@@ -2234,8 +2281,13 @@ class peleAnalysis:
 
                     # Get best distance values
                     distances = catalytic_labels[name][protein][ligand]
-                    distance_types += [x.split('_')[0] for x  in catalytic_labels[name][protein][ligand]]
-                    distance_values = self.distances[protein][ligand][distances].min(axis=1)
+                    distance_type = [x.split('_')[0] for x  in catalytic_labels[name][protein][ligand]][0]
+                    distance_types += [distance_type]
+
+                    if distance_type == 'distance':
+                        distance_values = self.distances[protein][ligand][distances].min(axis=1)
+                    elif distance_type == 'angle':
+                        distance_values = self.angles[protein][ligand][distances].min(axis=1)
 
                     # Check that distances and ligand data matches
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
@@ -4199,7 +4251,8 @@ class peleAnalysis:
     def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
                                 site_box=10, resolution='fine', reportsize=100, sidechain=True, verbose=False,
                                 keep_volpts=False, remove_ligand=False, overwrite=False, separator=None,
-                                dataframe=None, recalculate=False, skip_models=None, skip_ligands=None):
+                                dataframe=None, recalculate=False, skip_models=None, skip_ligands=None,
+                                check_separator=True):
         """
         Sets up sitemap calculations for the whole PELE simulation, so, yes it does consume a lot of space and computation.
         After the calculations are completed it is recommended to download only the log files, which contains the sitemap
@@ -4352,6 +4405,11 @@ class peleAnalysis:
 
             if skip_ligands and protein in skip_ligands:
                 continue
+
+            if check_separator and separator in protein:
+                raise ValueError(f'Separator "{separator}" was found in protein name. Please use a different one')
+            if check_separator and separator in ligand:
+                raise ValueError(f'Separator "{separator}" was found in ligand name. Please use a different one')
 
             # Skip if not in the given dataframe
             if not isinstance(dataframe, type(None)):
@@ -4652,10 +4710,26 @@ class peleAnalysis:
 
                             # Get pele trajectory values
                             split = f.split(separator)
-                            assert split[0] == protein and split[1] == ligand
-                            epoch = int(split[2:][0])
-                            trajectory = int(split[2:][1])
-                            step = int(split[2:][2].split('.')[0])
+
+                            # Check problems if incorrect separtor was used
+                            if len(f.split(separator)) < 5:
+                                raise ValueError(f'Are sure the used separator "{separator}" is the correct one?')
+                            elif len(f.split(separator)) > 5:
+                                protein_splits = []
+                                ligand_splits = []
+                                for s in split[:-3]:
+                                    if s in protein:
+                                        protein_splits.append(s)
+                                    elif s in ligand:
+                                        ligand_splits.append(s)
+                                assert separator.join(protein_splits) == protein
+                                assert separator.join(ligand_splits) == ligand
+                            else:
+                                assert split[0] == protein and split[1] == ligand
+
+                            epoch = int(split[-3:][0])
+                            trajectory = int(split[-3:][1])
+                            step = int(split[-3:][2].split('.')[0])
 
                             scores = readSitemapLog(sitemap_output_folder+'/'+f)
 
@@ -5088,6 +5162,10 @@ class peleAnalysis:
         if not os.path.exists(self.data_folder+'/pele_conects'):
             os.mkdir(self.data_folder+'/pele_conects')
 
+        # Create PELE conects folder
+        if not os.path.exists(self.data_folder+'/pele_spawnings'):
+            os.mkdir(self.data_folder+'/pele_spawnings')
+
         # Create PELE ligands folders
         if not os.path.exists(self.data_folder+'/pele_ligands'):
             os.mkdir(self.data_folder+'/pele_ligands')
@@ -5095,6 +5173,10 @@ class peleAnalysis:
         # Create PELE distances
         if not os.path.exists(self.data_folder+'/distances'):
             os.mkdir(self.data_folder+'/distances')
+
+        # Create PELE angles
+        if not os.path.exists(self.data_folder+'/angles'):
+            os.mkdir(self.data_folder+'/angles')
 
         # Create PELE non bonded energy
         if not os.path.exists(self.data_folder+'/nonbonded_energy'):
@@ -5148,13 +5230,13 @@ class peleAnalysis:
                 start = time.time()
 
             # Read report files into panda dataframes
-            data, distance_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
-                                                            protein,
-                                                            ligand,
-                                                            ebr_threshold=0.1,
-                                                            separator=self.separator,
-                                                            equilibration=equilibration,
-                                                            data_folder_name=self.data_folder)
+            data, distance_data, angle_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
+                                                                                                protein,
+                                                                                                ligand,
+                                                                                                ebr_threshold=0.1,
+                                                                                                separator=self.separator,
+                                                                                                equilibration=equilibration,
+                                                                                                data_folder_name=self.data_folder)
 
             # Skip of dataframe is None
             if isinstance(data, type(None)):
@@ -5173,11 +5255,13 @@ class peleAnalysis:
             if self.verbose:
                 print('\t in %.2f seconds.' % (time.time()-start))
 
-            # Save distance and nonbonded energy data
+            # Save distance, angles and nonbonded energy data
             if not equilibration:
                 self.distances.setdefault(protein,{})
                 self.distances[protein][ligand] = distance_data
 
+                self.angles.setdefault(protein,{})
+                self.angles[protein][ligand] = angle_data
 
                 if not isinstance(distance_data, type(None)) and not distance_data.empty:
 
@@ -5186,6 +5270,14 @@ class peleAnalysis:
 
                     # Save distances to CSV file
                     self.distances[protein][ligand].to_csv(distance_file)
+
+                if not isinstance(angle_data, type(None)) and not angle_data.empty:
+
+                    # Define a different angle output file for each pele run
+                    angle_file = self.data_folder+'/angles/'+protein+self.separator+ligand+'.csv'
+
+                    # Save angles to CSV file
+                    self.angles[protein][ligand].to_csv(angle_file)
 
                 self.nonbonded_energy.setdefault(protein,{})
                 self.nonbonded_energy[protein][ligand] = nonbonded_energy_data
@@ -5431,6 +5523,8 @@ class peleAnalysis:
                     self.trajectory_files[protein] = {}
                 if protein not in self.topology_files:
                     self.topology_files[protein] = {}
+                if protein not in self.spawning_files:
+                    self.spawning_files[protein] = {}
                 if protein not in self.fixed_files:
                     self.fixed_files[protein] = {}
                 if protein not in self.ligand_files:
@@ -5444,6 +5538,9 @@ class peleAnalysis:
                 # Set names for output and input folders
                 output_dir = pele_dir+'/'+self.pele_output_folder+'/output'
                 input_dir = pele_dir+'/'+self.pele_output_folder+'/input'
+
+                # Check for spawning dictionaries
+                self.spawning_files[protein][ligand] = pele_read.getSpawningDictionaries(pele_dir)
 
                 # Check if output folder exists
                 if not os.path.exists(output_dir):
@@ -5660,6 +5757,79 @@ class peleAnalysis:
                         atom_indexes[protein][ligand][(ams[0], int(ams[1]), ams[2])] = self.atom_indexes[protein][ligand][am]
             self.atom_indexes = atom_indexes
 
+    def _checkSpawningInformation(self):
+
+        # Compute spawning membership
+        spawning_values = []
+        regional_values = []
+        for protein, ligand in self.pele_combinations:
+
+            ligand_data = self.getProteinAndLigandData(protein, ligand)
+
+            if self.spawning_files[protein][ligand]:
+
+                with open(self.spawning_files[protein][ligand]['metrics']) as jf:
+                    metrics = json.load(jf)
+
+                with open(self.spawning_files[protein][ligand]['thresholds']) as jf:
+                    metrics_thresholds = json.load(jf)
+
+                with open(self.spawning_files[protein][ligand]['mappings']) as jf:
+                    spawning_mapping = json.load(jf)
+
+                # Add spawning information
+                spawning_mapping = {int(e):spawning_mapping[e] for e in spawning_mapping}
+                spawning_values += [spawning_mapping[e] for e in ligand_data.index.get_level_values('Epoch')]
+
+                # Add regional membership
+                metric_data = ligand_data.copy()
+                acceptance = np.ones(metric_data.shape[0], dtype=bool)
+                for metric in metrics:
+
+                    # Skip undefined metrics
+                    if metric not in metrics_thresholds:
+                        continue
+
+                    # Check how metrics will be combined
+                    distances = False
+                    angles = False
+                    for x in metrics[metric]:
+                        if 'distance_' in x:
+                            distances = True
+                        elif 'angle' in x:
+                            angles = True
+
+                    if distances and angles:
+                        raise ValueError(f'Metric {metric} combines distances and angles which is not supported.')
+
+                    # Combine metrics
+                    if distances:
+                        distances = self.distances[protein][ligand][metrics[metric]]
+                        metric_data[metric] = distances.min(axis=1).tolist()
+
+                    elif angles:
+                        angles = self.angles[protein][ligand][metrics[metric]]
+                        if len(metrics[metric]) > 1:
+                            raise ValueError('Combining more than one angle into a metric is not currently supported.')
+                        metric_data[metric] = angles.min(axis=1).tolist()
+
+                    if isinstance(metrics_thresholds[metric], float):
+                        acceptance = acceptance & ((metric_data[metric] <= metrics_thresholds[metric]).to_numpy())
+
+                    elif isinstance(metrics_thresholds[metric], (list, tuple)):
+                        acceptance = acceptance & ((metric_data[metric] >= metrics_thresholds[metric][0]).to_numpy())
+                        acceptance = acceptance & ((metric_data[metric] <= metrics_thresholds[metric][1]).to_numpy())
+
+                regional_values += list(acceptance)
+            else:
+                spawning_values += ligand_data.shape[0]*[None]
+                regional_values += ligand_data.shape[0]*[None]
+
+        if any(spawning_values):
+            self.data['Regional spawning'] = spawning_values
+            self.data['Regional membership'] = regional_values
+
+
 class conectLines:
 
     def _readPDBConectLines(pdb_file, only_hetatoms=False, change_water=False):
@@ -5807,7 +5977,6 @@ class conectLines:
                     tmp.write(line)
             tmp.write('END\n')
         shutil.move(pdb_file+'.tmp', pdb_file)
-
 
 def _copyScriptFile(output_folder, script_name, no_py=False, subfolder=None, hidden=True):
     """
