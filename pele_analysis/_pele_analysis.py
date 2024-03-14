@@ -5766,7 +5766,7 @@ class peleAnalysis:
 
             ligand_data = self.getProteinAndLigandData(protein, ligand)
 
-            if self.spawning_files[protein][ligand]:
+            if protein in self.spawning_files and ligand in self.spawning_files[protein]:
 
                 with open(self.spawning_files[protein][ligand]['metrics']) as jf:
                     metrics = json.load(jf)
