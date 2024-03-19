@@ -1769,7 +1769,12 @@ class peleAnalysis:
                         catalytic_series = ligand_series
 
                         for metric in metrics_filter:
-                            catalytic_series = catalytic_series[catalytic_series[metric] <= metrics_filter[metric]]
+                            if isinstance(metrics_filter[metric], float):
+                                mask = catalytic_series[metric] <= metrics_filter[metric]
+                            elif isinstance(metrics[metric], tuple):
+                                mask = (ligand_series[metric] >= metrics_filter[metric][0]).to_numpy()
+                                mask = mask & ((ligand_series[metric] <= metrics_filter[metric][1]).to_numpy())
+                            catalytic_series = catalytic_series[mask]
 
                         for l in labels_filter:
                             # Filter by labels
@@ -1866,18 +1871,33 @@ class peleAnalysis:
                     initial_threshold = initial_threshold
                 else:
                     initial_threshold = initial_threshold_filter
-            m_slider = FloatSlider(
-                        value=initial_threshold,
-                        min=0,
-                        max=max_metric_threshold,
-                        step=0.1,
-                        description=m+':',
-                        disabled=False,
-                        continuous_update=False,
-                        orientation='horizontal',
-                        readout=True,
-                        readout_format='.2f',
-                        style= {'description_width': 'initial'})
+            if self.metric_type[m] == 'distance':
+                m_slider = FloatSlider(
+                                value=initial_threshold,
+                                min=0,
+                                max=max_metric_threshold,
+                                step=0.1,
+                                description=m+':',
+                                disabled=False,
+                                continuous_update=False,
+                                orientation='horizontal',
+                                readout=True,
+                                readout_format='.2f',
+                                style= {'description_width': 'initial'})
+
+            elif self.metric_type[m] == 'angle':
+                m_slider = FloatRangeSlider(
+                                value=[110, 130],
+                                min=-180,
+                                max=180,
+                                step=0.1,
+                                description=m+':',
+                                disabled=False,
+                                continuous_update=False,
+                                orientation='horizontal',
+                                readout=True,
+                                readout_format='.2f',
+                            )
 
             metrics_sliders[m] = m_slider
 
@@ -2115,8 +2135,6 @@ class peleAnalysis:
 
     def visualiseInVMD(self, protein, ligand, resnames=None, resids=None, peptide=False,
                       num_trajectories='all', epochs=None, trajectories=None, equilibration=False):
-        """
-        """
 
         if not os.path.isdir(self.pele_folder):
             raise ValueError('Pele folder not found. There are no trajectories.')
@@ -2232,6 +2250,7 @@ class peleAnalysis:
 
     def combineDistancesIntoMetrics(self, catalytic_labels, labels=None, nonbonded_energy=False,
                                     overwrite=False, verbose=False):
+
         """
         Combine different equivalent distances into specific named metrics. The function
         takes as input a dictionary (catalytic_labels) composed of inner dictionaries as follows:
