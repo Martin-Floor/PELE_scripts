@@ -1771,9 +1771,9 @@ class peleAnalysis:
                         for metric in metrics_filter:
                             if isinstance(metrics_filter[metric], float):
                                 mask = catalytic_series[metric] <= metrics_filter[metric]
-                            elif isinstance(metrics[metric], tuple):
-                                mask = (ligand_series[metric] >= metrics_filter[metric][0]).to_numpy()
-                                mask = mask & ((ligand_series[metric] <= metrics_filter[metric][1]).to_numpy())
+                            elif isinstance(metrics_filter[metric], tuple):
+                                mask = (catalytic_series[metric] >= metrics_filter[metric][0]).to_numpy()
+                                mask = mask & ((catalytic_series[metric] <= metrics_filter[metric][1]).to_numpy())
                             catalytic_series = catalytic_series[mask]
 
                         for l in labels_filter:
