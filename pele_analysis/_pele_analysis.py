@@ -1860,18 +1860,34 @@ class peleAnalysis:
         metrics_sliders = {}
         labels_ddms = {}
         for m in metrics:
-            m_slider = FloatSlider(
-                        value=initial_threshold,
-                        min=0,
-                        max=max_metric_threshold,
-                        step=0.1,
-                        description=m+':',
-                        disabled=False,
-                        continuous_update=False,
-                        orientation='horizontal',
-                        readout=True,
-                        readout_format='.2f',
-                        style= {'description_width': 'initial'})
+
+            if self.metric_type[m] == 'distance':
+                m_slider = FloatSlider(
+                            value=initial_threshold,
+                            min=0,
+                            max=max(30, max(ligand_series[m])),
+                            step=0.1,
+                            description=m+':',
+                            disabled=False,
+                            continuous_update=False,
+                            orientation='horizontal',
+                            readout=True,
+                            readout_format='.2f',
+                            style= {'description_width': 'initial'})
+
+            elif self.metric_type[m] == 'angle':
+                m_slider = FloatRangeSlider(
+                                value=[110, 130],
+                                min=-180,
+                                max=180,
+                                step=0.1,
+                                description=m+':',
+                                disabled=False,
+                                continuous_update=False,
+                                orientation='horizontal',
+                                readout=True,
+                                readout_format='.2f',
+                            )
 
             metrics_sliders[m] = m_slider
 
