@@ -183,8 +183,17 @@ class peleAnalysis:
             Skip models not found in the atom_pairs dictionary
         """
 
+        # if not os.path.exists(self.data_folder+'/coordinates'):
+        #     os.mkdir(self.data_folder+'/coordinates')
+
         if not os.path.exists(self.data_folder+'/distances'):
             os.mkdir(self.data_folder+'/distances')
+
+        if not os.path.exists(self.data_folder+'/angles'):
+            os.mkdir(self.data_folder+'/angles')
+
+        # if not os.path.exists(self.data_folder+'/dihedrals'):
+        #     os.mkdir(self.data_folder+'/dihedrals')
 
         if not self.trajectory_files:
             raise ValueError('No trajectories were found!')
@@ -195,7 +204,28 @@ class peleAnalysis:
             for ligand in sorted(self.trajectory_files[protein]):
 
                 # Define a different distance output file for each pele run
+                # coordinate_file = self.data_folder+'/coordinates/'+protein+self.separator+ligand+'.csv'
                 distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
+                angle_file = self.data_folder+'/angles/'+protein+self.separator+ligand+'.csv'
+                # dihedral_file = self.data_folder+'/dihedrals/'+protein+self.separator+ligand+'.csv'
+
+                # # Check if coordinate have been previously calculated
+                # if os.path.exists(coordinate_file) and not overwrite:
+                #     if verbose:
+                #         print('Coordinate file for %s + %s was found. Reading coordinates from there...' % (protein, ligand))
+                #     self.coordinates[protein][ligand] = pd.read_csv(coordinate_file, index_col=False)
+                #     self.coordinates[protein][ligand] = self.coordinates[protein][ligand].loc[:, ~self.coordinates[protein][ligand].columns.str.contains('^Unnamed')]
+                #     index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                #     if 'Step' in self.coordinates[protein][ligand].keys():
+                #         index_columns.append('Step')
+                #     self.coordinates[protein][ligand].set_index(index_columns, inplace=True)
+                # else:
+                #     self.coordinates[protein][ligand] = {}
+                #     self.coordinates[protein][ligand]['Protein'] = []
+                #     self.coordinates[protein][ligand]['Ligand'] = []
+                #     self.coordinates[protein][ligand]['Epoch'] = []
+                #     self.coordinates[protein][ligand]['Trajectory'] = []
+                #     self.coordinates[protein][ligand]['Accepted Pele Steps'] = []
 
                 # Check if distance have been previously calculated
                 if os.path.exists(distance_file) and not overwrite:
@@ -215,6 +245,42 @@ class peleAnalysis:
                     self.distances[protein][ligand]['Trajectory'] = []
                     self.distances[protein][ligand]['Accepted Pele Steps'] = []
 
+                # Check if angles have been previously calculated
+                if os.path.exists(angle_file) and not overwrite:
+                    if verbose:
+                        print('Angle file for %s + %s was found. Reading angles from there...' % (protein, ligand))
+                    self.angles[protein][ligand] = pd.read_csv(angle_file, index_col=False)
+                    self.angles[protein][ligand] = self.angles[protein][ligand].loc[:, ~self.angles[protein][ligand].columns.str.contains('^Unnamed')]
+                    index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                    if 'Step' in self.angles[protein][ligand].keys():
+                        index_columns.append('Step')
+                    self.angles[protein][ligand].set_index(index_columns, inplace=True)
+                else:
+                    self.angles[protein][ligand] = {}
+                    self.angles[protein][ligand]['Protein'] = []
+                    self.angles[protein][ligand]['Ligand'] = []
+                    self.angles[protein][ligand]['Epoch'] = []
+                    self.angles[protein][ligand]['Trajectory'] = []
+                    self.angles[protein][ligand]['Accepted Pele Steps'] = []
+
+                # # Check if dihedrals have been previously calculated
+                # if os.path.exists(dihedral_file) and not overwrite:
+                #     if verbose:
+                #         print('Dihedral file for %s + %s was found. Reading dihedral from there...' % (protein, ligand))
+                #     self.dihedrals[protein][ligand] = pd.read_csv(angle_file, index_col=False)
+                #     self.dihedrals[protein][ligand] = self.dihedrals[protein][ligand].loc[:, ~self.dihedrals[protein][ligand].columns.str.contains('^Unnamed')]
+                #     index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                #     if 'Step' in self.dihedrals[protein][ligand].keys():
+                #         index_columns.append('Step')
+                #     self.dihedrals[protein][ligand].set_index(index_columns, inplace=True)
+                # else:
+                #     self.dihedrals[protein][ligand] = {}
+                #     self.dihedrals[protein][ligand]['Protein'] = []
+                #     self.dihedrals[protein][ligand]['Ligand'] = []
+                #     self.dihedrals[protein][ligand]['Epoch'] = []
+                #     self.dihedrals[protein][ligand]['Trajectory'] = []
+                #     self.dihedrals[protein][ligand]['Accepted Pele Steps'] = []
+
                 if verbose:
                     print('Calculating distances for %s + %s ' % (protein, ligand))
 
@@ -228,7 +294,7 @@ class peleAnalysis:
                 # Get atom pair indexes to compute distances
                 pairs = []
                 dist_label = {}
-                pair_lengths = []
+                # pair_lengths = []
 
                 if skip_missing and protein not in atom_pairs:
                     continue
@@ -287,16 +353,17 @@ class peleAnalysis:
                         pairs.append((i1, i2, i3, i4))
                         dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'torsion_'
 
-                    pair_lengths.append(len(pair))
+                    # pair_lengths.append(len(pair))
 
-                # Check pairs
-                pair_lengths = set(pair_lengths)
-                if len(pair_lengths) > 1:
-                    raise ValueError('Mixed number of atoms given!')
-                pair_lengths = list(pair_lengths)[0]
+                # # Check pairs
+                # pair_lengths = set(pair_lengths)
+                # if len(pair_lengths) > 1:
+                #     raise ValueError('Mixed number of atoms given!')
+                # pair_lengths = list(pair_lengths)[0]
 
                 # Define labels
                 labels = []
+                label_type = {}
                 for pair in atom_pairs[protein][ligand]:
                     label = dist_label[pair]
                     if len(pair) > 1:
@@ -305,39 +372,135 @@ class peleAnalysis:
                     else:
                         label += pair+'_'
                     labels.append(label[:-1])
+                    label_type[label[:-1]] = dist_label[pair][:-1]
+
+                # # Check if labels are already in coordinate_data
+                # missing_coordinate_labels = []
+                # skip_index_coordinate_append = False
+                # if isinstance(self.coordinates[protein][ligand], pd.DataFrame):
+                #     coordinates_keys = list(self.coordinates[protein][ligand].keys())
+                #     for l in labels:
+                #         if label_type[l] != 'coordinate':
+                #             continue
+                #         if l not in coordinates_keys:
+                #             missing_coordinate_labels.append(l)
+                #
+                #     if missing_coordinate_labels != []:
+                #
+                #         # Convert DF into a dictionary for coordinate appending
+                #         self.coordinates[protein][ligand].reset_index(inplace=True)
+                #         self.coordinates[protein][ligand] = self.coordinates[protein][ligand].to_dict()
+                #         for k in self.coordinates[protein][ligand]:
+                #             nv = [self.coordinates[protein][ligand][k][x] for x in self.coordinates[protein][ligand][k]]
+                #             self.coordinates[protein][ligand][k] = nv
+                #         skip_index_coordinate_append = True
+                #
+                # else:
+                #     missing_coordinate_labels = [l for l in labels if label_type[l] == 'coordinate']
 
                 # Check if labels are already in distance_data
-                missing_labels = []
-                skip_index_append = False
+                missing_distance_labels = []
+                skip_index_distance_append = False
                 if isinstance(self.distances[protein][ligand], pd.DataFrame):
                     distances_keys = list(self.distances[protein][ligand].keys())
                     for l in labels:
+                        if label_type[l] != 'distance':
+                            continue
                         if l not in distances_keys:
-                            missing_labels.append(l)
-                    if missing_labels != []:
+                            missing_distance_labels.append(l)
+
+                    if missing_distance_labels != []:
+
                         # Convert DF into a dictionary for distance appending
                         self.distances[protein][ligand].reset_index(inplace=True)
                         self.distances[protein][ligand] = self.distances[protein][ligand].to_dict()
                         for k in self.distances[protein][ligand]:
                             nv = [self.distances[protein][ligand][k][x] for x in self.distances[protein][ligand][k]]
                             self.distances[protein][ligand][k] = nv
-                        skip_index_append = True
+                        skip_index_distance_append = True
+
                 else:
-                    missing_labels = labels
+                    missing_distance_labels = [l for l in labels if label_type[l] == 'distance']
+
+                # Check if labels are already in angle_data
+                missing_angle_labels = []
+                skip_index_angle_append = False
+                if isinstance(self.angles[protein][ligand], pd.DataFrame):
+                    angles_keys = list(self.angles[protein][ligand].keys())
+                    for l in labels:
+                        if label_type[l] != 'angle':
+                            continue
+                        if l not in angles_keys:
+                            missing_angle_labels.append(l)
+
+                    if missing_angle_labels != []:
+
+                        # Convert DF into a dictionary for angle appending
+                        self.angles[protein][ligand].reset_index(inplace=True)
+                        self.angles[protein][ligand] = self.angles[protein][ligand].to_dict()
+                        for k in self.angles[protein][ligand]:
+                            nv = [self.angles[protein][ligand][k][x] for x in self.angles[protein][ligand][k]]
+                            self.angles[protein][ligand][k] = nv
+                        skip_index_angle_append = True
+
+                else:
+                    missing_angle_labels = [l for l in labels if label_type[l] == 'angle']
+
+                # # Check if labels are already in dihedral_data
+                # missing_dihedral_labels = []
+                # skip_index_dihedral_append = False
+                # if isinstance(self.dihedrals[protein][ligand], pd.DataFrame):
+                #     dihedrals_keys = list(self.dihedrals[protein][ligand].keys())
+                #     for l in labels:
+                #         if label_type[l] != 'dihedral':
+                #             continue
+                #         if l not in dihedrals_keys:
+                #             missing_dihedral_labels.append(l)
+                #
+                #     if missing_dihedral_labels != []:
+                #
+                #         # Convert DF into a dictionary for dihedral appending
+                #         self.dihedrals[protein][ligand].reset_index(inplace=True)
+                #         self.dihedrals[protein][ligand] = self.dihedrals[protein][ligand].to_dict()
+                #         for k in self.dihedrals[protein][ligand]:
+                #             nv = [self.dihedrals[protein][ligand][k][x] for x in self.dihedrals[protein][ligand][k]]
+                #             self.dihedrals[protein][ligand][k] = nv
+                #         skip_index_dihedral_append = True
+                #
+                # else:
+                #     missing_dihedral_labels = [l for l in labels if label_type[l] == 'dihedral']
 
                 # Update pairs based on missing labels
-                if missing_labels != []:
-
-                    # Create an entry for each distance
-                    for label in missing_labels:
-                        self.distances[protein][ligand][label] = []
+                # if missing_coordinate_labels != []:
+                #     for label in missing_coordinate_labels:
+                #             self.coordinates[protein][ligand][label] = []
+                if missing_distance_labels != []:
+                    for label in missing_distance_labels:
+                        if label_type[l] == 'distance':
+                            self.distances[protein][ligand][label] = []
+                if missing_angle_labels != []:
+                    for label in missing_angle_labels:
+                        if label_type[l] == 'angle':
+                            self.angles[protein][ligand][label] = []
+                # if missing_dihedral_labels != []:
+                #     for label in missing_dihedral_labels:
+                #         if label_type[l] == 'dihedral':
+                #             self.dihedrals[protein][ligand][label] = []
 
                     # Update pairs based on missing labels
-                    updated_pairs = []
+                    # coordinate_atoms = []
+                    distance_pairs = []
+                    angle_pairs = []
+                    # dihedral_pairs = []
                     for p,l in zip(pairs, labels):
-                        if l in missing_labels:
-                            updated_pairs.append(p)
-                    pairs = updated_pairs
+                        # if l in missing_coordinate_labels:
+                            # coordinate_atoms.append(p)
+                        if l in missing_distance_labels:
+                            distance_pairs.append(p)
+                        elif l in missing_angle_labels:
+                            angle_pairs.append(p)
+                        # elif l in missing_dihedral_labels:
+                        #     dihedral_pairs.append(p)
 
                     # Compute distances and them to the dicionary
                     for epoch in sorted(trajectory_files):
@@ -351,53 +514,113 @@ class peleAnalysis:
                                 message += 'of protein %s and ligand %s' % (protein, ligand)
                                 raise ValueError(message)
 
-                            # Calculate centroid coordinates
-                            if pair_lengths == 1:
-
-                                # Get all ligand atom coordinates
-                                for r in traj.topology.residues:
-                                    if r.name == self.ligand_names[protein][ligand]:
-                                        ligand_atoms = [a.index for a in r.atoms]
-
-                                # Get the requested coordinates
-                                ligand_coordinates = traj.atom_slice(ligand_atoms).xyz
-                                indexes = []
-                                coord_to_index = {'X':0, 'Y':1, 'Z':2}
-                                for p in pairs:
-                                    indexes.append(coord_to_index[p])
-                                d = np.average(ligand_coordinates[:,:,indexes], axis=1)*10
+                            # # Calculate centroid coordinates
+                            # if coordinate_atoms:
+                            #
+                            #     # Get all ligand atom coordinates
+                            #     for r in traj.topology.residues:
+                            #         if r.name == self.ligand_names[protein][ligand]:
+                            #             ligand_atoms = [a.index for a in r.atoms]
+                            #
+                            #     # Get the requested coordinates
+                            #     ligand_coordinates = traj.atom_slice(ligand_atoms).xyz
+                            #     indexes = []
+                            #     coord_to_index = {'X':0, 'Y':1, 'Z':2}
+                            #     for p in coordinate_atoms:
+                            #         indexes.append(coord_to_index[p])
+                            #     coordinates = np.average(ligand_coordinates[:,:,indexes], axis=1)*10
+                            #
+                            #     # Store data
+                            #     if not skip_index_coordinates_append:
+                            #         self.coordinates[protein][ligand]['Protein'] += [protein]*coordinates.shape[0]
+                            #         self.coordinates[protein][ligand]['Ligand'] += [ligand]*coordinates.shape[0]
+                            #         self.coordinates[protein][ligand]['Epoch'] += [epoch]*coordinates.shape[0]
+                            #         self.coordinates[protein][ligand]['Trajectory'] += [t]*coordinates.shape[0]
+                            #         self.coordinates[protein][ligand]['Accepted Pele Steps'] += list(range(coordinates.shape[0]))
+                            #     for i,label in enumerate(missing_coordinates_labels):
+                            #         self.coordinates[protein][ligand][label] += list(coordinates[:,i])
 
                             # Calculate distances
-                            if pair_lengths == 2:
-                                d = md.compute_distances(traj, pairs)*10
-                            elif pair_lengths == 3:
-                                d = md.compute_angles(traj, pairs)
-                                d = np.rad2deg(md.compute_angles(traj, pairs))
-                            elif pair_lengths == 4:
-                                d = np.rad2deg(md.compute_dihedrals(traj, pairs))
-                                # d = md.compute_dihedrals(traj, pairs)
+                            if distance_pairs:
+                                distances = md.compute_distances(traj, pairs)*10
 
-                            # Store data
-                            if not skip_index_append:
-                                self.distances[protein][ligand]['Protein'] += [protein]*d.shape[0]
-                                self.distances[protein][ligand]['Ligand'] += [ligand]*d.shape[0]
-                                self.distances[protein][ligand]['Epoch'] += [epoch]*d.shape[0]
-                                self.distances[protein][ligand]['Trajectory'] += [t]*d.shape[0]
-                                self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(d.shape[0]))
-                            for i,l in enumerate(missing_labels):
-                                self.distances[protein][ligand][l] += list(d[:,i])
+                                # Store data
+                                if not skip_index_distance_append:
+                                    self.distances[protein][ligand]['Protein'] += [protein]*distances.shape[0]
+                                    self.distances[protein][ligand]['Ligand'] += [ligand]*distances.shape[0]
+                                    self.distances[protein][ligand]['Epoch'] += [epoch]*distances.shape[0]
+                                    self.distances[protein][ligand]['Trajectory'] += [t]*distances.shape[0]
+                                    self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(distances.shape[0]))
+                                for i,label in enumerate(missing_distance_labels):
+                                    self.distances[protein][ligand][label] += list(distances[:,i])
+
+                            # Calculate angles
+                            if angle_pairs:
+                                angles = np.rad2deg(md.compute_angles(traj, pairs))
+
+                                # Store data
+                                if not skip_index_angle_append:
+                                    self.angles[protein][ligand]['Protein'] += [protein]*angles.shape[0]
+                                    self.angles[protein][ligand]['Ligand'] += [ligand]*angles.shape[0]
+                                    self.angles[protein][ligand]['Epoch'] += [epoch]*angles.shape[0]
+                                    self.angles[protein][ligand]['Trajectory'] += [t]*angles.shape[0]
+                                    self.angles[protein][ligand]['Accepted Pele Steps'] += list(range(angles.shape[0]))
+                                for i,label in enumerate(missing_angle_labels):
+                                    self.angles[protein][ligand][label] += list(angles[:,i])
+
+                            # Calculate dihedrals
+                            elif pair_lengths == 4:
+                                dihedrals = np.rad2deg(md.compute_dihedrals(traj, pairs))
+
+                            # # Store data
+                            # if not skip_index_dihedral_append:
+                            #     self.dihedrals[protein][ligand]['Protein'] += [protein]*dihedrals.shape[0]
+                            #     self.dihedrals[protein][ligand]['Ligand'] += [ligand]*dihedrals.shape[0]
+                            #     self.dihedrals[protein][ligand]['Epoch'] += [epoch]*dihedrals.shape[0]
+                            #     self.dihedrals[protein][ligand]['Trajectory'] += [t]*dihedrals.shape[0]
+                            #     self.dihedrals[protein][ligand]['Accepted Pele Steps'] += list(range(dihedrals.shape[0]))
+                            # for i,l in enumerate(missing_dihedrals_labels):
+                            #     self.dihedrals[protein][ligand][l] += list(dihedrals[:,i])
 
                     # Convert distances into dataframe
+                    # self.coordinates[protein][ligand] = pd.DataFrame(self.coordinates[protein][ligand])
                     self.distances[protein][ligand] = pd.DataFrame(self.distances[protein][ligand])
+                    self.angles[protein][ligand] = pd.DataFrame(self.angles[protein][ligand])
+                    # self.dihedrals[protein][ligand] = pd.DataFrame(self.dihedrals[protein][ligand])
 
                     # Save distances to CSV file
+                    # self.coordinates[protein][ligand].to_csv(distance_file)
                     self.distances[protein][ligand].to_csv(distance_file)
+                    self.angles[protein][ligand].to_csv(distance_file)
+                    # self.dihedrals[protein][ligand].to_csv(distance_file)
+
+                    # # Set indexes for DataFrame
+                    # if coordinates_pairs:
+                    #     index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                    #     if 'Step' in self.coordinates[protein][ligand].keys():
+                    #         index_columns.append('Step')
+                    #     self.coordinates[protein][ligand].set_index(index_columns, inplace=True)
 
                     # Set indexes for DataFrame
-                    index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
-                    if 'Step' in self.distances[protein][ligand].keys():
-                        index_columns.append('Step')
-                    self.distances[protein][ligand].set_index(index_columns, inplace=True)
+                    if distance_pairs:
+                        index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                        if 'Step' in self.distances[protein][ligand].keys():
+                            index_columns.append('Step')
+                        self.distances[protein][ligand].set_index(index_columns, inplace=True)
+
+                    # Set indexes for DataFrame
+                    if angle_pairs:
+                        index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                        if 'Step' in self.angles[protein][ligand].keys():
+                            index_columns.append('Step')
+                        self.angles[protein][ligand].set_index(index_columns, inplace=True)
+
+                    # # Set indexes for DataFrame
+                    # if dihedral_pairs:
+                    #     index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                    #     if 'Step' in self.dihedrals[protein][ligand].keys():
+                    #         index_columns.append('Step')
+                    #     self.dihedrals[protein][ligand].set_index(index_columns, inplace=True)
 
     def calculateDistancesParallel(self, atom_pairs, overwrite=False, verbose=False, cpus=None, skip_missing=False):
         """
