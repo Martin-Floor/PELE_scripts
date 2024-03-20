@@ -2576,7 +2576,11 @@ class peleAnalysis:
                         if labels[name][protein][ligand] == {}:
                             continue
 
-                        best_distances = self.distances[protein][ligand][distances].idxmin(axis=1).to_list()
+                        if distance_type == 'distance':
+                            best_distances = self.distances[protein][ligand][distances].idxmin(axis=1).to_list()
+                        elif distance_type == 'angle':
+                            best_distances = self.angles[protein][ligand][distances].idxmin(axis=1).to_list()
+
                         label_values += [labels[name][protein][ligand][x] for x in best_distances]
 
                 self.data['metric_'+name] = values
