@@ -352,7 +352,8 @@ class ligand_msm:
         return self.kmeans
 
 
-    def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0, bins=100, xlim=None, ylim=None,
+    def plotFreeEnergy(self, max_tica=10, metric_line=None, size=1.0, sigma=1.0,
+                       bins=100, xlim=None, ylim=None,
                        mark_cluster=None, plot_clusters=True):
         """
         Plot free energy maps employing the metrics or TICA dimmensions calculated
