@@ -226,6 +226,8 @@ class peleAnalysis:
                 #     self.coordinates[protein][ligand]['Epoch'] = []
                 #     self.coordinates[protein][ligand]['Trajectory'] = []
                 #     self.coordinates[protein][ligand]['Accepted Pele Steps'] = []
+                # if 'Step' in self.data.index.names:
+                #     self.coordinates[protein][ligand]['Step'] = []
 
                 # Check if distance have been previously calculated
                 if os.path.exists(distance_file) and not overwrite:
@@ -244,6 +246,8 @@ class peleAnalysis:
                     self.distances[protein][ligand]['Epoch'] = []
                     self.distances[protein][ligand]['Trajectory'] = []
                     self.distances[protein][ligand]['Accepted Pele Steps'] = []
+                    if 'Step' in self.data.index.names:
+                        self.distances[protein][ligand]['Step'] = []
 
                 # Check if angles have been previously calculated
                 if os.path.exists(angle_file) and not overwrite:
@@ -262,6 +266,8 @@ class peleAnalysis:
                     self.angles[protein][ligand]['Epoch'] = []
                     self.angles[protein][ligand]['Trajectory'] = []
                     self.angles[protein][ligand]['Accepted Pele Steps'] = []
+                    if 'Step' in self.data.index.names:
+                        self.angles[protein][ligand]['Step'] = []
 
                 # # Check if dihedrals have been previously calculated
                 # if os.path.exists(dihedral_file) and not overwrite:
@@ -280,6 +286,8 @@ class peleAnalysis:
                 #     self.dihedrals[protein][ligand]['Epoch'] = []
                 #     self.dihedrals[protein][ligand]['Trajectory'] = []
                 #     self.dihedrals[protein][ligand]['Accepted Pele Steps'] = []
+                # if 'Step' in self.data.index.names:
+                #     self.dihedrals[protein][ligand]['Step'] = []
 
                 if verbose:
                     print('Calculating distances for %s + %s ' % (protein, ligand))
@@ -1071,10 +1079,11 @@ class peleAnalysis:
                 if ligand in self.distances[protein]:
                     if not isinstance(self.distances[protein][ligand], type(None)):
                         for distance in self.distances[protein][ligand]:
-                            #if distance.startswith('distance_'):
-
                             if not isinstance(dataframe, type(None)):
-                                indexes = dataframe.reset_index().set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step']).index
+                                index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps']
+                                if 'Step' in self.distances[protein][ligand].index.names:
+                                    index_columns.append('Step')
+                                indexes = dataframe.reset_index().set_index(index_columns).index
                                 ligand_series[distance] = self.distances[protein][ligand][self.distances[protein][ligand].index.isin(indexes)][distance].tolist()
                             else:
                                 ligand_series[distance] = self.distances[protein][ligand][distance].tolist()
@@ -1085,7 +1094,10 @@ class peleAnalysis:
                     if not isinstance(self.angles[protein][ligand], type(None)):
                         for angle in self.angles[protein][ligand]:
                             if not isinstance(dataframe, type(None)):
-                                indexes = dataframe.reset_index().set_index(['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps', 'Step']).index
+                                index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory', 'Accepted Pele Steps']
+                                if 'Step' in self.angles[protein][ligand].index.names:
+                                    index_columns.append('Step')
+                                indexes = dataframe.reset_index().set_index(index_columns).index
                                 ligand_series[angle] = self.angles[protein][ligand][self.angles[protein][ligand].index.isin(indexes)][angle].tolist()
                             else:
                                 ligand_series[angle] = self.angles[protein][ligand][angle].tolist()
