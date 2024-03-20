@@ -1618,16 +1618,38 @@ class peleAnalysis:
             return distances
 
         for d in self.distances[protein][ligand]:
-            if 'distance_' in d:
-                distances.append(d)
-            elif 'angle_' in d:
-                distances.append(d)
-            elif 'torsion_' in d:
-                distances.append(d)
-            elif '_coordinate' in d:
-                distances.append(d)
+            distances.append(d)
 
         return distances
+
+    def getAngles(self, protein, ligand, return_none=False):
+        """
+        Returns the angles associated to a specific protein and ligand simulation
+        """
+
+        if protein not in self.angles:
+            #raise ValueError('There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
+            print('WARNING: There are no angles for protein %s. Use calculateDistances to obtain them.' % protein)
+        elif ligand not in self.angles[protein]:
+            #raise ValueError('There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+            print('WARNING: There are no angles for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+
+        #if not os.path.isdir(self.pele_folder):
+        #    raise ValueError('There are no distances in pele data and there is no pele folder to calculate them')
+
+        angles = []
+
+        if protein not in self.angles:
+            return angles
+        elif ligand not in self.angles[protein]:
+            return angles
+        if isinstance(self.angles[protein][ligand], type(None)):
+            return angles
+
+        for d in self.angles[protein][ligand]:
+            angles.append(d)
+
+        return angles
 
     def plotCatalyticPosesFraction(self, initial_threshold=3.5):
         """
