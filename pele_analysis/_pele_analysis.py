@@ -589,10 +589,10 @@ class peleAnalysis:
                     # self.dihedrals[protein][ligand] = pd.DataFrame(self.dihedrals[protein][ligand])
 
                     # Save distances to CSV file
-                    # self.coordinates[protein][ligand].to_csv(distance_file)
+                    # self.coordinates[protein][ligand].to_csv(coordinates_file)
                     self.distances[protein][ligand].to_csv(distance_file)
-                    self.angles[protein][ligand].to_csv(distance_file)
-                    # self.dihedrals[protein][ligand].to_csv(distance_file)
+                    self.angles[protein][ligand].to_csv(angle_file)
+                    # self.dihedrals[protein][ligand].to_csv(dihedral_file)
 
                     # # Set indexes for DataFrame
                     # if coordinates_pairs:
