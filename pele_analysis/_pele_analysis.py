@@ -203,6 +203,9 @@ class peleAnalysis:
             self.distances[protein] = {}
             for ligand in sorted(self.trajectory_files[protein]):
 
+                # Get protein and ligand data_
+                ligand_data = self.getProteinAndLigandData(protein, ligand)
+
                 # Define a different distance output file for each pele run
                 # coordinate_file = self.data_folder+'/coordinates/'+protein+self.separator+ligand+'.csv'
                 distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
@@ -512,7 +515,12 @@ class peleAnalysis:
 
                     # Compute distances and them to the dicionary
                     for epoch in sorted(trajectory_files):
+
+                        epoch_data = ligand_data[ligand_data.index.get_level_values('Epoch') == epoch]
+
                         for t in sorted(trajectory_files[epoch]):
+
+                            trajectory_data = epoch_data[epoch_data.index.get_level_values('Trajectory') == t]
 
                             # Load trajectory
                             try:
@@ -559,6 +567,11 @@ class peleAnalysis:
                                     self.distances[protein][ligand]['Epoch'] += [epoch]*distances.shape[0]
                                     self.distances[protein][ligand]['Trajectory'] += [t]*distances.shape[0]
                                     self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(distances.shape[0]))
+                                    if 'Step' in trajectory_data.index.names:
+                                        steps = trajectory_data.index.get_level_values('Step')
+                                        assert angles.shape[0], steps.shape[0]
+                                        self.distances[protein][ligand]['Step'] += steps.to_list()
+
                                 for i,label in enumerate(missing_distance_labels):
                                     self.distances[protein][ligand][label] += list(distances[:,i])
 
@@ -573,6 +586,11 @@ class peleAnalysis:
                                     self.angles[protein][ligand]['Epoch'] += [epoch]*angles.shape[0]
                                     self.angles[protein][ligand]['Trajectory'] += [t]*angles.shape[0]
                                     self.angles[protein][ligand]['Accepted Pele Steps'] += list(range(angles.shape[0]))
+                                    if 'Step' in trajectory_data.index.names:
+                                        steps = trajectory_data.index.get_level_values('Step')
+                                        assert angles.shape[0], steps.shape[0]
+                                        self.angles[protein][ligand]['Step'] += steps.to_list()
+
                                 for i,label in enumerate(missing_angle_labels):
                                     self.angles[protein][ligand][label] += list(angles[:,i])
 
@@ -593,6 +611,7 @@ class peleAnalysis:
                     # Convert distances into dataframe
                     # self.coordinates[protein][ligand] = pd.DataFrame(self.coordinates[protein][ligand])
                     self.distances[protein][ligand] = pd.DataFrame(self.distances[protein][ligand])
+
                     self.angles[protein][ligand] = pd.DataFrame(self.angles[protein][ligand])
                     # self.dihedrals[protein][ligand] = pd.DataFrame(self.dihedrals[protein][ligand])
 
