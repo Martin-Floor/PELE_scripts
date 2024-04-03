@@ -3163,6 +3163,10 @@ class peleAnalysis:
 
         # for t in np.arange(min_threshold, max_threshold+(step_size/10), step_size):
         while len(extracted) < len(protein_and_ligands):
+
+            if verbose:
+                print(f'Extracting best poses with {metrics}', end='\r')
+
             pele_data = self.getBestPELEPoses(metrics, column=column, n_models=1,
                                               proteins=proteins, ligands=ligands,
                                               label_aware=label_aware, cluster_aware=cluster_aware)
