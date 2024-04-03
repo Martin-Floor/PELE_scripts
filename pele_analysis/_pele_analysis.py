@@ -3017,8 +3017,8 @@ class peleAnalysis:
 
     ### Extract poses methods
 
-    def getBestPELEPoses(self, filter_values=None, proteins=None, ligands=None, column='Binding Energy',
-                         n_models=1, return_failed=False, cluster_aware=True, label_aware=True, lower_limit=None):
+    def getBestPELEPoses(self, filter_values, proteins=None, ligands=None, column='Binding Energy',
+                         n_models=1, return_failed=False, cluster_aware=True, label_aware=True):
         """
         Get best models based on the best column score and a set of metrics with specified thresholds.
         The filter thresholds must be provided with a dictionary using the metric names as keys
@@ -3030,42 +3030,58 @@ class peleAnalysis:
             The number of poses to select for each protein + ligand pele simulation.
         filter_values : dict
             Thresholds for the filter.
+        proteins : (list, str)
+            Optional list of protein names to be considered (remainder will be skipped)
+        ligands : (list, str)
+            Optional list of ligand names to be considered (remainder will be skipped)
+        column : str
+            Column name to be used to rank the poses.
         return_failed : bool
             Whether to return a list of the pele without any poses fulfilling
             the selection criteria. It is returned as a tuple (index 0) alongside
             the filtered data frame (index 1).
         cluster_aware : bool
             Check if cluster column is inside the dataframe and extract best models also by cluster.
+        label_aware : bool
+            Check if label column is inside the dataframe and extract best models also by label.
         """
 
-        bp = []
-        failed = []
+        bp = [] # For storing the indexes of the best poses
+        failed = [] # For storing the protein and ligand names without poses found
         for protein in self.proteins:
 
-            # If a list of proteins is given skip proteins not in the list
+            # If a list of proteins is given, skip proteins not in the list
             if proteins != None:
                 if protein not in proteins:
                     continue
 
+            # Filter dataframe for protein name
             protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
             for ligand in self.ligands:
 
-                # If a list of ligands is given skip ligands not in the list
+                # If a list of ligands is given, skip ligands not in the list
                 if ligands != None:
                     if ligand not in ligands:
                         continue
 
+                # Filter protein dataframe for ligand name
                 ligand_data = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
 
                 if filter_values != None:
                     for metric in filter_values:
+                        # Skip these column as combined metrics
                         if metric in ['RMSD', 'Ligand SASA', 'Total Energy', 'Binding Energy', 'Ligand RMSD']:
                             metric_name = metric
                         else:
                             metric_name = 'metric_'+metric
-                        if lower_limit:
-                            ligand_data = ligand_data[ligand_data[metric_name] > lower_limit]
-                        ligand_data = ligand_data[ligand_data[metric_name] < filter_values[metric]]
+
+                        # Check the metric threshold type
+                        # Filter values according to the type of threshold given
+                        if isinstance(filter_values[metric], (float, int)):
+                            ligand_data = ligand_data[ligand_data[metric_name] <= filter_values[metric]]
+                        elif isinstance(filter_values[metric], (tuple,list)):
+                            ligand_data = ligand_data[ligand_data[metric_name] >= filter_values[metric][0]]
+                            ligand_data = ligand_data[ligand_data[metric_name] <= filter_values[metric][1]]
 
                 if ligand_data.empty:
                     failed.append((protein, ligand))
@@ -3109,53 +3125,107 @@ class peleAnalysis:
 
         return self.data[self.data.index.isin(bp)]
 
-    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None, proteins=None,
-                                    min_threshold=3.5, max_threshold=5.0, step_size=0.1, label_aware=True,
-                                    lower_limit=None, verbose=False):
+    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None,
+                                    proteins=None, distance_step=0.1, angle_step=1.0,
+                                    cluster_aware=False, label_aware=False, verbose=False, fixed=None):
         """
         Extract best poses iteratively using all given metrics simoultaneously.
         """
-        extracted = []
+
+        # Create a list for fixed metrics
+        if not fixed:
+            fixed = []
+        elif isinstance(fixed, str):
+            fixed = [fixed]
+
+        if set(metrics.keys()) - set(fixed) == set():
+            raise ValueError('You must leave at least one metric not fixed')
+
+        metrics = metrics.copy() # Local copy to not overwrite input variable
+
+        extracted = set()
         selected_indexes = []
+
+        if cluster_aware:
+            raise ValueError('cluster_aware=True has not been tested yet, please ask the developers!')
+        if label_aware:
+            raise ValueError('label_aware=True has not been tested yet, please ask the developers!')
 
         if len([x for x in self.data.keys() if 'label_' in x]) > 0 and label_aware:
             labels = [x for x in self.data.keys() if 'label_' in x]
         else:
             labels = []
 
-        for t in np.arange(min_threshold, max_threshold+(step_size/10), step_size):
-            if verbose:
-                print(f'Getting best poses at threshold {t}', end='\r')
-            filter_values = {m:t for m in metrics}
-            best_poses = self.getBestPELEPoses(filter_values, column=column, n_models=1,
-                                               proteins=proteins, ligands=ligands,
-                                               label_aware=label_aware, lower_limit=lower_limit)
-            mask = []
-            if not isinstance(ligands, type(None)):
-                for level in best_poses.index.get_level_values('Ligand'):
-                    if level in ligands:
-                        mask.append(True)
-                    else:
-                        mask.append(False)
-                pele_data = best_poses[mask]
-            else:
-                pele_data = best_poses
+        if label_aware:
+            None #! This should be implemented
+        else:
+            protein_and_ligands = set(self.pele_combinations)
+
+        # for t in np.arange(min_threshold, max_threshold+(step_size/10), step_size):
+        while len(extracted) < len(protein_and_ligands):
+            pele_data = self.getBestPELEPoses(metrics, column=column, n_models=1,
+                                              proteins=proteins, ligands=ligands,
+                                              label_aware=label_aware, cluster_aware=cluster_aware)
 
             # Check that models were not written in a previous iteration (one by protein, ligand, and label)
+            #! This could be improved for performance, especially for large dataframes
             if label_aware and labels != []:
                 for i,v in pele_data.iterrows():
                     for l in labels:
                         i_label = (*i[:2], v[l])
                         if i_label not in extracted:
                             selected_indexes.append(i)
-                            extracted.append(i_label)
+                            extracted.add(i_label) #! Check this for constructing the protein_and_ligands variable
 
             # Check that models were not written in a previous iteration (one by protein and ligand)
             else:
+                #! This could be improved for performance, especially for large dataframes
                 for row in pele_data.index:
                     if row[:2] not in extracted:
                         selected_indexes.append(row)
-                        extracted.append(row[:2])
+                        extracted.add(row[:2])
+
+            # Get data for not selected protein and ligands
+            mask = []
+            for index in self.data.index:
+                if index[:2] in (protein_and_ligands-extracted):
+                    mask.append(True)
+                else:
+                    mask.append(False)
+
+            remaining_data = self.data[mask]
+
+            # Compute metric acceptance for each metric for all missing pairs
+            if not remaining_data.empty:
+                metric_acceptance = {}
+                for metric in metrics:
+                    if not metric.startswith('metric_'):
+                        metric_label = 'metric_'+metric
+                    else:
+                        metric_label = metric
+                    if isinstance(metrics[metric], (float, int)):
+                        metric_acceptance[metric_label] = remaining_data[remaining_data[metric_label] <= metrics[metric]].shape[0]
+                    elif isinstance(metrics[metric], (tuple, list)):
+                        metric_filter = remaining_data[metrics[metric][0]<= remaining_data[metric_label]]
+                        metric_acceptance[metric_label] = metric_filter[metric_filter[metric_label] <= metrics[metric][1]].shape[0]
+
+                lowest_metric = [m for m,a in sorted(metric_acceptance.items(), key=lambda x:x[1]) if m not in fixed][0]
+                lowest_metric_doc = lowest_metric.replace("metric_", "")
+                if self.metric_type[lowest_metric] == 'distance':
+                    step = distance_step
+                if self.metric_type[lowest_metric] == 'angle':
+                    step = angle_step
+
+                if isinstance(metrics[lowest_metric_doc], (float, int)):
+                    metrics[lowest_metric_doc] += step
+
+                # Change to list to allow item assignment
+                if isinstance(metrics[lowest_metric_doc], tuple):
+                    metrics[lowest_metric_doc] = list(metrics[lowest_metric])
+
+                if isinstance(metrics[lowest_metric_doc], list):
+                    metrics[lowest_metric_doc][0] -= step
+                    metrics[lowest_metric_doc][1] += step
 
         final_mask = []
         for row in self.data.index:
