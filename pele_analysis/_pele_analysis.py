@@ -3225,7 +3225,7 @@ class peleAnalysis:
 
                 # Change to list to allow item assignment
                 if isinstance(metrics[lowest_metric_doc], tuple):
-                    metrics[lowest_metric_doc] = list(metrics[lowest_metric])
+                    metrics[lowest_metric_doc] = list(metrics[lowest_metric_doc])
 
                 if isinstance(metrics[lowest_metric_doc], list):
                     metrics[lowest_metric_doc][0] -= step
