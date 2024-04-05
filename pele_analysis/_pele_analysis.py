@@ -3211,11 +3211,19 @@ class peleAnalysis:
         else:
             protein_and_ligands = set(self.pele_combinations)
 
+        if proteins:
+            protein_and_ligands = [x for x in protein_and_ligands if x[0] in proteins]
+            protein_and_ligands = set(protein_and_ligands)
+
+        if ligands:
+            protein_and_ligands = [x for x in protein_and_ligands if x[1] in ligands]
+            protein_and_ligands = set(protein_and_ligands)
+
         # for t in np.arange(min_threshold, max_threshold+(step_size/10), step_size):
         while len(extracted) < len(protein_and_ligands):
 
             if verbose:
-                print(f'Extracting best poses with {metrics}', end='\r')
+                print(f'Getting best poses with {metrics}', end='\r')
 
             pele_data = self.getBestPELEPoses(metrics, column=column, n_models=1,
                                               proteins=proteins, ligands=ligands,
