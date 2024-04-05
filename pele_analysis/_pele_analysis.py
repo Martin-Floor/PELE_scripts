@@ -21,6 +21,7 @@ warnings.simplefilter('ignore', PDBConstructionWarning)
 import json
 import io
 from pkg_resources import resource_stream, Requirement, resource_listdir
+from multiprocessing import Pool, cpu_count
 
 from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown, Checkbox
 import time
@@ -159,7 +160,7 @@ class peleAnalysis:
         self.ligands = sorted(self.ligands)
 
     def calculateDistances(self, atom_pairs, equilibration=False, overwrite=False, verbose=False,
-                           skip_missing=False):
+                           skip_missing=False, cpus=None):
         """
         Calculate distances between pairs of atoms for each pele (protein+ligand)
         simulation. The atom pairs are given as a dictionary with the following format:
@@ -182,6 +183,10 @@ class peleAnalysis:
         skip_missing : bool
             Skip models not found in the atom_pairs dictionary
         """
+
+        if not cpus:
+            cpus = cpu_count()
+        pool = Pool(cpus)
 
         # if not os.path.exists(self.data_folder+'/coordinates'):
         #     os.mkdir(self.data_folder+'/coordinates')
@@ -513,7 +518,10 @@ class peleAnalysis:
                         # elif l in missing_dihedral_labels:
                         #     dihedral_pairs.append(p)
 
-                    # Compute distances and them to the dicionary
+                    # Compute distances and add them to the dicionary
+
+                    distance_jobs = []
+                    angle_jobs = []
                     for epoch in sorted(trajectory_files):
 
                         epoch_data = ligand_data[ligand_data.index.get_level_values('Epoch') == epoch]
@@ -523,12 +531,12 @@ class peleAnalysis:
                             trajectory_data = epoch_data[epoch_data.index.get_level_values('Trajectory') == t]
 
                             # Load trajectory
-                            try:
-                                traj = md.load(trajectory_files[epoch][t], top=topology_file)
-                            except:
-                                message = 'Problems with trajectory %s of epoch %s ' % (epoch, t)
-                                message += 'of protein %s and ligand %s' % (protein, ligand)
-                                raise ValueError(message)
+                            # try:
+                            #     traj = md.load(trajectory_files[epoch][t], top=topology_file)
+                            # except:
+                            #     message = 'Problems with trajectory %s of epoch %s ' % (epoch, t)
+                            #     message += 'of protein %s and ligand %s' % (protein, ligand)
+                            #     raise ValueError(message)
 
                             # # Calculate centroid coordinates
                             # if coordinate_atoms:
@@ -558,41 +566,45 @@ class peleAnalysis:
 
                             # Calculate distances
                             if distance_pairs:
-                                distances = md.compute_distances(traj, pairs)*10
+                                distance_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, distance_pairs))
 
-                                # Store data
-                                if not skip_index_distance_append:
-                                    self.distances[protein][ligand]['Protein'] += [protein]*distances.shape[0]
-                                    self.distances[protein][ligand]['Ligand'] += [ligand]*distances.shape[0]
-                                    self.distances[protein][ligand]['Epoch'] += [epoch]*distances.shape[0]
-                                    self.distances[protein][ligand]['Trajectory'] += [t]*distances.shape[0]
-                                    self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(distances.shape[0]))
-                                    if 'Step' in trajectory_data.index.names:
-                                        steps = trajectory_data.index.get_level_values('Step')
-                                        assert angles.shape[0], steps.shape[0]
-                                        self.distances[protein][ligand]['Step'] += steps.to_list()
+                                # distances = md.compute_distances(traj, distance_pairs)*10
 
-                                for i,label in enumerate(missing_distance_labels):
-                                    self.distances[protein][ligand][label] += list(distances[:,i])
+                                # # Store data
+                                # if not skip_index_distance_append:
+                                #     self.distances[protein][ligand]['Protein'] += [protein]*distances.shape[0]
+                                #     self.distances[protein][ligand]['Ligand'] += [ligand]*distances.shape[0]
+                                #     self.distances[protein][ligand]['Epoch'] += [epoch]*distances.shape[0]
+                                #     self.distances[protein][ligand]['Trajectory'] += [t]*distances.shape[0]
+                                #     self.distances[protein][ligand]['Accepted Pele Steps'] += list(range(distances.shape[0]))
+                                #     if 'Step' in trajectory_data.index.names:
+                                #         steps = trajectory_data.index.get_level_values('Step')
+                                #         assert distances.shape[0], steps.shape[0]
+                                #         self.distances[protein][ligand]['Step'] += steps.to_list()
+                                #
+                                # for i,label in enumerate(missing_distance_labels):
+                                #     self.distances[protein][ligand][label] += list(distances[:,i])
 
                             # Calculate angles
                             if angle_pairs:
-                                angles = np.rad2deg(md.compute_angles(traj, pairs))
-
-                                # Store data
-                                if not skip_index_angle_append:
-                                    self.angles[protein][ligand]['Protein'] += [protein]*angles.shape[0]
-                                    self.angles[protein][ligand]['Ligand'] += [ligand]*angles.shape[0]
-                                    self.angles[protein][ligand]['Epoch'] += [epoch]*angles.shape[0]
-                                    self.angles[protein][ligand]['Trajectory'] += [t]*angles.shape[0]
-                                    self.angles[protein][ligand]['Accepted Pele Steps'] += list(range(angles.shape[0]))
-                                    if 'Step' in trajectory_data.index.names:
-                                        steps = trajectory_data.index.get_level_values('Step')
-                                        assert angles.shape[0], steps.shape[0]
-                                        self.angles[protein][ligand]['Step'] += steps.to_list()
-
-                                for i,label in enumerate(missing_angle_labels):
-                                    self.angles[protein][ligand][label] += list(angles[:,i])
+                                angle_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, angle_pairs))
+                                #
+                                # angles = np.rad2deg(md.compute_angles(traj, angle_pairs))
+                                #
+                                # # Store data
+                                # if not skip_index_angle_append:
+                                #     self.angles[protein][ligand]['Protein'] += [protein]*angles.shape[0]
+                                #     self.angles[protein][ligand]['Ligand'] += [ligand]*angles.shape[0]
+                                #     self.angles[protein][ligand]['Epoch'] += [epoch]*angles.shape[0]
+                                #     self.angles[protein][ligand]['Trajectory'] += [t]*angles.shape[0]
+                                #     self.angles[protein][ligand]['Accepted Pele Steps'] += list(range(angles.shape[0]))
+                                #     if 'Step' in trajectory_data.index.names:
+                                #         steps = trajectory_data.index.get_level_values('Step')
+                                #         assert angles.shape[0], steps.shape[0]
+                                #         self.angles[protein][ligand]['Step'] += steps.to_list()
+                                #
+                                # for i,label in enumerate(missing_angle_labels):
+                                #     self.angles[protein][ligand][label] += list(angles[:,i])
 
                             # Calculate dihedrals
                             elif pair_lengths == 4:
@@ -607,6 +619,44 @@ class peleAnalysis:
                             #     self.dihedrals[protein][ligand]['Accepted Pele Steps'] += list(range(dihedrals.shape[0]))
                             # for i,l in enumerate(missing_dihedrals_labels):
                             #     self.dihedrals[protein][ligand][l] += list(dihedrals[:,i])
+
+                    if distance_jobs:
+                        distances = pool.map(computeDistances._computeDistances, distance_jobs)
+                        distances = np.concatenate(distances)
+
+                        # Store data
+                        if not skip_index_distance_append:
+                            self.distances[protein][ligand]['Protein'] = [protein]*distances.shape[0]
+                            self.distances[protein][ligand]['Ligand'] = [ligand]*distances.shape[0]
+                            self.distances[protein][ligand]['Epoch'] = [epoch]*distances.shape[0]
+                            self.distances[protein][ligand]['Trajectory'] = [t]*distances.shape[0]
+                            self.distances[protein][ligand]['Accepted Pele Steps'] = list(range(distances.shape[0]))
+                            if 'Step' in ligand_data.index.names:
+                                steps = ligand_data.index.get_level_values('Step')
+                                assert distances.shape[0], steps.shape[0]
+                                self.distances[protein][ligand]['Step'] = steps.to_list()
+
+                        for i,label in enumerate(missing_distance_labels):
+                            self.distances[protein][ligand][label] = list(distances[:,i])
+
+                    if angle_jobs:
+                        angles = pool.map(computeDistances._computeAngles, angle_jobs)
+                        angles = np.concatenate(angles)
+
+                        # Store data
+                        if not skip_index_angle_append:
+                            self.angles[protein][ligand]['Protein'] = [protein]*angles.shape[0]
+                            self.angles[protein][ligand]['Ligand'] = [ligand]*angles.shape[0]
+                            self.angles[protein][ligand]['Epoch'] = [epoch]*angles.shape[0]
+                            self.angles[protein][ligand]['Trajectory'] = [t]*angles.shape[0]
+                            self.angles[protein][ligand]['Accepted Pele Steps'] = list(range(angles.shape[0]))
+                            if 'Step' in ligand_data.index.names:
+                                steps = ligand_data.index.get_level_values('Step')
+                                assert angles.shape[0], steps.shape[0]
+                                self.angles[protein][ligand]['Step'] = steps.to_list()
+
+                        for i,label in enumerate(missing_angle_labels):
+                            self.angles[protein][ligand][label] = list(angles[:,i])
 
                     # Convert distances into dataframe
                     # self.coordinates[protein][ligand] = pd.DataFrame(self.coordinates[protein][ligand])
@@ -6393,3 +6443,17 @@ def _copyScriptFile(output_folder, script_name, no_py=False, subfolder=None, hid
     with open(output_path, 'w') as sof:
         for l in script_file:
             sof.write(l)
+
+class computeDistances:
+
+    def _computeDistances(arguments):
+        epoch, trajectory, trajectory_file, topology_file, distance_pairs = arguments
+        traj = md.load(trajectory_file, top=topology_file)
+        distances = md.compute_distances(traj, distance_pairs)*10
+        return distances
+
+    def _computeAngles(arguments):
+        epoch, trajectory, trajectory_file, topology_file, angle_pairs = arguments
+        traj = md.load(trajectory_file, top=topology_file)
+        angles = np.rad2deg(md.compute_angles(traj, angle_pairs))
+        return angles
