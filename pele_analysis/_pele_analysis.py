@@ -1,6 +1,5 @@
 from . import pele_read
 from . import pele_trajectory
-from . import pele_distances
 
 import os
 import shutil
