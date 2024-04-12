@@ -517,13 +517,13 @@ class peleAnalysis:
                         distance_pairs.append(p)
                     elif l in missing_angle_labels:
                         angle_pairs.append(p)
-                    elif l in missing_dihedral_labels:
-                        dihedral_pairs.append(p)
+                    # elif l in missing_dihedral_labels:
+                    #     dihedral_pairs.append(p)
 
                 # Compute distances and add them to the dicionary
                 distance_jobs = []
                 angle_jobs = []
-                dihedrals_jobs = []
+                # dihedrals_jobs = []
                 for epoch in sorted(trajectory_files):
 
                     epoch_data = ligand_data[ligand_data.index.get_level_values('Epoch') == epoch]
@@ -609,8 +609,8 @@ class peleAnalysis:
                             #     self.angles[protein][ligand][label] += list(angles[:,i])
 
                         # Calculate dihedrals
-                        if dihedral_pairs:
-                            dihedral_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, dihedral_pairs))
+                        # if dihedral_pairs:
+                            # dihedral_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, dihedral_pairs))
 
                         # # Store data
                         # if not skip_index_dihedral_append:
@@ -663,7 +663,6 @@ class peleAnalysis:
                 # Convert distances into dataframe
                 # self.coordinates[protein][ligand] = pd.DataFrame(self.coordinates[protein][ligand])
                 self.distances[protein][ligand] = pd.DataFrame(self.distances[protein][ligand])
-
                 self.angles[protein][ligand] = pd.DataFrame(self.angles[protein][ligand])
                 # self.dihedrals[protein][ligand] = pd.DataFrame(self.dihedrals[protein][ligand])
 
