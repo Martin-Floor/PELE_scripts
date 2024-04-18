@@ -183,6 +183,10 @@ class peleAnalysis:
             Skip models not found in the atom_pairs dictionary
         """
 
+        ## TODO:
+            # Add dihedrals
+            # Add coordinates
+
         if not cpus:
             cpus = cpu_count()
         pool = Pool(cpus)
@@ -5830,6 +5834,9 @@ class peleAnalysis:
         remove = [] # Put protein and ligand here for their removal
         for d in os.listdir(self.pele_folder):
             if os.path.isdir(self.pele_folder+'/'+d):
+
+                if d == 'templates':
+                    continue
 
                 self._checkSeparator(d)
 
