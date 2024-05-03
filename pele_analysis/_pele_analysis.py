@@ -38,7 +38,7 @@ class peleAnalysis:
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
                  read_equilibration=True, data_folder_name=None, global_pele=False, trajectories=False,
-                 remove_original_trajectory=False, change_water_names=False):
+                 remove_original_trajectory=False, change_water_names=False, only_hetatoms=False):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -128,7 +128,7 @@ class peleAnalysis:
 
         # Set dictionary with Chain IDs to match mdtraj indexing
         print('Setting Chain IDs and Atom Indexes')
-        self._setChainIDs(change_water_names=change_water_names)
+        self._setChainIDs(change_water_names=change_water_names, only_hetatoms=only_hetatoms)
 
         # Get protein and ligand cominations wither from pele or analysis folders
         self.pele_combinations = self._getProteinLigandCombinations()
@@ -470,8 +470,8 @@ class peleAnalysis:
                 # skip_index_dihedral_append = False
                 # if isinstance(self.dihedrals[protein][ligand], pd.DataFrame):
                 #     dihedrals_keys = list(self.dihedrals[protein][ligand].keys())
-                #     for l in labels:
-                #         if label_type[l] != 'dihedral':
+                #     for label in labels:
+                #         if label_type[label] != 'dihedral':
                 #             continue
                 #         if l not in dihedrals_keys:
                 #             missing_dihedral_labels.append(l)
@@ -495,17 +495,17 @@ class peleAnalysis:
                 #             self.coordinates[protein][ligand][label] = []
                 if missing_distance_labels != []:
                     for label in missing_distance_labels:
-                        if label_type[l] == 'distance':
+                        if label_type[label] == 'distance':
                             self.distances[protein][ligand][label] = []
 
                 if missing_angle_labels != []:
                     for label in missing_angle_labels:
-                        if label_type[l] == 'angle':
+                        if label_type[label] == 'angle':
                             self.angles[protein][ligand][label] = []
 
                 # if missing_dihedral_labels != []:
                 #     for label in missing_dihedral_labels:
-                #         if label_type[l] == 'dihedral':
+                #         if label_type[label] == 'dihedral':
                 #             self.dihedrals[protein][ligand][label] = []
 
                 # Update pairs based on missing labels
@@ -2536,6 +2536,8 @@ class peleAnalysis:
                         distance_values = self.angles[protein][ligand][distances].min(axis=1)
 
                     # Check that distances and ligand data matches
+                    print(name)
+                    print(ligand_data.shape[0], distance_values.to_numpy().shape[0])
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
 
                     values += distance_values.to_list()
@@ -3201,7 +3203,8 @@ class peleAnalysis:
         return pele_data
 
     def extractPELEPoses(self, pele_data, output_folder, separator=None, keep_chain_names=True,
-                         label_aware=True, remote_pele_path=None, skip_missing=False, skip_connects=False):
+                         label_aware=True, remote_pele_path=None, skip_missing=False, skip_connects=False,
+                         conect_hydrogens=True, change_water_names=False, skip_connect_hxt=False, conect_mapping=None):
         """
         Extract pele poses present in a pele dataframe. The PELE DataFrame
         contains the same structure as the self.data dataframe, attribute of
@@ -3246,6 +3249,9 @@ class peleAnalysis:
             if separator in protein:
                 raise ValueError('The separator %s was found in protein name %s. Please use a different separator symbol.' % (separator, protein))
 
+            if conect_mapping and protein not in conect_mapping:
+                raise ValueError('Atom mapping must be a protein-ligand-dependent dictionary.')
+
             protein_data = pele_data[pele_data.index.get_level_values('Protein') == protein]
 
             for ligand in self.ligands:
@@ -3253,6 +3259,9 @@ class peleAnalysis:
                 # Check the separator is not in ligand name
                 if separator in ligand:
                     raise ValueError('The separator %s was found in ligand name %s. Please use a different separator symbol.' % (separator, ligand))
+
+                if conect_mapping and ligand not in conect_mapping[protein]:
+                    raise ValueError('Atom mapping must be a protein-ligand-dependent dictionary.')
 
                 ligand_data = protein_data[protein_data.index.get_level_values('Ligand') == ligand]
 
@@ -3338,7 +3347,11 @@ class peleAnalysis:
 
                         if self.conects[protein][ligand] != [] and not skip_connects:
                             conectLines._writeConectLines(output_folder+'/'+protein+'/'+filename,
-                                                          self.conects[protein][ligand])
+                                                          self.conects[protein][ligand], 
+                                                          hydrogens=conect_hydrogens,
+                                                          change_water=change_water_names,
+                                                          skip_hxt=skip_connect_hxt,
+                                                          atom_mapping=conect_mapping[protein][ligand])
 
     ### Clustering methods
 
@@ -5925,7 +5938,7 @@ class peleAnalysis:
             if protein in self.report_files  and self.report_files[protein] == {}:
                 self.report_files.pop(protein)
 
-    def _setChainIDs(self, change_water_names=False):
+    def _setChainIDs(self, change_water_names=False, only_hetatoms=False):
 
         # Crea Bio PDB parser and io
         parser = PDB.PDBParser()
@@ -5975,8 +5988,10 @@ class peleAnalysis:
 
                     if protein in self.fixed_files and ligand in self.fixed_files[protein]:
                         fixed_pdb = self.fixed_files[protein][ligand]
-                        self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb,
-                                                                                        change_water=change_water_names)
+                        self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb, 
+                                                                                        change_water=change_water_names,
+                                                                                        only_hetatoms=only_hetatoms)
+                        
                         conect_folder =  conects_dir = self.data_folder+'/pele_conects/'
                         conect_folder += protein+self.separator+ligand+'/'
                         if not os.path.exists(conect_folder):
@@ -6268,7 +6283,7 @@ class conectLines:
                         atoms[index] = _atom
         return atoms
 
-    def _writeConectLines(pdb_file, conects, atom_mapping=None, hydrogens=True):
+    def _writeConectLines(pdb_file, conects, atom_mapping=None, hydrogens=True, change_water=False, skip_hxt=False):
         """
         Write stored conect lines for a particular model into the given PDB file.
 
@@ -6295,9 +6310,38 @@ class conectLines:
                 raise ValueError(message)
 
             return atom
+        
+        def get_residue_type(pdb_file, res_type):
+            
+            if res_type not in ['water', 'protein']:
+                raise ValueError("res_type must be 'water' or 'protein'")
+            
+            parser = PDB.PDBParser()
+            structure = parser.get_structure(pdb_file, pdb_file)
 
+            waters = []
+            protein = []
+
+            for residue in structure.get_residues():
+                if residue.id[0] == 'W':
+                    waters.append((residue.get_parent().id, residue.id[1]))
+                elif residue.id[0] == ' ':
+                    protein.append((residue.get_parent().id, residue.id[1]))
+                
+            if res_type == 'water':
+                return waters
+            
+            elif res_type == 'protein':
+                return protein
+            
         # Get atom indexes map
         atoms = conectLines._getAtomIndexes(pdb_file, invert=True)
+
+        if change_water:
+            waters = get_residue_type(pdb_file, 'water')
+        
+        if skip_hxt:
+            protein = get_residue_type(pdb_file, 'protein')
 
         # Check atoms not found in conects
         with open(pdb_file+'.tmp', 'w') as tmp:
@@ -6310,14 +6354,47 @@ class conectLines:
 
                 # Write new conect line mapping
                 for entry in conects:
+                    
+                    if skip_hxt:
+                        remove_entry = False
+                        for x in entry:
+                            if tuple(x[:-1]) in protein and x[2] == 'HXT':
+                                remove_entry = True
+                        if remove_entry and len(entry) == 2:
+                            continue
+                            
                     line = 'CONECT'
+                    # Check if conect lines pertain to a water molecule 
+                    if change_water:
+                        new_entry = []
+                        for x in entry:
+                            
+                            if tuple(x[:-1]) in waters:
+
+                                if x[2] == 'O':
+                                    new_entry.append((x[0], x[1], x[2].replace('O', 'OW')))
+                                elif x[2] == 'H1':
+                                    new_entry.append((x[0], x[1], x[2].replace('H1', '1HW')))
+                                elif x[2] == 'H2':
+                                    new_entry.append((x[0], x[1], x[2].replace('H2', '2HW')))
+                            
+                            else:
+                                new_entry.append(x)
+                        
+                        entry = new_entry
+
                     for x in entry:
+
                         if not hydrogens:
                             type_index = (x[2].find(next(filter(str.isalpha, x[2]))))
                             if x[2][type_index] != 'H':
                                 x = check_atom_in_atoms(x, atoms, atom_mapping=atom_mapping)
                                 line += '%5s' % atoms[x]
+
                         else:
+                            if skip_hxt:
+                                if tuple(x[:-1]) in protein and x[2] == 'HXT':
+                                    continue
                             x = check_atom_in_atoms(x, atoms, atom_mapping=atom_mapping)
                             line += '%5s' % atoms[x]
 
