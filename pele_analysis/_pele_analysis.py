@@ -635,7 +635,7 @@ class peleAnalysis:
 
         if equilibration:
             traj = md.load(self.equilibration['trajectory'][protein][ligand][step][trajectory],
-                            top=self.topology_files[protein][ligand])
+                            top=self.[topology_files][protein][ligand])
         else:
             traj = md.load(self.trajectory_files[protein][ligand][step][trajectory],
                            top=self.topology_files[protein][ligand])
@@ -2533,7 +2533,9 @@ class peleAnalysis:
                     if distance_type == 'distance':
                         distance_values = self.distances[protein][ligand][distances].min(axis=1)
                     elif distance_type == 'angle':
-                        distance_values = self.angles[protein][ligand][distances].min(axis=1)
+                        if len(distances) > 1:
+                            raise ValueError('Combining more than one angle is not supported at the moment!')
+                        distance_values = self.angles[protein][ligand][distances]
 
                     # Check that distances and ligand data matches
                     print(name)
