@@ -3348,12 +3348,13 @@ class peleAnalysis:
                             continue
 
                         if self.conects[protein][ligand] != [] and not skip_connects:
+                            atom_mapping = conect_mapping[protein][ligand] if conect_mapping else conect_mapping
                             conectLines._writeConectLines(output_folder+'/'+protein+'/'+filename,
                                                           self.conects[protein][ligand], 
                                                           hydrogens=conect_hydrogens,
                                                           change_water=change_water_names,
                                                           skip_hxt=skip_connect_hxt,
-                                                          atom_mapping=conect_mapping[protein][ligand])
+                                                          atom_mapping=atom_mapping)
 
     ### Clustering methods
 
