@@ -635,7 +635,7 @@ class peleAnalysis:
 
         if equilibration:
             traj = md.load(self.equilibration['trajectory'][protein][ligand][step][trajectory],
-                            top=self.[topology_files][protein][ligand])
+                            top=self.topology_files[protein][ligand])
         else:
             traj = md.load(self.trajectory_files[protein][ligand][step][trajectory],
                            top=self.topology_files[protein][ligand])
