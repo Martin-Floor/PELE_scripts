@@ -3348,12 +3348,13 @@ class peleAnalysis:
                             continue
 
                         if self.conects[protein][ligand] != [] and not skip_connects:
+                            atom_mapping = conect_mapping[protein][ligand] if conect_mapping else conect_mapping
                             conectLines._writeConectLines(output_folder+'/'+protein+'/'+filename,
-                                                          self.conects[protein][ligand], 
+                                                          self.conects[protein][ligand],
                                                           hydrogens=conect_hydrogens,
                                                           change_water=change_water_names,
                                                           skip_hxt=skip_connect_hxt,
-                                                          atom_mapping=conect_mapping[protein][ligand])
+                                                          atom_mapping=atom_mapping)
 
     ### Clustering methods
 
@@ -5990,10 +5991,10 @@ class peleAnalysis:
 
                     if protein in self.fixed_files and ligand in self.fixed_files[protein]:
                         fixed_pdb = self.fixed_files[protein][ligand]
-                        self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb, 
+                        self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb,
                                                                                         change_water=change_water_names,
                                                                                         only_hetatoms=only_hetatoms)
-                        
+
                         conect_folder =  conects_dir = self.data_folder+'/pele_conects/'
                         conect_folder += protein+self.separator+ligand+'/'
                         if not os.path.exists(conect_folder):
@@ -6312,12 +6313,12 @@ class conectLines:
                 raise ValueError(message)
 
             return atom
-        
+
         def get_residue_type(pdb_file, res_type):
-            
+
             if res_type not in ['water', 'protein']:
                 raise ValueError("res_type must be 'water' or 'protein'")
-            
+
             parser = PDB.PDBParser()
             structure = parser.get_structure(pdb_file, pdb_file)
 
@@ -6329,19 +6330,19 @@ class conectLines:
                     waters.append((residue.get_parent().id, residue.id[1]))
                 elif residue.id[0] == ' ':
                     protein.append((residue.get_parent().id, residue.id[1]))
-                
+
             if res_type == 'water':
                 return waters
-            
+
             elif res_type == 'protein':
                 return protein
-            
+
         # Get atom indexes map
         atoms = conectLines._getAtomIndexes(pdb_file, invert=True)
 
         if change_water:
             waters = get_residue_type(pdb_file, 'water')
-        
+
         if skip_hxt:
             protein = get_residue_type(pdb_file, 'protein')
 
@@ -6356,7 +6357,7 @@ class conectLines:
 
                 # Write new conect line mapping
                 for entry in conects:
-                    
+
                     if skip_hxt:
                         remove_entry = False
                         for x in entry:
@@ -6364,13 +6365,13 @@ class conectLines:
                                 remove_entry = True
                         if remove_entry and len(entry) == 2:
                             continue
-                            
+
                     line = 'CONECT'
-                    # Check if conect lines pertain to a water molecule 
+                    # Check if conect lines pertain to a water molecule
                     if change_water:
                         new_entry = []
                         for x in entry:
-                            
+
                             if tuple(x[:-1]) in waters:
 
                                 if x[2] == 'O':
@@ -6379,10 +6380,10 @@ class conectLines:
                                     new_entry.append((x[0], x[1], x[2].replace('H1', '1HW')))
                                 elif x[2] == 'H2':
                                     new_entry.append((x[0], x[1], x[2].replace('H2', '2HW')))
-                            
+
                             else:
                                 new_entry.append(x)
-                        
+
                         entry = new_entry
 
                     for x in entry:
