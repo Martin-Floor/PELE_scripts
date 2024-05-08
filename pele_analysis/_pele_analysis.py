@@ -939,7 +939,7 @@ class peleAnalysis:
             protein_series = data[data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
             plt.figure(dpi=300, figsize=(2,8))
-            plt.title(Protein+'-'+Ligand, size=5)
+            
             acc_prob = {}
             n_traj = 0
             for t in ligand_series.index.levels[3]:
@@ -958,8 +958,16 @@ class peleAnalysis:
 
             acc_steps = [s for s in acc_prob]
             acc_prob = [(acc_prob[s]/n_traj)+n_traj+1 for s in acc_prob]
+            hh = []
+            for n in acc_prob:
+                h = (n-(n_traj+1))*100
+                hh.append(h)
+            global_mean_acc_prob = sum(hh)/len(hh)   
+            #print("Global acceptance probability {:.2f}".format(global_mean_acc_prob))
+            plt.title(Protein+'-'+Ligand+", Acc. Prob {:.2f}".format(global_mean_acc_prob), size=5)
             plt.plot(acc_steps,acc_prob, lw=0.5, c='r')
             plt.axhline(n_traj+1, lw=0.1, c='k', ls='--')
+            plt.axhline(n_traj+1.5, lw=0.2, c='r', ls='-.')
             plt.axhline(n_traj+2, lw=0.1, c='k', ls='--')
             plt.xticks([0, max(acc_steps)], [1,max(acc_steps)+1], size=4)
             plt.yticks([*range(1,n_traj+1)]+[n_traj+1.5], ['T'+str(t) for t in range(1,n_traj+1)]+['Acc. Prob.'], size=4)
