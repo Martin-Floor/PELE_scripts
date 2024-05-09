@@ -2518,6 +2518,9 @@ class peleAnalysis:
                     if i not in protein_ligand:
                         protein_ligand.append(i)
 
+                if verbose:
+                    print(f'Combining distances for metric {name}')
+
                 for protein, ligand in protein_ligand:
 
                     if verbose:
@@ -2535,11 +2538,9 @@ class peleAnalysis:
                     elif distance_type == 'angle':
                         if len(distances) > 1:
                             raise ValueError('Combining more than one angle is not supported at the moment!')
-                        distance_values = self.angles[protein][ligand][distances]
+                        distance_values = self.angles[protein][ligand][distances[0]]
 
                     # Check that distances and ligand data matches
-                    print(name)
-                    print(ligand_data.shape[0], distance_values.to_numpy().shape[0])
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
 
                     values += distance_values.to_list()
@@ -2553,7 +2554,7 @@ class peleAnalysis:
                         if distance_type == 'distance':
                             best_distances = self.distances[protein][ligand][distances].idxmin(axis=1).to_list()
                         elif distance_type == 'angle':
-                            best_distances = self.angles[protein][ligand][distances].idxmin(axis=1).to_list()
+                            best_distances = self.angles[protein][ligand][distances[0]].to_list()
 
                         label_values += [labels[name][protein][ligand][x] for x in best_distances]
 
