@@ -939,7 +939,7 @@ class peleAnalysis:
             protein_series = data[data.index.get_level_values('Protein') == Protein]
             ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == Ligand]
             plt.figure(dpi=300, figsize=(2,8))
-            
+
             acc_prob = {}
             n_traj = 0
             for t in ligand_series.index.levels[3]:
@@ -962,7 +962,7 @@ class peleAnalysis:
             for n in acc_prob:
                 h = (n-(n_traj+1))*100
                 hh.append(h)
-            global_mean_acc_prob = sum(hh)/len(hh)   
+            global_mean_acc_prob = sum(hh)/len(hh)
             #print("Global acceptance probability {:.2f}".format(global_mean_acc_prob))
             plt.title(Protein+'-'+Ligand+", Acc. Prob {:.2f}".format(global_mean_acc_prob), size=5)
             plt.plot(acc_steps,acc_prob, lw=0.5, c='r')
@@ -4244,10 +4244,11 @@ class peleAnalysis:
                     with open(pele_folder+'/'+protein_ligand+'/'+'input.yaml', 'w') as iyf:
                         if energy_by_residue or nonbonded_energy != None:
                             # Use new PELE version with implemented local nonbonded energies
-                            iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/bin/PELE-1.7.2_mpi"\n')
-                            iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Data"\n')
-                            iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Documents/"\n')
+                            iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mnv/1.8.1b1/bin/PELE_mpi"\n')
+                            iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mnv/1.8.1b1/Data"\n')
+                            iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mnv/1.8.1b1/Documents/"\n')
                         elif ninety_degrees_version:
+                            print('paths of PELE version should be changed')
                             # Use new PELE version with implemented 90 degrees fix
                             iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/bin/PELE-1.8_mpi"\n')
                             iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/Data"\n')
