@@ -4244,9 +4244,9 @@ class peleAnalysis:
                     with open(pele_folder+'/'+protein_ligand+'/'+'input.yaml', 'w') as iyf:
                         if energy_by_residue or nonbonded_energy != None:
                             # Use new PELE version with implemented local nonbonded energies
-                            iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mnv/1.8.1b1/bin/PELE_mpi"\n')
-                            iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mnv/1.8.1b1/Data"\n')
-                            iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mnv/1.8.1b1/Documents/"\n')
+                            iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mnv/1.8.0/bin/PELE_mpi"\n')
+                            iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mnv/1.8.0/Data"\n')
+                            iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mnv/1.8.0/Documents/"\n')
                         elif ninety_degrees_version:
                             print('paths of PELE version should be changed')
                             # Use new PELE version with implemented 90 degrees fix
