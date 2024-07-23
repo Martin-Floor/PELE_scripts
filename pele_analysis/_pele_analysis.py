@@ -82,6 +82,7 @@ class peleAnalysis:
         self.data = None
         self.distances = {}
         self.angles = {}
+        self.dihedrals = {}
         self.nonbonded_energy = {}
         self.steps_matrix = None
 
@@ -200,8 +201,8 @@ class peleAnalysis:
         if not os.path.exists(self.data_folder+'/angles'):
             os.mkdir(self.data_folder+'/angles')
 
-        # if not os.path.exists(self.data_folder+'/dihedrals'):
-        #     os.mkdir(self.data_folder+'/dihedrals')
+        if not os.path.exists(self.data_folder+'/dihedrals'):
+            os.mkdir(self.data_folder+'/dihedrals')
 
         if not self.trajectory_files:
             raise ValueError('No trajectories were found!')
@@ -209,6 +210,8 @@ class peleAnalysis:
         # Iterate all PELE protein + ligand entries
         for protein in sorted(self.trajectory_files):
             self.distances[protein] = {}
+            self.dihedrals[protein] = {}
+
             for ligand in sorted(self.trajectory_files[protein]):
 
                 # Get protein and ligand data_
@@ -218,7 +221,7 @@ class peleAnalysis:
                 # coordinate_file = self.data_folder+'/coordinates/'+protein+self.separator+ligand+'.csv'
                 distance_file = self.data_folder+'/distances/'+protein+self.separator+ligand+'.csv'
                 angle_file = self.data_folder+'/angles/'+protein+self.separator+ligand+'.csv'
-                # dihedral_file = self.data_folder+'/dihedrals/'+protein+self.separator+ligand+'.csv'
+                dihedral_file = self.data_folder+'/dihedrals/'+protein+self.separator+ligand+'.csv'
 
                 # # Check if coordinate have been previously calculated
                 # if os.path.exists(coordinate_file) and not overwrite:
@@ -280,25 +283,25 @@ class peleAnalysis:
                     if 'Step' in self.data.index.names:
                         self.angles[protein][ligand]['Step'] = []
 
-                # # Check if dihedrals have been previously calculated
-                # if os.path.exists(dihedral_file) and not overwrite:
-                #     if verbose:
-                #         print('Dihedral file for %s + %s was found. Reading dihedral from there...' % (protein, ligand))
-                #     self.dihedrals[protein][ligand] = pd.read_csv(angle_file, index_col=False)
-                #     self.dihedrals[protein][ligand] = self.dihedrals[protein][ligand].loc[:, ~self.dihedrals[protein][ligand].columns.str.contains('^Unnamed')]
-                #     index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
-                #     if 'Step' in self.dihedrals[protein][ligand].keys():
-                #         index_columns.append('Step')
-                #     self.dihedrals[protein][ligand].set_index(index_columns, inplace=True)
-                # else:
-                #     self.dihedrals[protein][ligand] = {}
-                #     self.dihedrals[protein][ligand]['Protein'] = []
-                #     self.dihedrals[protein][ligand]['Ligand'] = []
-                #     self.dihedrals[protein][ligand]['Epoch'] = []
-                #     self.dihedrals[protein][ligand]['Trajectory'] = []
-                #     self.dihedrals[protein][ligand]['Accepted Pele Steps'] = []
-                # if 'Step' in self.data.index.names:
-                #     self.dihedrals[protein][ligand]['Step'] = []
+                # Check if dihedrals have been previously calculated
+                if os.path.exists(dihedral_file) and not overwrite:
+                    if verbose:
+                        print('Dihedral file for %s + %s was found. Reading dihedral from there...' % (protein, ligand))
+                    self.dihedrals[protein][ligand] = pd.read_csv(dihedral_file, index_col=False)
+                    self.dihedrals[protein][ligand] = self.dihedrals[protein][ligand].loc[:, ~self.dihedrals[protein][ligand].columns.str.contains('^Unnamed')]
+                    index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                    if 'Step' in self.dihedrals[protein][ligand].keys():
+                        index_columns.append('Step')
+                    self.dihedrals[protein][ligand].set_index(index_columns, inplace=True)
+                else:
+                    self.dihedrals[protein][ligand] = {}
+                    self.dihedrals[protein][ligand]['Protein'] = []
+                    self.dihedrals[protein][ligand]['Ligand'] = []
+                    self.dihedrals[protein][ligand]['Epoch'] = []
+                    self.dihedrals[protein][ligand]['Trajectory'] = []
+                    self.dihedrals[protein][ligand]['Accepted Pele Steps'] = []
+                    if 'Step' in self.data.index.names:
+                        self.dihedrals[protein][ligand]['Step'] = []
 
                 if verbose:
                     print('Calculating distances for %s + %s ' % (protein, ligand))
@@ -358,13 +361,14 @@ class peleAnalysis:
                             dist_label[(pair[0], pair[1], pair[2])] = 'angle_'
 
                     if len(pair) == 4:
+
                         # Check if atoms are in the protein+ligand PELE topology
                         if pair[0] not in self.atom_indexes[protein][ligand]:
                             raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[0], protein, ligand))
                         if pair[1] not in self.atom_indexes[protein][ligand]:
                             raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[1], protein, ligand))
                         if pair[2] not in self.atom_indexes[protein][ligand]:
-                            raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[2], protein, ligand))
+                            raise ValueError('Atom %s angle_filenot found for protein %s and ligand %s' % (pair[2], protein, ligand))
                         if pair[3] not in self.atom_indexes[protein][ligand]:
                             raise ValueError('Atom %s not found for protein %s and ligand %s' % (pair[3], protein, ligand))
 
@@ -465,29 +469,29 @@ class peleAnalysis:
                 else:
                     missing_angle_labels = [l for l in labels if label_type[l] == 'angle']
 
-                # # Check if labels are already in dihedral_data
-                # missing_dihedral_labels = []
-                # skip_index_dihedral_append = False
-                # if isinstance(self.dihedrals[protein][ligand], pd.DataFrame):
-                #     dihedrals_keys = list(self.dihedrals[protein][ligand].keys())
-                #     for label in labels:
-                #         if label_type[label] != 'dihedral':
-                #             continue
-                #         if l not in dihedrals_keys:
-                #             missing_dihedral_labels.append(l)
-                #
-                #     if missing_dihedral_labels != []:
-                #
-                #         # Convert DF into a dictionary for dihedral appending
-                #         self.dihedrals[protein][ligand].reset_index(inplace=True)
-                #         self.dihedrals[protein][ligand] = self.dihedrals[protein][ligand].to_dict()
-                #         for k in self.dihedrals[protein][ligand]:
-                #             nv = [self.dihedrals[protein][ligand][k][x] for x in self.dihedrals[protein][ligand][k]]
-                #             self.dihedrals[protein][ligand][k] = nv
-                #         skip_index_dihedral_append = True
-                #
-                # else:
-                #     missing_dihedral_labels = [l for l in labels if label_type[l] == 'dihedral']
+                # Check if labels are already in dihedral_data
+                missing_dihedral_labels = []
+                skip_index_dihedral_append = False
+                if isinstance(self.dihedrals[protein][ligand], pd.DataFrame):
+                    dihedrals_keys = list(self.dihedrals[protein][ligand].keys())
+                    for label in labels:
+                        if label_type[label] != 'torsion':
+                            continue
+                        if l not in dihedrals_keys:
+                            missing_dihedral_labels.append(l)
+
+                    if missing_dihedral_labels != []:
+
+                        # Convert DF into a dictionary for dihedral appending
+                        self.dihedrals[protein][ligand].reset_index(inplace=True)
+                        self.dihedrals[protein][ligand] = self.dihedrals[protein][ligand].to_dict()
+                        for k in self.dihedrals[protein][ligand]:
+                            nv = [self.dihedrals[protein][ligand][k][x] for x in self.dihedrals[protein][ligand][k]]
+                            self.dihedrals[protein][ligand][k] = nv
+                        skip_index_dihedral_append = True
+
+                else:
+                    missing_dihedral_labels = [l for l in labels if label_type[l] == 'torsion']
 
                 # Update pairs based on missing labels
                 # if missing_coordinate_labels != []:
@@ -503,10 +507,10 @@ class peleAnalysis:
                         if label_type[label] == 'angle':
                             self.angles[protein][ligand][label] = []
 
-                # if missing_dihedral_labels != []:
-                #     for label in missing_dihedral_labels:
-                #         if label_type[label] == 'dihedral':
-                #             self.dihedrals[protein][ligand][label] = []
+                if missing_dihedral_labels != []:
+                    for label in missing_dihedral_labels:
+                        if label_type[label] == 'torsion':
+                            self.dihedrals[protein][ligand][label] = []
 
                 # Update pairs based on missing labels
                 # coordinate_atoms = []
@@ -520,13 +524,14 @@ class peleAnalysis:
                         distance_pairs.append(p)
                     elif l in missing_angle_labels:
                         angle_pairs.append(p)
-                    # elif l in missing_dihedral_labels:
-                    #     dihedral_pairs.append(p)
+                    elif l in missing_dihedral_labels:
+                        dihedral_pairs.append(p)
 
                 # Compute distances and add them to the dicionary
                 distance_jobs = []
                 angle_jobs = []
-                # dihedrals_jobs = []
+                dihedral_jobs = []
+
                 for epoch in sorted(trajectory_files):
 
                     epoch_data = ligand_data[ligand_data.index.get_level_values('Epoch') == epoch]
@@ -544,8 +549,8 @@ class peleAnalysis:
                             angle_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, angle_pairs))
 
                         # Calculate dihedrals
-                        # if dihedral_pairs:
-                            # dihedral_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, dihedral_pairs))
+                        if dihedral_pairs:
+                            dihedral_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, dihedral_pairs))
 
                 if distance_jobs:
                     distances = pool.map(computeDistances._computeDistances, distance_jobs)
@@ -585,17 +590,36 @@ class peleAnalysis:
                     for i,label in enumerate(missing_angle_labels):
                         self.angles[protein][ligand][label] = list(angles[:,i])
 
+                if dihedral_jobs:
+                    dihedrals = pool.map(computeDistances._computeDihedrals, dihedral_jobs)
+                    dihedrals = np.concatenate(dihedrals)
+
+                    # Store data
+                    if not skip_index_dihedral_append:
+                        self.dihedrals[protein][ligand]['Protein'] = [protein]*dihedrals.shape[0]
+                        self.dihedrals[protein][ligand]['Ligand'] = [ligand]*dihedrals.shape[0]
+                        self.dihedrals[protein][ligand]['Epoch'] = [epoch]*dihedrals.shape[0]
+                        self.dihedrals[protein][ligand]['Trajectory'] = [t]*dihedrals.shape[0]
+                        self.dihedrals[protein][ligand]['Accepted Pele Steps'] = list(range(dihedrals.shape[0]))
+                        if 'Step' in ligand_data.index.names:
+                            steps = ligand_data.index.get_level_values('Step')
+                            assert dihedrals.shape[0], steps.shape[0]
+                            self.dihedrals[protein][ligand]['Step'] = steps.to_list()
+
+                    for i,label in enumerate(missing_dihedral_labels):
+                        self.dihedrals[protein][ligand][label] = list(dihedrals[:,i])
+
                 # Convert distances into dataframe
                 # self.coordinates[protein][ligand] = pd.DataFrame(self.coordinates[protein][ligand])
                 self.distances[protein][ligand] = pd.DataFrame(self.distances[protein][ligand])
                 self.angles[protein][ligand] = pd.DataFrame(self.angles[protein][ligand])
-                # self.dihedrals[protein][ligand] = pd.DataFrame(self.dihedrals[protein][ligand])
+                self.dihedrals[protein][ligand] = pd.DataFrame(self.dihedrals[protein][ligand])
 
                 # Save distances to CSV file
                 # self.coordinates[protein][ligand].to_csv(coordinates_file)
                 self.distances[protein][ligand].to_csv(distance_file)
                 self.angles[protein][ligand].to_csv(angle_file)
-                # self.dihedrals[protein][ligand].to_csv(dihedral_file)
+                self.dihedrals[protein][ligand].to_csv(dihedral_file)
 
                 # # Set indexes for DataFrame
                 # if coordinates_pairs:
@@ -618,12 +642,12 @@ class peleAnalysis:
                         index_columns.append('Step')
                     self.angles[protein][ligand].set_index(index_columns, inplace=True)
 
-                # # Set indexes for DataFrame
-                # if dihedral_pairs:
-                #     index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
-                #     if 'Step' in self.dihedrals[protein][ligand].keys():
-                #         index_columns.append('Step')
-                #     self.dihedrals[protein][ligand].set_index(index_columns, inplace=True)
+                # Set indexes for DataFrame
+                if dihedral_pairs:
+                    index_columns = ['Protein', 'Ligand', 'Epoch', 'Trajectory','Accepted Pele Steps']
+                    if 'Step' in self.dihedrals[protein][ligand].keys():
+                        index_columns.append('Step')
+                    self.dihedrals[protein][ligand].set_index(index_columns, inplace=True)
 
     def getTrajectory(self, protein, ligand, step, trajectory, equilibration=False):
         """
@@ -1641,6 +1665,32 @@ class peleAnalysis:
 
         return angles
 
+    def getDihedrals(self, protein, ligand, return_none=False):
+        """
+        Returns the dihedrals associated to a specific protein and ligand simulation
+        """
+
+        if protein not in self.dihedrals:
+            #raise ValueError('There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
+            print('WARNING: There are no dihedrals for protein %s. Use calculateDistances to obtain them.' % protein)
+        elif ligand not in self.dihedrals[protein]:
+            #raise ValueError('There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+            print('WARNING: There are no dihedrals for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+
+        dihedrals = []
+
+        if protein not in self.dihedrals:
+            return dihedrals
+        elif ligand not in self.dihedrals[protein]:
+            return dihedrals
+        if isinstance(self.dihedrals[protein][ligand], type(None)):
+            return dihedrals
+
+        for d in self.dihedrals[protein][ligand]:
+            dihedrals.append(d)
+
+        return dihedrals
+
     def plotCatalyticPosesFraction(self, initial_threshold=3.5):
         """
         Plot interactively the number of catalytic poses as a function of the threshold
@@ -2547,6 +2597,10 @@ class peleAnalysis:
                         if len(distances) > 1:
                             raise ValueError('Combining more than one angle is not supported at the moment!')
                         distance_values = self.angles[protein][ligand][distances[0]]
+                    elif distance_type == 'torsion':
+                        if len(distances) > 1:
+                            raise ValueError('Combining more than one dihedral is not supported at the moment!')
+                        distance_values = self.dihedrals[protein][ligand][distances[0]]
 
                     # Check that distances and ligand data matches
                     assert ligand_data.shape[0] == distance_values.to_numpy().shape[0]
@@ -6464,3 +6518,9 @@ class computeDistances:
         traj = md.load(trajectory_file, top=topology_file)
         angles = np.rad2deg(md.compute_angles(traj, angle_pairs))
         return angles
+
+    def _computeDihedrals(arguments):
+        epoch, trajectory, trajectory_file, topology_file, dihedral_pairs = arguments
+        traj = md.load(trajectory_file, top=topology_file)
+        dihedrals = np.rad2deg(md.compute_dihedrals(traj, dihedral_pairs))
+        return dihedrals
