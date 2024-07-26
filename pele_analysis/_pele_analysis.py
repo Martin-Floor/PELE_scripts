@@ -374,7 +374,7 @@ class peleAnalysis:
 
                         i4 = self.atom_indexes[protein][ligand][pair[3]]
                         pairs.append((i1, i2, i3, i4))
-                        dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'torsion_'
+                        dist_label[(pair[0], pair[1], pair[2], pair[3])] = 'dihedral_'
 
                     # pair_lengths.append(len(pair))
 
@@ -475,7 +475,7 @@ class peleAnalysis:
                 if isinstance(self.dihedrals[protein][ligand], pd.DataFrame):
                     dihedrals_keys = list(self.dihedrals[protein][ligand].keys())
                     for label in labels:
-                        if label_type[label] != 'torsion':
+                        if label_type[label] != 'dihedral':
                             continue
                         if l not in dihedrals_keys:
                             missing_dihedral_labels.append(l)
@@ -491,7 +491,7 @@ class peleAnalysis:
                         skip_index_dihedral_append = True
 
                 else:
-                    missing_dihedral_labels = [l for l in labels if label_type[l] == 'torsion']
+                    missing_dihedral_labels = [l for l in labels if label_type[l] == 'dihedral']
 
                 # Update pairs based on missing labels
                 # if missing_coordinate_labels != []:
@@ -509,7 +509,7 @@ class peleAnalysis:
 
                 if missing_dihedral_labels != []:
                     for label in missing_dihedral_labels:
-                        if label_type[label] == 'torsion':
+                        if label_type[label] == 'dihedral':
                             self.dihedrals[protein][ligand][label] = []
 
                 # Update pairs based on missing labels
@@ -1427,7 +1427,7 @@ class peleAnalysis:
                                         readout_format='.2f',
                                     )
 
-                    elif self.metric_type[m] == 'torsion':
+                    elif self.metric_type[m] == 'dihedral':
                         m_slider = FloatRangeSlider(
                                         value=[90, 120],
                                         min=-180,
@@ -2597,7 +2597,7 @@ class peleAnalysis:
                         if len(distances) > 1:
                             raise ValueError('Combining more than one angle is not supported at the moment!')
                         distance_values = self.angles[protein][ligand][distances[0]]
-                    elif distance_type == 'torsion':
+                    elif distance_type == 'dihedral':
                         if len(distances) > 1:
                             raise ValueError('Combining more than one dihedral is not supported at the moment!')
                         distance_values = self.dihedrals[protein][ligand][distances[0]]
@@ -2617,6 +2617,8 @@ class peleAnalysis:
                             best_distances = self.distances[protein][ligand][distances].idxmin(axis=1).to_list()
                         elif distance_type == 'angle':
                             best_distances = self.angles[protein][ligand][distances[0]].to_list()
+                        elif distance_type == 'torsion':
+                            best_distances = self.dihedrals[protein][ligand][distances[0]].to_list()
 
                         label_values += [labels[name][protein][ligand][x] for x in best_distances]
 
@@ -5595,6 +5597,10 @@ class peleAnalysis:
         if not os.path.exists(self.data_folder+'/angles'):
             os.mkdir(self.data_folder+'/angles')
 
+        # Create PELE angles
+        if not os.path.exists(self.data_folder+'/dihedrals'):
+            os.mkdir(self.data_folder+'/dihedrals')
+
         # Create PELE non bonded energy
         if not os.path.exists(self.data_folder+'/nonbonded_energy'):
             os.mkdir(self.data_folder+'/nonbonded_energy')
@@ -5647,7 +5653,7 @@ class peleAnalysis:
                 start = time.time()
 
             # Read report files into panda dataframes
-            data, distance_data, angle_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
+            data, distance_data, angle_data, dihedral_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
                                                                                                 protein,
                                                                                                 ligand,
                                                                                                 ebr_threshold=0.1,
@@ -5680,6 +5686,9 @@ class peleAnalysis:
                 self.angles.setdefault(protein,{})
                 self.angles[protein][ligand] = angle_data
 
+                self.dihedrals.setdefault(protein,{})
+                self.dihedrals[protein][ligand] = dihedral_data
+
                 if not isinstance(distance_data, type(None)) and not distance_data.empty:
 
                     # Define a different distance output file for each pele run
@@ -5695,6 +5704,14 @@ class peleAnalysis:
 
                     # Save angles to CSV file
                     self.angles[protein][ligand].to_csv(angle_file)
+
+                if not isinstance(dihedral_data, type(None)) and not dihedral_data.empty:
+
+                    # Define a different angle output file for each pele run
+                    dihedral_file = self.data_folder+'/dihedrals/'+protein+self.separator+ligand+'.csv'
+
+                    # Save angles to CSV file
+                    self.dihedrals[protein][ligand].to_csv(dihedral_file)
 
                 self.nonbonded_energy.setdefault(protein,{})
                 self.nonbonded_energy[protein][ligand] = nonbonded_energy_data
@@ -6227,14 +6244,19 @@ class peleAnalysis:
                         # Check how metrics will be combined
                         distances = False
                         angles = False
+                        dihedrals = False
                         for x in metrics[metric]:
                             if 'distance_' in x:
                                 distances = True
                             elif 'angle' in x:
                                 angles = True
+                            elif 'torsion' in x:
+                                dihedrals = True
 
                         if distances and angles:
                             raise ValueError(f'Metric {metric} combines distances and angles which is not supported.')
+                        if distances and dihedrals:
+                            raise ValueError(f'Metric {metric} combines distances and dihedrals which is not supported.')
 
                         # Combine metrics
                         if distances:
@@ -6246,6 +6268,12 @@ class peleAnalysis:
                             if len(metrics[metric]) > 1:
                                 raise ValueError('Combining more than one angle into a metric is not currently supported.')
                             metric_data[metric] = angles.min(axis=1).tolist()
+
+                        elif dihedrals:
+                            dihedrals = self.dihedrals[protein][ligand][metrics[metric]]
+                            if len(metrics[metric]) > 1:
+                                raise ValueError('Combining more than one dihedral into a metric is not currently supported.')
+                            metric_data[metric] = dihedrals.min(axis=1).tolist()
 
                         if isinstance(metrics_thresholds[metric], float):
                             acceptance = acceptance & ((metric_data[metric] <= metrics_thresholds[metric]).to_numpy())
