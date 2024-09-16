@@ -543,14 +543,23 @@ class peleAnalysis:
                         # Calculate distances
                         if distance_pairs:
                             distance_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, distance_pairs))
+                            if not skip_index_distance_append:
+                                self.distances[protein][ligand]['Epoch'] += [epoch]*trajectory_data.shape[0]
+                                self.distances[protein][ligand]['Trajectory'] += [t]*trajectory_data.shape[0]
 
                         # Calculate angles
                         if angle_pairs:
                             angle_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, angle_pairs))
+                            if not skip_index_angle_append:
+                                self.angles[protein][ligand]['Epoch'] += [epoch]*trajectory_data.shape[0]
+                                self.angles[protein][ligand]['Trajectory'] += [t]*trajectory_data.shape[0]
 
                         # Calculate dihedrals
                         if dihedral_pairs:
                             dihedral_jobs.append((epoch, t, trajectory_files[epoch][t], topology_file, dihedral_pairs))
+                            if not skip_index_dihedral_append:
+                                self.dihedrals[protein][ligand]['Epoch'] += [epoch]*trajectory_data.shape[0]
+                                self.dihedrals[protein][ligand]['Trajectory'] += [t]*trajectory_data.shape[0]
 
                 if distance_jobs:
                     distances = pool.map(computeDistances._computeDistances, distance_jobs)
@@ -560,9 +569,10 @@ class peleAnalysis:
                     if not skip_index_distance_append:
                         self.distances[protein][ligand]['Protein'] = [protein]*distances.shape[0]
                         self.distances[protein][ligand]['Ligand'] = [ligand]*distances.shape[0]
-                        self.distances[protein][ligand]['Epoch'] = [epoch]*distances.shape[0]
-                        self.distances[protein][ligand]['Trajectory'] = [t]*distances.shape[0]
-                        self.distances[protein][ligand]['Accepted Pele Steps'] = list(range(distances.shape[0]))
+                        accepted_pele_steps = ligand_data.index.get_level_values('Accepted Pele Steps')
+                        assert distances.shape[0], accepted_pele_steps.shape[0]
+                        self.distances[protein][ligand]['Accepted Pele Steps'] = accepted_pele_steps.to_list()
+
                         if 'Step' in ligand_data.index.names:
                             steps = ligand_data.index.get_level_values('Step')
                             assert distances.shape[0], steps.shape[0]
@@ -579,9 +589,9 @@ class peleAnalysis:
                     if not skip_index_angle_append:
                         self.angles[protein][ligand]['Protein'] = [protein]*angles.shape[0]
                         self.angles[protein][ligand]['Ligand'] = [ligand]*angles.shape[0]
-                        self.angles[protein][ligand]['Epoch'] = [epoch]*angles.shape[0]
-                        self.angles[protein][ligand]['Trajectory'] = [t]*angles.shape[0]
-                        self.angles[protein][ligand]['Accepted Pele Steps'] = list(range(angles.shape[0]))
+                        accepted_pele_steps = ligand_data.index.get_level_values('Accepted Pele Steps')
+                        assert angles.shape[0], accepted_pele_steps.shape[0]
+                        self.angles[protein][ligand]['Accepted Pele Steps'] = accepted_pele_steps.to_list()
                         if 'Step' in ligand_data.index.names:
                             steps = ligand_data.index.get_level_values('Step')
                             assert angles.shape[0], steps.shape[0]
@@ -598,9 +608,9 @@ class peleAnalysis:
                     if not skip_index_dihedral_append:
                         self.dihedrals[protein][ligand]['Protein'] = [protein]*dihedrals.shape[0]
                         self.dihedrals[protein][ligand]['Ligand'] = [ligand]*dihedrals.shape[0]
-                        self.dihedrals[protein][ligand]['Epoch'] = [epoch]*dihedrals.shape[0]
-                        self.dihedrals[protein][ligand]['Trajectory'] = [t]*dihedrals.shape[0]
-                        self.dihedrals[protein][ligand]['Accepted Pele Steps'] = list(range(dihedrals.shape[0]))
+                        accepted_pele_steps = ligand_data.index.get_level_values('Accepted Pele Steps')
+                        assert dihedrals.shape[0], accepted_pele_steps.shape[0]
+                        self.dihedrals[protein][ligand]['Accepted Pele Steps'] = accepted_pele_steps.to_list()
                         if 'Step' in ligand_data.index.names:
                             steps = ligand_data.index.get_level_values('Step')
                             assert dihedrals.shape[0], steps.shape[0]
