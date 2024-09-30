@@ -1289,7 +1289,7 @@ class peleAnalysis:
                                         readout_format='.2f',
                                     )
 
-                    elif self.metric_type[m] == 'torsion':
+                    elif self.metric_type[m] == 'dihedral':
                         m_slider = FloatRangeSlider(
                                         value=[90, 120],
                                         min=-180,
@@ -1526,6 +1526,32 @@ class peleAnalysis:
             angles.append(d)
 
         return angles
+
+    def getDihedrals(self, protein, ligand, return_none=False):
+        """
+        Returns the dihedrals associated to a specific protein and ligand simulation
+        """
+
+        if protein not in self.dihedrals:
+            #raise ValueError('There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
+            print('WARNING: There are no dihedrals for protein %s. Use calculateDistances to obtain them.' % protein)
+        elif ligand not in self.dihedrals[protein]:
+            #raise ValueError('There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+            print('WARNING: There are no dihedrals for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+
+        dihedrals = []
+
+        if protein not in self.dihedrals:
+            return dihedrals
+        elif ligand not in self.dihedrals[protein]:
+            return dihedrals
+        if isinstance(self.dihedrals[protein][ligand], type(None)):
+            return dihedrals
+
+        for d in self.dihedrals[protein][ligand]:
+            dihedrals.append(d)
+
+        return dihedrals
 
     def plotCatalyticPosesFraction(self, initial_threshold=3.5):
         """
@@ -4199,10 +4225,11 @@ class peleAnalysis:
                     with open(pele_folder+'/'+protein_ligand+'/'+'input.yaml', 'w') as iyf:
                         if energy_by_residue or nonbonded_energy != None:
                             # Use new PELE version with implemented local nonbonded energies
-                            iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/bin/PELE-1.7.2_mpi"\n')
-                            iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Data"\n')
-                            iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mniv/V1.7.2-b6/Documents/"\n')
+                            iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mnv/1.8.0/bin/PELE_mpi"\n')
+                            iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mnv/1.8.0/Data"\n')
+                            iyf.write('pele_documents: "/gpfs/projects/bsc72/PELE++/mnv/1.8.0/Documents/"\n')
                         elif ninety_degrees_version:
+                            print('paths of PELE version should be changed')
                             # Use new PELE version with implemented 90 degrees fix
                             iyf.write('pele_exec: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/bin/PELE-1.8_mpi"\n')
                             iyf.write('pele_data: "/gpfs/projects/bsc72/PELE++/mniv/V1.8_pre_degree_fix/Data"\n')
@@ -5498,6 +5525,10 @@ class peleAnalysis:
         if not os.path.exists(self.data_folder+'/angles'):
             os.mkdir(self.data_folder+'/angles')
 
+        # Create PELE angles
+        if not os.path.exists(self.data_folder+'/dihedrals'):
+            os.mkdir(self.data_folder+'/dihedrals')
+
         # Create PELE non bonded energy
         if not os.path.exists(self.data_folder+'/nonbonded_energy'):
             os.mkdir(self.data_folder+'/nonbonded_energy')
@@ -5550,7 +5581,7 @@ class peleAnalysis:
                 start = time.time()
 
             # Read report files into panda dataframes
-            data, distance_data, angle_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
+            data, distance_data, angle_data, dihedral_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
                                                                                                 protein,
                                                                                                 ligand,
                                                                                                 ebr_threshold=0.1,
@@ -5583,6 +5614,9 @@ class peleAnalysis:
                 self.angles.setdefault(protein,{})
                 self.angles[protein][ligand] = angle_data
 
+                self.dihedrals.setdefault(protein,{})
+                self.dihedrals[protein][ligand] = dihedral_data
+
                 if not isinstance(distance_data, type(None)) and not distance_data.empty:
 
                     # Define a different distance output file for each pele run
@@ -5598,6 +5632,14 @@ class peleAnalysis:
 
                     # Save angles to CSV file
                     self.angles[protein][ligand].to_csv(angle_file)
+
+                if not isinstance(dihedral_data, type(None)) and not dihedral_data.empty:
+
+                    # Define a different angle output file for each pele run
+                    dihedral_file = self.data_folder+'/dihedrals/'+protein+self.separator+ligand+'.csv'
+
+                    # Save angles to CSV file
+                    self.dihedrals[protein][ligand].to_csv(dihedral_file)
 
                 self.nonbonded_energy.setdefault(protein,{})
                 self.nonbonded_energy[protein][ligand] = nonbonded_energy_data
@@ -6129,14 +6171,19 @@ class peleAnalysis:
                         # Check how metrics will be combined
                         distances = False
                         angles = False
+                        dihedrals = False
                         for x in metrics[metric]:
                             if 'distance_' in x:
                                 distances = True
                             elif 'angle' in x:
                                 angles = True
+                            elif 'torsion' in x:
+                                dihedrals = True
 
                         if distances and angles:
                             raise ValueError(f'Metric {metric} combines distances and angles which is not supported.')
+                        if distances and dihedrals:
+                            raise ValueError(f'Metric {metric} combines distances and dihedrals which is not supported.')
 
                         # Combine metrics
                         if distances:
@@ -6148,6 +6195,12 @@ class peleAnalysis:
                             if len(metrics[metric]) > 1:
                                 raise ValueError('Combining more than one angle into a metric is not currently supported.')
                             metric_data[metric] = angles.min(axis=1).tolist()
+
+                        elif dihedrals:
+                            dihedrals = self.dihedrals[protein][ligand][metrics[metric]]
+                            if len(metrics[metric]) > 1:
+                                raise ValueError('Combining more than one dihedral into a metric is not currently supported.')
+                            metric_data[metric] = dihedrals.min(axis=1).tolist()
 
                         if isinstance(metrics_thresholds[metric], float):
                             acceptance = acceptance & ((metric_data[metric] <= metrics_thresholds[metric]).to_numpy())
