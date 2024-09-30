@@ -154,7 +154,7 @@ class peleAnalysis:
         else:
             print('Skipping equilibration information from report files.')
 
-        ### Read spawning infortmation
+        ### Read spawning information
         self._checkSpawningInformation()
 
         # Sort protein and ligand names alphabetically for orderly iterations.
@@ -2844,7 +2844,8 @@ class peleAnalysis:
         ligand_series = data[data.index.get_level_values('Ligand') == ligand]
         return ligand_series
 
-    def getProteinAndLigandData(self, protein, ligand, equilibration=False):
+    def getProteinAndLigandData(self, protein, ligand, epochs=None, trajectories=None,
+                                accepted_pele_steps=None, equilibration=False, dataframe=None):
         """
         Get PELE data for a protein and ligand combination.
 
@@ -2862,12 +2863,32 @@ class peleAnalysis:
         ligand_series : pandas.DataFrame
             The pandas for the protein and ligand data.
         """
+
+        # Check input
+        if isinstance(epochs, int):
+            epochs = [epochs]
+        if isinstance(trajectories, int):
+            trajectories = [trajectories]
+        if isinstance(accepted_pele_steps, int):
+            accepted_pele_steps = [accepted_pele_steps]
+
         if equilibration:
-            data = self.equilibration_data
-        else:
-            data = self.data
-        protein_series = data[data.index.get_level_values('Protein') == protein]
+            dataframe = self.equilibration_data
+        elif isinstance(dataframe, type(None)):
+            dataframe = self.data
+
+        protein_series = dataframe[dataframe.index.get_level_values('Protein') == protein]
         ligand_series = protein_series[protein_series.index.get_level_values('Ligand') == ligand]
+
+        if epochs:
+            ligand_series = ligand_series[ligand_series.index.get_level_values('Epoch').isin(epochs)]
+
+        if trajectories:
+            ligand_series = ligand_series[ligand_series.index.get_level_values('Trajectory').isin(trajectories)]
+
+        if accepted_pele_steps:
+            ligand_series = ligand_series[ligand_series.index.get_level_values('Accepted Pele Steps').isin(accepted_pele_steps)]
+
         return ligand_series
 
     def readClusterDataFromGlobal(self):
@@ -2894,9 +2915,9 @@ class peleAnalysis:
 
     ### Extract poses methods
 
-    def getBestPELEPoses(self, filter_values, proteins=None, ligands=None, column='Binding Energy',
-                     n_models=1, return_failed=False, cluster_aware=True, label_aware=True,
-                     max_clusters=None, cluster_min_percentage=None):
+    def getBestPELEPoses(self, filter_values, dataframe=None, proteins=None, ligands=None, column='Binding Energy',
+                        n_models=1, return_failed=False, cluster_aware=True, label_aware=True,
+                        max_clusters=None, cluster_min_percentage=None):
         """
         Get best models based on the best column score and a set of metrics with specified thresholds.
         The filter thresholds must be provided with a dictionary using the metric names as keys
@@ -2928,6 +2949,9 @@ class peleAnalysis:
             The minimum percetage of counts for a cluster to be selected
         """
 
+        if isinstance(dataframe, type(None)):
+            dataframe = self.data
+
         bp = [] # For storing the indexes of the best poses
         failed = [] # For storing the protein and ligand names without poses found
         for protein in self.proteins:
@@ -2938,7 +2962,7 @@ class peleAnalysis:
                     continue
 
             # Filter dataframe for protein name
-            protein_series = self.data[self.data.index.get_level_values('Protein') == protein]
+            protein_series = dataframe[dataframe.index.get_level_values('Protein') == protein]
             for ligand in self.ligands:
 
                 # If a list of ligands is given, skip ligands not in the list
@@ -2969,7 +2993,7 @@ class peleAnalysis:
                     failed.append((protein, ligand))
                     continue
 
-                if 'Ligand Clusters' in self.data.keys() and cluster_aware:
+                if 'Ligand Clusters' in dataframe.keys() and cluster_aware:
 
                     clusters = [x for x in ligand_data['Ligand Clusters'] if x != '-']
                     clusters = list(set(clusters))
@@ -2991,8 +3015,8 @@ class peleAnalysis:
                         for i in cluster_data[column].nsmallest(n_models).index:
                             bp.append(i)
 
-                elif len([x for x in self.data.keys() if 'label_' in x]) > 0 and label_aware:
-                    labels = [x for x in self.data.keys() if 'label_' in x]
+                elif len([x for x in dataframe.keys() if 'label_' in x]) > 0 and label_aware:
+                    labels = [x for x in dataframe.keys() if 'label_' in x]
 
                     for label in labels:
                         label_values = sorted(list(set(ligand_data[label])))
@@ -3012,16 +3036,19 @@ class peleAnalysis:
 
         if return_failed:
 
-            return failed, self.data[self.docking_data.index.isin(bp)]
+            return failed, dataframe[self.docking_data.index.isin(bp)]
 
-        return self.data[self.data.index.isin(bp)]
+        return dataframe[dataframe.index.isin(bp)]
 
-    def getBestPELEPosesIteratively(self, metrics, column='Binding Energy', ligands=None,
+    def getBestPELEPosesIteratively(self, metrics, dataframe=None, column='Binding Energy', ligands=None,
                                     proteins=None, distance_step=0.1, angle_step=1.0,
                                     cluster_aware=False, label_aware=False, verbose=False, fixed=None):
         """
         Extract best poses iteratively using all given metrics simoultaneously.
         """
+
+        if isinstance(dataframe, type(None)):
+            dataframe = self.data
 
         # Create a list for fixed metrics
         if not fixed:
@@ -3042,8 +3069,8 @@ class peleAnalysis:
         if label_aware:
             raise ValueError('label_aware=True has not been tested yet, please ask the developers!')
 
-        if len([x for x in self.data.keys() if 'label_' in x]) > 0 and label_aware:
-            labels = [x for x in self.data.keys() if 'label_' in x]
+        if len([x for x in dataframe.keys() if 'label_' in x]) > 0 and label_aware:
+            labels = [x for x in dataframe.keys() if 'label_' in x]
         else:
             labels = []
 
@@ -3067,7 +3094,7 @@ class peleAnalysis:
                 print(f'Getting best poses with {metrics}', end='\r')
 
             pele_data = self.getBestPELEPoses(metrics, column=column, n_models=1,
-                                              proteins=proteins, ligands=ligands,
+                                              proteins=proteins, ligands=ligands, dataframe=dataframe,
                                               label_aware=label_aware, cluster_aware=cluster_aware)
 
             # Check that models were not written in a previous iteration (one by protein, ligand, and label)
@@ -3144,8 +3171,8 @@ class peleAnalysis:
                          label_aware=True, remote_pele_path=None, skip_missing=False, skip_connects=False,
                          conect_hydrogens=True, change_water_names=False, skip_connect_hxt=False, conect_mapping=None):
         """
-        Extract pele poses present in a pele dataframe. The PELE DataFrame
-        contains the same structure as the self.data dataframe, attribute of
+        Extract pele poses present in a pele DataFrame. The PELE DataFrame
+        contains the same structure as the self.data DataFrame, attribute of
         this class.
 
         Parameters
@@ -6065,9 +6092,8 @@ class peleAnalysis:
 
             ligand_data = self.getProteinAndLigandData(protein, ligand)
 
-            spawning = False
+            spawning = True
             if protein in self.spawning_files and ligand in self.spawning_files[protein]:
-
                 if 'metrics' in self.spawning_files[protein][ligand]:
                     with open(self.spawning_files[protein][ligand]['metrics']) as jf:
                         metrics = json.load(jf)
@@ -6139,7 +6165,6 @@ class peleAnalysis:
         if any(spawning_values):
             self.data['Regional spawning'] = spawning_values
             self.data['Regional membership'] = regional_values
-
 
 class conectLines:
 
