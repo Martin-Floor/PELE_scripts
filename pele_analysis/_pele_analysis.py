@@ -1289,7 +1289,7 @@ class peleAnalysis:
                                         readout_format='.2f',
                                     )
 
-                    elif self.metric_type[m] == 'dihedral':
+                    elif self.metric_type[m] == 'torsion':
                         m_slider = FloatRangeSlider(
                                         value=[90, 120],
                                         min=-180,
@@ -1527,31 +1527,31 @@ class peleAnalysis:
 
         return angles
 
-    def getDihedrals(self, protein, ligand, return_none=False):
+    def getTorsions(self, protein, ligand, return_none=False):
         """
-        Returns the dihedrals associated to a specific protein and ligand simulation
+        Returns the torsions associated to a specific protein and ligand simulation
         """
 
-        if protein not in self.dihedrals:
+        if protein not in self.torsions:
             #raise ValueError('There are no distances for protein %s. Use calculateDistances to obtain them.' % protein)
-            print('WARNING: There are no dihedrals for protein %s. Use calculateDistances to obtain them.' % protein)
-        elif ligand not in self.dihedrals[protein]:
+            print('WARNING: There are no torsions for protein %s. Use calculateDistances to obtain them.' % protein)
+        elif ligand not in self.torsions[protein]:
             #raise ValueError('There are no distances for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
-            print('WARNING: There are no dihedrals for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
+            print('WARNING: There are no torsions for protein %s and ligand %s. Use calculateDistances to obtain them.' % (protein, ligand))
 
-        dihedrals = []
+        torsions = []
 
-        if protein not in self.dihedrals:
-            return dihedrals
-        elif ligand not in self.dihedrals[protein]:
-            return dihedrals
-        if isinstance(self.dihedrals[protein][ligand], type(None)):
-            return dihedrals
+        if protein not in self.torsions:
+            return torsions
+        elif ligand not in self.torsions[protein]:
+            return torsions
+        if isinstance(self.torsions[protein][ligand], type(None)):
+            return torsions
 
-        for d in self.dihedrals[protein][ligand]:
-            dihedrals.append(d)
+        for d in self.torsions[protein][ligand]:
+            torsions.append(d)
 
-        return dihedrals
+        return torsions
 
     def plotCatalyticPosesFraction(self, initial_threshold=3.5):
         """
@@ -5526,8 +5526,8 @@ class peleAnalysis:
             os.mkdir(self.data_folder+'/angles')
 
         # Create PELE angles
-        if not os.path.exists(self.data_folder+'/dihedrals'):
-            os.mkdir(self.data_folder+'/dihedrals')
+        if not os.path.exists(self.data_folder+'/torsions'):
+            os.mkdir(self.data_folder+'/torsions')
 
         # Create PELE non bonded energy
         if not os.path.exists(self.data_folder+'/nonbonded_energy'):
@@ -5581,7 +5581,7 @@ class peleAnalysis:
                 start = time.time()
 
             # Read report files into panda dataframes
-            data, distance_data, angle_data, dihedral_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
+            data, distance_data, angle_data, torsion_data, nonbonded_energy_data  = pele_read.readReportFiles(report_files,
                                                                                                 protein,
                                                                                                 ligand,
                                                                                                 ebr_threshold=0.1,
@@ -5614,8 +5614,8 @@ class peleAnalysis:
                 self.angles.setdefault(protein,{})
                 self.angles[protein][ligand] = angle_data
 
-                self.dihedrals.setdefault(protein,{})
-                self.dihedrals[protein][ligand] = dihedral_data
+                self.torsions.setdefault(protein,{})
+                self.torsions[protein][ligand] = torsion_data
 
                 if not isinstance(distance_data, type(None)) and not distance_data.empty:
 
@@ -5633,13 +5633,13 @@ class peleAnalysis:
                     # Save angles to CSV file
                     self.angles[protein][ligand].to_csv(angle_file)
 
-                if not isinstance(dihedral_data, type(None)) and not dihedral_data.empty:
+                if not isinstance(torsion_data, type(None)) and not torsion_data.empty:
 
                     # Define a different angle output file for each pele run
-                    dihedral_file = self.data_folder+'/dihedrals/'+protein+self.separator+ligand+'.csv'
+                    torsions_file = self.data_folder+'/torsions/'+protein+self.separator+ligand+'.csv'
 
                     # Save angles to CSV file
-                    self.dihedrals[protein][ligand].to_csv(dihedral_file)
+                    self.torsions[protein][ligand].to_csv(torsions_file)
 
                 self.nonbonded_energy.setdefault(protein,{})
                 self.nonbonded_energy[protein][ligand] = nonbonded_energy_data
@@ -6171,19 +6171,19 @@ class peleAnalysis:
                         # Check how metrics will be combined
                         distances = False
                         angles = False
-                        dihedrals = False
+                        torsions = False
                         for x in metrics[metric]:
                             if 'distance_' in x:
                                 distances = True
                             elif 'angle' in x:
                                 angles = True
                             elif 'torsion' in x:
-                                dihedrals = True
+                                torsions = True
 
                         if distances and angles:
                             raise ValueError(f'Metric {metric} combines distances and angles which is not supported.')
-                        if distances and dihedrals:
-                            raise ValueError(f'Metric {metric} combines distances and dihedrals which is not supported.')
+                        if distances and torsions:
+                            raise ValueError(f'Metric {metric} combines distances and torsions which is not supported.')
 
                         # Combine metrics
                         if distances:
@@ -6196,11 +6196,11 @@ class peleAnalysis:
                                 raise ValueError('Combining more than one angle into a metric is not currently supported.')
                             metric_data[metric] = angles.min(axis=1).tolist()
 
-                        elif dihedrals:
-                            dihedrals = self.dihedrals[protein][ligand][metrics[metric]]
+                        elif torsions:
+                            torsions = self.torsions[protein][ligand][metrics[metric]]
                             if len(metrics[metric]) > 1:
-                                raise ValueError('Combining more than one dihedral into a metric is not currently supported.')
-                            metric_data[metric] = dihedrals.min(axis=1).tolist()
+                                raise ValueError('Combining more than one torsion into a metric is not currently supported.')
+                            metric_data[metric] = torsions.min(axis=1).tolist()
 
                         if isinstance(metrics_thresholds[metric], float):
                             acceptance = acceptance & ((metric_data[metric] <= metrics_thresholds[metric]).to_numpy())
@@ -6476,7 +6476,7 @@ class computeDistances:
     def _computeTorsions(arguments):
         epoch, trajectory, trajectory_file, topology_file, torsion_pairs = arguments
         traj = md.load(trajectory_file, top=topology_file)
-        torsions = np.rad2deg(md.compute_dihedrals(traj, torsion_pairs)) # convert to degrees
+        torsions = np.rad2deg(md.compute_torsions(traj, torsion_pairs)) # convert to degrees
         return torsions
 
     def _computeCoordinates(arguments):
