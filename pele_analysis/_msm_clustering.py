@@ -479,7 +479,7 @@ def _plot_Nice_PES(input_data1, input_data2, xlabel=None, ylabel=None, bins=90, 
                    title_location=None, title_x=0.5, title_y=1.02, show_xticks=False, show_yticks=False,
                    xlim=None, ylim=None):
 
-    matplotlib.style.use("seaborn-paper")
+    matplotlib.style.use("seaborn-v0_8-paper")
 
     plt.figure(figsize=(4*size, 3.3*size), dpi=dpi)
 
