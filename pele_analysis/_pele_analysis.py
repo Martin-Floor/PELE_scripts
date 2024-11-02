@@ -2522,67 +2522,91 @@ class peleAnalysis:
 
     def combineMetricsWithExclusions(self, combinations, exclusions, drop=True):
         """
-        Function to combine metrics that are mutually exclusive. The function takes two inputs,
-        combinations and exclusions.
-        Combinations are the metrics that should be merged and have the following structure:
-
-            combinations = {
-                new_metric_name = (comb_metric_1,comb_metric_2),
-                ...}
-
-        Exclusions are the pairs of metrics that are mutually exclusive as a list of tuples.
+        Combine mutually exclusive metrics into new metrics while handling exclusions.
 
         Parameters
-        ==========
+        ----------
         combinations : dict
-            Dictionary defining which distances will be combined under a common name.
-        exclusions : list
-            List of tuples of the incompatible metrics
+            Dictionary defining which metrics to combine under a new common name.
+            Structure:
+                combinations = {
+                    new_metric_name: (metric1, metric2, ...),
+                    ...
+                }
+
+        exclusions : list of tuples
+            List of tuples, each containing metrics that are mutually exclusive.
+
+        drop : bool, optional
+            If True, drop the original metric columns after combining. Default is True.
 
         """
 
-        # Get all metrics as index dictionary
-        metrics_indexes = {}
-        all_metrics = []
-        i = 0
-        for c in combinations:
-            for m in combinations[c]:
-                metrics_indexes[m] = i
-                all_metrics.append('metric_'+m)
-                i += 1
+        # Collect all unique metrics from combinations
+        unique_metrics = set()
+        for metrics in combinations.values():
+            unique_metrics.update(metrics)
 
-        # Get data as numpy array with only metric columns
-        data = self.data[all_metrics]
+        # Build a mapping from metric names to column indices
+        metrics_list = list(unique_metrics)
+        metrics_indexes = {m: idx for idx, m in enumerate(metrics_list)}
+        all_metrics_columns = ['metric_' + m for m in metrics_list]
 
-        # Get labels of the shortest distance
-        min_values = data.idxmin(axis=1)
+        # Ensure all required metric columns exist in the data
+        missing_columns = set(all_metrics_columns) - set(self.data.columns)
+        if missing_columns:
+            raise ValueError(f"Missing metric columns in data: {missing_columns}")
 
-        # Define columns to be excluded
-        excluded_values = [] # Exclude for the same metric
-        for i,m in enumerate(min_values):
-            m = m.replace('metric_', '')
-            for e in exclusions:
-                if m in e:
-                    x = list(set(e)-set([m]))[0]
-                    excluded_values.append([i,metrics_indexes[x]])
+        # Extract metric data
+        data = self.data[all_metrics_columns]
 
-            for c in combinations:
-                if m in combinations[c]:
-                    y = list(set(combinations[c])-set([m]))[0]
-                    excluded_values.append([i,metrics_indexes[y]])
+        # Get labels of the shortest distance for each row
+        min_metric_labels = data.idxmin(axis=1)  # Series of column names
 
-        # Set excluded values as np.inf
-        data = data.to_numpy()
-        for i,j in excluded_values:
-            data[i,j] = np.inf
+        # Positions of values to be excluded (row index, column index)
+        excluded_positions = set()
 
-        # Add new metrics to data frame
-        for c in combinations:
-            c_indexes = [metrics_indexes[c] for c in combinations[c]]
-            self.data['metric_'+c] = np.min(data[:,c_indexes], axis=1)
+        for row_idx, metric_col_label in enumerate(min_metric_labels):
+            m = metric_col_label.replace('metric_', '')
 
+            # Exclude metrics specified in exclusions
+            for exclusion_group in exclusions:
+                if m in exclusion_group:
+                    others = set(exclusion_group) - {m}
+                    for x in others:
+                        if x in metrics_indexes:
+                            col_idx = metrics_indexes[x]
+                            excluded_positions.add((row_idx, col_idx))
+
+            # Exclude other metrics in the same combination group
+            for metrics_group in combinations.values():
+                if m in metrics_group:
+                    others = set(metrics_group) - {m}
+                    for y in others:
+                        if y in metrics_indexes:
+                            col_idx = metrics_indexes[y]
+                            excluded_positions.add((row_idx, col_idx))
+
+        # Convert data to NumPy array for efficient indexing
+        data_array = data.to_numpy()
+
+        # Set excluded values to infinity
+        for i, j in excluded_positions:
+            data_array[i, j] = np.inf
+
+        # Combine metrics and add new columns to the DataFrame
+        for new_metric_name, metrics_to_combine in combinations.items():
+            c_indexes = [metrics_indexes[m] for m in metrics_to_combine if m in metrics_indexes]
+            if c_indexes:
+                # Calculate the minimum value among the combined metrics
+                combined_min = np.min(data_array[:, c_indexes], axis=1)
+                self.data['metric_' + new_metric_name] = combined_min
+            else:
+                raise ValueError(f"No valid metrics to combine for '{new_metric_name}'.")
+
+        # Drop original metric columns if specified
         if drop:
-            self.data.drop(all_metrics, axis=1, inplace=True)
+            self.data.drop(columns=all_metrics_columns, inplace=True)
 
     def plotEnergyByResidue(self, initial_threshold=3.5):
         """
