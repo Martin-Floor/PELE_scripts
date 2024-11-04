@@ -38,7 +38,7 @@ class peleAnalysis:
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
                  read_equilibration=True, data_folder_name=None, global_pele=False, trajectories=False,
-                 remove_original_trajectory=False, change_water_names=False, only_hetatoms=False):
+                 remove_original_trajectory=False, change_water_names=False, only_hetatoms=False, read_conect=True):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -131,7 +131,7 @@ class peleAnalysis:
 
         # Set dictionary with Chain IDs to match mdtraj indexing
         print('Setting Chain IDs and Atom Indexes')
-        self._setChainIDs(change_water_names=change_water_names, only_hetatoms=only_hetatoms)
+        self._setChainIDs(change_water_names=change_water_names, only_hetatoms=only_hetatoms, read_conect=read_conect)
 
         # Get protein and ligand cominations wither from pele or analysis folders
         self.pele_combinations = self._getProteinLigandCombinations()
@@ -2544,7 +2544,11 @@ class peleAnalysis:
 
         # Collect all unique metrics from combinations
         unique_metrics = set()
-        for metrics in combinations.values():
+        for new_metric, metrics in combinations.items():
+            metric_types = [self.metric_type['metric_'+m] for m in metrics]
+            if len(set(metric_types)) != 1:
+                raise ValueError('Attempting to combine different metric types (e.g., distances and angles) is not allowed.')
+            self.metric_type['metric_'+new_metric] = metric_types[0]
             unique_metrics.update(metrics)
 
         # Build a mapping from metric names to column indices
@@ -5886,11 +5890,16 @@ class peleAnalysis:
 
         # Check pele_folder for PELE runs.
         remove = [] # Put protein and ligand here for their removal
+
+        skip_folders = ['templates', 'pele_conects', 'distances', 'pele_topologies', 'angles', 'torsions', 'pele_configuration',
+                        'pele_inputs', 'pele_ligands', 'nonbonded_energy', 'pele_spawnings']
         for d in os.listdir(self.pele_folder):
             if os.path.isdir(self.pele_folder+'/'+d):
 
-                if d == 'templates':
+                if d in skip_folders:
                     continue
+
+                print(d)
 
                 self._checkSeparator(d)
 
@@ -5979,7 +5988,7 @@ class peleAnalysis:
             if protein in self.report_files  and self.report_files[protein] == {}:
                 self.report_files.pop(protein)
 
-    def _setChainIDs(self, change_water_names=False, only_hetatoms=False):
+    def _setChainIDs(self, change_water_names=False, only_hetatoms=False, read_conect=True):
 
         # Crea Bio PDB parser and io
         parser = PDB.PDBParser()
@@ -6028,6 +6037,10 @@ class peleAnalysis:
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
 
                     if protein in self.fixed_files and ligand in self.fixed_files[protein]:
+
+                        if not read_conect:
+                            continue
+
                         fixed_pdb = self.fixed_files[protein][ligand]
                         self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb,
                                                                                         change_water=change_water_names,
@@ -6265,7 +6278,14 @@ class conectLines:
                     num = len(l) / 5
                     new_l = [int(l[i * 5:(i * 5) + 5]) for i in range(int(num))]
                     if only_hetatoms:
-                        het_atoms = [True if atoms_objects[int(x)].get_parent().id[0] != ' ' else False for x in new_l]
+                        het_atoms = [
+                            (
+                                True
+                                if atoms_objects[int(x)].get_parent().id[0] != " "
+                                else False
+                            )
+                            for x in new_l
+                        ]
                         if True not in het_atoms:
                             continue
                     conects.append([atoms[int(x)] for x in new_l])
