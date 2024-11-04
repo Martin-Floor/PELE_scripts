@@ -38,7 +38,7 @@ class peleAnalysis:
     def __init__(self, pele_folder, pele_output_folder='output', separator='-', force_reading=False,
                  verbose=False, energy_by_residue=False, ebr_threshold=0.1, energy_by_residue_type='all',
                  read_equilibration=True, data_folder_name=None, global_pele=False, trajectories=False,
-                 remove_original_trajectory=False, change_water_names=False, only_hetatoms=False):
+                 remove_original_trajectory=False, change_water_names=False, only_hetatoms=False, read_conect=True):
         """
         When initiliasing the class it read the paths to the output report, trajectory,
         and topology files.
@@ -131,7 +131,7 @@ class peleAnalysis:
 
         # Set dictionary with Chain IDs to match mdtraj indexing
         print('Setting Chain IDs and Atom Indexes')
-        self._setChainIDs(change_water_names=change_water_names, only_hetatoms=only_hetatoms)
+        self._setChainIDs(change_water_names=change_water_names, only_hetatoms=only_hetatoms, read_conect=read_conect)
 
         # Get protein and ligand cominations wither from pele or analysis folders
         self.pele_combinations = self._getProteinLigandCombinations()
@@ -2528,67 +2528,95 @@ class peleAnalysis:
 
     def combineMetricsWithExclusions(self, combinations, exclusions, drop=True):
         """
-        Function to combine metrics that are mutually exclusive. The function takes two inputs,
-        combinations and exclusions.
-        Combinations are the metrics that should be merged and have the following structure:
-
-            combinations = {
-                new_metric_name = (comb_metric_1,comb_metric_2),
-                ...}
-
-        Exclusions are the pairs of metrics that are mutually exclusive as a list of tuples.
+        Combine mutually exclusive metrics into new metrics while handling exclusions.
 
         Parameters
-        ==========
+        ----------
         combinations : dict
-            Dictionary defining which distances will be combined under a common name.
-        exclusions : list
-            List of tuples of the incompatible metrics
+            Dictionary defining which metrics to combine under a new common name.
+            Structure:
+                combinations = {
+                    new_metric_name: (metric1, metric2, ...),
+                    ...
+                }
+
+        exclusions : list of tuples
+            List of tuples, each containing metrics that are mutually exclusive.
+
+        drop : bool, optional
+            If True, drop the original metric columns after combining. Default is True.
 
         """
 
-        # Get all metrics as index dictionary
-        metrics_indexes = {}
-        all_metrics = []
-        i = 0
-        for c in combinations:
-            for m in combinations[c]:
-                metrics_indexes[m] = i
-                all_metrics.append('metric_'+m)
-                i += 1
+        # Collect all unique metrics from combinations
+        unique_metrics = set()
+        for new_metric, metrics in combinations.items():
+            metric_types = [self.metric_type['metric_'+m] for m in metrics]
+            if len(set(metric_types)) != 1:
+                raise ValueError('Attempting to combine different metric types (e.g., distances and angles) is not allowed.')
+            self.metric_type['metric_'+new_metric] = metric_types[0]
+            unique_metrics.update(metrics)
 
-        # Get data as numpy array with only metric columns
-        data = self.data[all_metrics]
+        # Build a mapping from metric names to column indices
+        metrics_list = list(unique_metrics)
+        metrics_indexes = {m: idx for idx, m in enumerate(metrics_list)}
+        all_metrics_columns = ['metric_' + m for m in metrics_list]
 
-        # Get labels of the shortest distance
-        min_values = data.idxmin(axis=1)
+        # Ensure all required metric columns exist in the data
+        missing_columns = set(all_metrics_columns) - set(self.data.columns)
+        if missing_columns:
+            raise ValueError(f"Missing metric columns in data: {missing_columns}")
 
-        # Define columns to be excluded
-        excluded_values = [] # Exclude for the same metric
-        for i,m in enumerate(min_values):
-            m = m.replace('metric_', '')
-            for e in exclusions:
-                if m in e:
-                    x = list(set(e)-set([m]))[0]
-                    excluded_values.append([i,metrics_indexes[x]])
+        # Extract metric data
+        data = self.data[all_metrics_columns]
 
-            for c in combinations:
-                if m in combinations[c]:
-                    y = list(set(combinations[c])-set([m]))[0]
-                    excluded_values.append([i,metrics_indexes[y]])
+        # Get labels of the shortest distance for each row
+        min_metric_labels = data.idxmin(axis=1)  # Series of column names
 
-        # Set excluded values as np.inf
-        data = data.to_numpy()
-        for i,j in excluded_values:
-            data[i,j] = np.inf
+        # Positions of values to be excluded (row index, column index)
+        excluded_positions = set()
 
-        # Add new metrics to data frame
-        for c in combinations:
-            c_indexes = [metrics_indexes[c] for c in combinations[c]]
-            self.data['metric_'+c] = np.min(data[:,c_indexes], axis=1)
+        for row_idx, metric_col_label in enumerate(min_metric_labels):
+            m = metric_col_label.replace('metric_', '')
 
+            # Exclude metrics specified in exclusions
+            for exclusion_group in exclusions:
+                if m in exclusion_group:
+                    others = set(exclusion_group) - {m}
+                    for x in others:
+                        if x in metrics_indexes:
+                            col_idx = metrics_indexes[x]
+                            excluded_positions.add((row_idx, col_idx))
+
+            # Exclude other metrics in the same combination group
+            for metrics_group in combinations.values():
+                if m in metrics_group:
+                    others = set(metrics_group) - {m}
+                    for y in others:
+                        if y in metrics_indexes:
+                            col_idx = metrics_indexes[y]
+                            excluded_positions.add((row_idx, col_idx))
+
+        # Convert data to NumPy array for efficient indexing
+        data_array = data.to_numpy()
+
+        # Set excluded values to infinity
+        for i, j in excluded_positions:
+            data_array[i, j] = np.inf
+
+        # Combine metrics and add new columns to the DataFrame
+        for new_metric_name, metrics_to_combine in combinations.items():
+            c_indexes = [metrics_indexes[m] for m in metrics_to_combine if m in metrics_indexes]
+            if c_indexes:
+                # Calculate the minimum value among the combined metrics
+                combined_min = np.min(data_array[:, c_indexes], axis=1)
+                self.data['metric_' + new_metric_name] = combined_min
+            else:
+                raise ValueError(f"No valid metrics to combine for '{new_metric_name}'.")
+
+        # Drop original metric columns if specified
         if drop:
-            self.data.drop(all_metrics, axis=1, inplace=True)
+            self.data.drop(columns=all_metrics_columns, inplace=True)
 
     def plotEnergyByResidue(self, initial_threshold=3.5):
         """
@@ -5868,11 +5896,16 @@ class peleAnalysis:
 
         # Check pele_folder for PELE runs.
         remove = [] # Put protein and ligand here for their removal
+
+        skip_folders = ['templates', 'pele_conects', 'distances', 'pele_topologies', 'angles', 'torsions', 'pele_configuration',
+                        'pele_inputs', 'pele_ligands', 'nonbonded_energy', 'pele_spawnings']
         for d in os.listdir(self.pele_folder):
             if os.path.isdir(self.pele_folder+'/'+d):
 
-                if d == 'templates':
+                if d in skip_folders:
                     continue
+
+                print(d)
 
                 self._checkSeparator(d)
 
@@ -5961,7 +5994,7 @@ class peleAnalysis:
             if protein in self.report_files  and self.report_files[protein] == {}:
                 self.report_files.pop(protein)
 
-    def _setChainIDs(self, change_water_names=False, only_hetatoms=False):
+    def _setChainIDs(self, change_water_names=False, only_hetatoms=False, read_conect=True):
 
         # Crea Bio PDB parser and io
         parser = PDB.PDBParser()
@@ -6010,6 +6043,10 @@ class peleAnalysis:
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
 
                     if protein in self.fixed_files and ligand in self.fixed_files[protein]:
+
+                        if not read_conect:
+                            continue
+
                         fixed_pdb = self.fixed_files[protein][ligand]
                         self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb,
                                                                                         change_water=change_water_names,
@@ -6247,7 +6284,14 @@ class conectLines:
                     num = len(l) / 5
                     new_l = [int(l[i * 5:(i * 5) + 5]) for i in range(int(num))]
                     if only_hetatoms:
-                        het_atoms = [True if atoms_objects[int(x)].get_parent().id[0] != ' ' else False for x in new_l]
+                        het_atoms = [
+                            (
+                                True
+                                if atoms_objects[int(x)].get_parent().id[0] != " "
+                                else False
+                            )
+                            for x in new_l
+                        ]
                         if True not in het_atoms:
                             continue
                     conects.append([atoms[int(x)] for x in new_l])
