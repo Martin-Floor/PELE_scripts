@@ -46,6 +46,10 @@ def formatPELESpawnings(pele_folder, separator='-'):
         if 0 not in spawnings:
             raise ValueError(f'First spawning folder was not found at {pele}. Please check your folder!')
 
+        if not os.path.exists(pele+'/0/output/output'):
+            print(f'There is no output folder for the first spawning folder. Skipping {protein} and {ligand}.')
+            continue
+
         # Copy full spawning-zero folder to tmp
         tmp = pele+'_tmp'
         shutil.copytree(pele+'/0', tmp, symlinks=True)
@@ -63,6 +67,12 @@ def formatPELESpawnings(pele_folder, separator='-'):
                 epochs.append(int(epoch))
             except:
                 continue
+
+        if not epochs:
+            print(f'There are no epochs for the first spawning folder. Skipping {protein} and {ligand}.')
+            shutil.rmtree(tmp)
+            continue
+
         epochs = sorted(epochs)
 
         current_epoch = epochs[-1] # Last epoch from first spawning
@@ -76,6 +86,10 @@ def formatPELESpawnings(pele_folder, separator='-'):
             if spawning == 0:
                 continue
 
+            if not os.path.exists(pele+'/'+str(spawning)+'/output/output'):
+                print(f'There is no output folder for spawning {str(spawning)}. Skipping spawning.')
+                continue
+
             # Get epochs' folders list
             epochs = []
             for epoch in os.listdir(pele+'/'+str(spawning)+'/output/output'):
@@ -84,6 +98,10 @@ def formatPELESpawnings(pele_folder, separator='-'):
                 except:
                     continue
             epochs = sorted(epochs)
+
+            if not epochs:
+                print(f'There are no epochs for spawning {str(spawning)}. Skipping spawning.')
+                continue
 
             for epoch in epochs:
                 current_epoch += 1

@@ -2448,7 +2448,13 @@ class peleAnalysis:
         metric_type_file = self.data_folder+'/metric_type.json'
 
         # Convert data index to a list of tuples for protein-ligand pairs
-        protein_ligand_pairs = list({tuple(i[:2]) for i in self.data.index})
+        protein_ligand_pairs = []
+        seen = set()
+        for i in self.data.index:
+            pair = tuple(i[:2])
+            if pair not in seen:
+                seen.add(pair)
+                protein_ligand_pairs.append(pair)
 
         for name, metrics in catalytic_labels.items():
             metric_name = f'metric_{name}'
