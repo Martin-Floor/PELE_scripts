@@ -2540,21 +2540,26 @@ class peleAnalysis:
                     ...
                 }
 
-        exclusions : list of tuples
-            List of tuples, each containing metrics that are mutually exclusive.
+        exclusions : list of tuples or dict
+            List of tuples (for simple exclusions) or dictionary by metrics for by-metric exclusions.
 
         drop : bool, optional
             If True, drop the original metric columns after combining. Default is True.
-
         """
+
+        # Determine exclusion type
+        simple_exclusions = isinstance(exclusions, list)
+        by_metric_exclusions = isinstance(exclusions, dict)
+        if not (simple_exclusions or by_metric_exclusions):
+            raise ValueError('Exclusions should be a list of tuples or a dictionary by metrics.')
 
         # Collect all unique metrics from combinations
         unique_metrics = set()
         for new_metric, metrics in combinations.items():
-            metric_types = [self.metric_type['metric_'+m] for m in metrics]
+            metric_types = [self.metric_type['metric_' + m] for m in metrics]
             if len(set(metric_types)) != 1:
                 raise ValueError('Attempting to combine different metric types (e.g., distances and angles) is not allowed.')
-            self.metric_type['metric_'+new_metric] = metric_types[0]
+            self.metric_type['metric_' + new_metric] = metric_types[0]
             unique_metrics.update(metrics)
 
         # Build a mapping from metric names to column indices
@@ -2569,36 +2574,62 @@ class peleAnalysis:
 
         # Extract metric data
         data = self.data[all_metrics_columns]
+        data_array = data.to_numpy()
 
         # Get labels of the shortest distance for each row
         min_metric_labels = data.idxmin(axis=1)  # Series of column names
 
-        # Positions of values to be excluded (row index, column index)
+        # Initialize positions of values to be excluded
         excluded_positions = set()
 
-        for row_idx, metric_col_label in enumerate(min_metric_labels):
-            m = metric_col_label.replace('metric_', '')
+        # Process simple exclusions if applicable
+        if simple_exclusions:
+            for row_idx, metric_col_label in enumerate(min_metric_labels):
+                m = metric_col_label.replace('metric_', '')
 
-            # Exclude metrics specified in exclusions
-            for exclusion_group in exclusions:
-                if m in exclusion_group:
-                    others = set(exclusion_group) - {m}
-                    for x in others:
-                        if x in metrics_indexes:
-                            col_idx = metrics_indexes[x]
-                            excluded_positions.add((row_idx, col_idx))
+                # Exclude metrics specified in exclusions
+                for exclusion_group in exclusions:
+                    if m in exclusion_group:
+                        others = set(exclusion_group) - {m}
+                        for x in others:
+                            if x in metrics_indexes:
+                                col_idx = metrics_indexes[x]
+                                excluded_positions.add((row_idx, col_idx))
 
-            # Exclude other metrics in the same combination group
-            for metrics_group in combinations.values():
-                if m in metrics_group:
-                    others = set(metrics_group) - {m}
-                    for y in others:
-                        if y in metrics_indexes:
-                            col_idx = metrics_indexes[y]
-                            excluded_positions.add((row_idx, col_idx))
+                # Exclude other metrics in the same combination group
+                for metrics_group in combinations.values():
+                    if m in metrics_group:
+                        others = set(metrics_group) - {m}
+                        for y in others:
+                            if y in metrics_indexes:
+                                col_idx = metrics_indexes[y]
+                                excluded_positions.add((row_idx, col_idx))
 
-        # Convert data to NumPy array for efficient indexing
-        data_array = data.to_numpy()
+        # Process by-metric exclusions if applicable
+        if by_metric_exclusions:
+            for row_idx in range(data_array.shape[0]):
+                considered_metrics = set()
+                while True:
+                    min_value = np.inf
+                    min_col_idx = -1
+                    for col_idx, metric_value in enumerate(data_array[row_idx]):
+                        if col_idx not in considered_metrics and (row_idx, col_idx) not in excluded_positions:
+                            if metric_value < min_value:
+                                min_value = metric_value
+                                min_col_idx = col_idx
+
+                    if min_col_idx == -1:
+                        break
+                    considered_metrics.add(min_col_idx)
+                    min_metric_label = data.columns[min_col_idx]
+                    min_metric_name = min_metric_label.replace('metric_', '')
+                    excluded_metrics = exclusions.get(min_metric_name, [])
+
+                    for excluded_metric in excluded_metrics:
+                        if excluded_metric in metrics_indexes:
+                            excluded_col_idx = metrics_indexes[excluded_metric]
+                            excluded_positions.add((row_idx, excluded_col_idx))
+                            data_array[row_idx, excluded_col_idx] = np.inf
 
         # Set excluded values to infinity
         for i, j in excluded_positions:
@@ -2608,8 +2639,10 @@ class peleAnalysis:
         for new_metric_name, metrics_to_combine in combinations.items():
             c_indexes = [metrics_indexes[m] for m in metrics_to_combine if m in metrics_indexes]
             if c_indexes:
-                # Calculate the minimum value among the combined metrics
                 combined_min = np.min(data_array[:, c_indexes], axis=1)
+                if np.all(np.isinf(combined_min)):
+                    print(f"Skipping combination for '{new_metric_name}' due to incompatible exclusions.")
+                    continue
                 self.data['metric_' + new_metric_name] = combined_min
             else:
                 raise ValueError(f"No valid metrics to combine for '{new_metric_name}'.")
@@ -2617,6 +2650,14 @@ class peleAnalysis:
         # Drop original metric columns if specified
         if drop:
             self.data.drop(columns=all_metrics_columns, inplace=True)
+
+        # Ensure compatibility of combinations with exclusions
+        for new_metric_name, metrics_to_combine in combinations.items():
+            non_excluded_found = any(
+                not np.all(np.isinf(data_array[:, metrics_indexes[m]])) for m in metrics_to_combine if m in metrics_indexes
+            )
+            if not non_excluded_found:
+                print(f"Warning: No non-excluded metrics available to combine for '{new_metric_name}'.")
 
     def plotEnergyByResidue(self, initial_threshold=3.5):
         """
@@ -3326,6 +3367,30 @@ class peleAnalysis:
                             for atom in residue.atoms:
                                 if 'HOH' in residue.name and atom.name == 'O':
                                     atom_name = 'OW'
+
+                                # Change atom names when dealing with capping groups
+                                elif residue.name == 'ACE':
+                                    if atom.name == 'CH3':
+                                        atom_name = 'CA'
+                                    elif atom.name == 'H1':
+                                        atom_name = 'HH31'
+                                    elif atom.name == 'H2':
+                                        atom_name = 'HH32'
+                                    elif atom.name == 'H3':
+                                        atom_name = 'HH33'
+                                    else:
+                                        atom_name = atom.name
+                                elif residue.name == 'NME':
+                                    if atom.name == 'C':
+                                        atom_name = 'CA'
+                                    elif atom.name == 'H1':
+                                        atom_name = 'HH31'
+                                    elif atom.name == 'H2':
+                                        atom_name = 'HH32'
+                                    elif atom.name == 'H3':
+                                        atom_name = 'HH33'
+                                    else:
+                                        atom_name = atom.name
                                 else:
                                     atom_name = atom.name
 
@@ -3349,6 +3414,7 @@ class peleAnalysis:
                             # Get chain and residue labels
                             chain = atoms[j].get_parent().get_parent()
                             residue = atoms[j].get_parent()
+
                             #chain_index = mdt_index[chain.id]
 
                             if residue.resname in ['HID', 'HIE', 'HIP']:
@@ -6040,24 +6106,8 @@ class peleAnalysis:
                     if not input_pdb:
                         continue
 
+
                     self.structure[protein][ligand] = parser.get_structure(protein, input_pdb)
-
-                    if protein in self.fixed_files and ligand in self.fixed_files[protein]:
-
-                        if not read_conect:
-                            continue
-
-                        fixed_pdb = self.fixed_files[protein][ligand]
-                        self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb,
-                                                                                        change_water=change_water_names,
-                                                                                        only_hetatoms=only_hetatoms)
-
-                        conect_folder =  conects_dir = self.data_folder+'/pele_conects/'
-                        conect_folder += protein+self.separator+ligand+'/'
-                        if not os.path.exists(conect_folder):
-                            os.mkdir(conect_folder)
-                        conect_file = conect_folder+protein+self.separator+ligand+'.json'
-                        self._saveDictionaryAsJson(self.conects[protein][ligand], conect_file)
 
                     input_ligand_pdb = self._getInputLigandPDB(protein, ligand)
                     self.ligand_structure[protein][ligand] = parser.get_structure(protein, input_ligand_pdb)
@@ -6091,6 +6141,23 @@ class peleAnalysis:
                             # Join tuple as a string to save as json.
                             atom_map = '-'.join([r_pdb.get_parent().id, str(r_pdb.id[1]), atom_name])
                             self.atom_indexes[protein][ligand][atom_map] = a_md.index
+
+                    if protein in self.fixed_files and ligand in self.fixed_files[protein]:
+
+                        if not read_conect:
+                            continue
+
+                        fixed_pdb = self.fixed_files[protein][ligand]
+                        self.conects[protein][ligand] = conectLines._readPDBConectLines(fixed_pdb,
+                                                                                        change_water=change_water_names,
+                                                                                        only_hetatoms=only_hetatoms)
+
+                        conect_folder =  conects_dir = self.data_folder+'/pele_conects/'
+                        conect_folder += protein+self.separator+ligand+'/'
+                        if not os.path.exists(conect_folder):
+                            os.mkdir(conect_folder)
+                        conect_file = conect_folder+protein+self.separator+ligand+'.json'
+                        self._saveDictionaryAsJson(self.conects[protein][ligand], conect_file)
 
             self._saveDictionaryAsJson(self.chain_ids, self.data_folder+'/chains_ids.json')
             self._saveDictionaryAsJson(self.atom_indexes, self.data_folder+'/atom_indexes.json')
