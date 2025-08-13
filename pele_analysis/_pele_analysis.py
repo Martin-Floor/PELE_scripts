@@ -402,7 +402,7 @@ class peleAnalysis:
                         i1 = self.atom_indexes[protein][ligand][pair[0]]
                         i2 = self.atom_indexes[protein][ligand][pair[1]]
                         pairs.append((i1, i2))
-                        label = f'distance_{pair[0][0]}{pair[0][1]}_{pair[1][0]}{pair[1][1]}'
+                        label = f'distance_{pair[0][0]}{pair[0][1]}{pair[0][2]}_{pair[1][0]}{pair[1][1]}{pair[1][2]}'
                         labels.append(label)
                         dist_label[label] = 'distance'
 
