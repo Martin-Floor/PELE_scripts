@@ -25,6 +25,20 @@ from multiprocessing import Pool, cpu_count
 from ipywidgets import interact, fixed, FloatSlider, IntSlider, FloatRangeSlider, VBox, HBox, interactive_output, Dropdown, Checkbox
 import time
 
+
+def _dir_size_bytes(path):
+    """Return the total byte size of a directory tree."""
+    total = 0
+    for root, _, files in os.walk(path):
+        for f in files:
+            fp = os.path.join(root, f)
+            try:
+                total += os.path.getsize(fp)
+            except OSError:
+                pass
+    return total
+
+
 class peleAnalysis:
     """
     Analyse multiple PELE calculations in batch. This class assumes that calculations
@@ -4694,6 +4708,139 @@ class peleAnalysis:
                         f = self.equilibration['trajectory'][protein][ligand][epoch][trajectory]
                         if f != {} and os.path.exists(f) and f.split('/')[0] != self.data_folder:
                             os.remove(self.equilibration['trajectory'][protein][ligand][epoch][trajectory])
+
+    def cleanPELEFolder(self,
+                        remove_tmp_output=True,
+                        dedup_topologies=True,
+                        drop_clustering=True,
+                        drop_topology_pickle=True,
+                        drop_backups=True,
+                        only_proteins=None, only_ligands=None,
+                        dry_run=False, verbose=True):
+        """Remove unlikely-to-be-used scratch from each PELE simulation folder.
+
+        Trajectories (production *and* equilibration) and report files are never
+        touched. The intent is to recover disk after a successful simulation
+        without losing anything an analysis pass would re-read.
+
+        What gets removed (each toggleable):
+
+        - ``remove_tmp_output``     : ``output/tmp_output/`` — adaptive-PELE
+          spawning snapshot PDBs. Largest single waste (~35 % of a CDK2 ligand
+          run). Redundant with the production xtcs.
+        - ``dedup_topologies``      : ``output/output/topologies/topology_*.pdb``
+          — keep the first one and delete the rest. PELE writes one per task
+          and they are essentially identical for a given simulation.
+        - ``drop_clustering``       : ``output/output/<iter>/clustering/`` —
+          adaptive-sampling internal state per epoch (cluster centers, weights).
+          Useful only while the simulation is still running.
+        - ``drop_topology_pickle``  : ``output/output/topologies/topologies.pkl``
+          — adaptive-sampling cluster pickle. Same logic.
+        - ``drop_backups``          : ``output/*.backup`` config copies.
+
+        Parameters
+        ----------
+        only_proteins, only_ligands : list, optional
+            Restrict cleanup to these proteins/ligands.
+        dry_run : bool, optional
+            When True, just print what would be removed without touching disk.
+        verbose : bool, optional
+            Print a per-ligand size-recovered summary. Default True.
+
+        Returns
+        -------
+        dict
+            ``{(protein, ligand): bytes_freed}`` mapping for accounting.
+        """
+        import os, shutil
+
+        recovered = {}
+        for protein in self.pele_directories:
+            if only_proteins and protein not in only_proteins:
+                continue
+            for ligand in self.pele_directories[protein]:
+                if only_ligands and ligand not in only_ligands:
+                    continue
+                pele_dir = self.pele_directories[protein][ligand]
+                output_root = pele_dir + '/' + self.pele_output_folder
+                output_inner = output_root + '/output'
+                freed = 0
+                actions = []
+
+                # --- tmp_output (top of pele_output_folder) ---
+                if remove_tmp_output:
+                    tmp = output_root + '/tmp_output'
+                    if os.path.isdir(tmp):
+                        sz = _dir_size_bytes(tmp)
+                        actions.append(('rmdir', tmp, sz))
+                        freed += sz
+
+                # --- topology dedup ---
+                if dedup_topologies:
+                    topo_dir = output_inner + '/topologies'
+                    if os.path.isdir(topo_dir):
+                        topology_pdbs = sorted(
+                            f for f in os.listdir(topo_dir)
+                            if f.startswith('topology_') and f.endswith('.pdb')
+                        )
+                        # Keep topology_0.pdb (or the first one), drop the rest
+                        for f in topology_pdbs[1:]:
+                            path = topo_dir + '/' + f
+                            sz = os.path.getsize(path)
+                            actions.append(('rm', path, sz))
+                            freed += sz
+
+                # --- topologies.pkl ---
+                if drop_topology_pickle:
+                    pkl = output_inner + '/topologies/topologies.pkl'
+                    if os.path.exists(pkl):
+                        sz = os.path.getsize(pkl)
+                        actions.append(('rm', pkl, sz))
+                        freed += sz
+
+                # --- per-epoch clustering/ ---
+                if drop_clustering and os.path.isdir(output_inner):
+                    for epoch in os.listdir(output_inner):
+                        clust = output_inner + '/' + epoch + '/clustering'
+                        if os.path.isdir(clust):
+                            sz = _dir_size_bytes(clust)
+                            actions.append(('rmdir', clust, sz))
+                            freed += sz
+
+                # --- *.backup files at output_root ---
+                if drop_backups and os.path.isdir(output_root):
+                    for f in os.listdir(output_root):
+                        if f.endswith('.backup'):
+                            path = output_root + '/' + f
+                            if os.path.isfile(path):
+                                sz = os.path.getsize(path)
+                                actions.append(('rm', path, sz))
+                                freed += sz
+
+                # Apply
+                if not dry_run:
+                    for op, path, _ in actions:
+                        try:
+                            if op == 'rmdir':
+                                shutil.rmtree(path)
+                            else:
+                                os.remove(path)
+                        except OSError as e:
+                            if verbose:
+                                print(f'  WARN: failed to remove {path}: {e}')
+
+                recovered[(protein, ligand)] = freed
+                if verbose:
+                    tag = '[dry-run] would free' if dry_run else 'freed'
+                    print(f'{protein}{self.separator}{ligand}: {tag} '
+                          f'{freed/1024/1024:.1f} MB ({len(actions)} items)')
+
+        if verbose:
+            total = sum(recovered.values())
+            tag = 'would recover' if dry_run else 'recovered'
+            print(f'\nTotal: {tag} {total/1024/1024/1024:.2f} GB '
+                  f'across {len(recovered)} simulations.')
+        return recovered
 
     def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
                                 site_box=10, resolution='fine', reportsize=100, sidechain=True, verbose=False,
