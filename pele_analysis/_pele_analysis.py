@@ -1,3 +1,4 @@
+from ._clean_utils import topologies_are_identical
 from . import pele_read
 from . import pele_trajectory
 
@@ -37,6 +38,8 @@ def _dir_size_bytes(path):
             except OSError:
                 pass
     return total
+
+
 
 
 class peleAnalysis:
@@ -4729,8 +4732,12 @@ class peleAnalysis:
           spawning snapshot PDBs. Largest single waste (~35 % of a CDK2 ligand
           run). Redundant with the production xtcs.
         - ``dedup_topologies``      : ``output/output/topologies/topology_*.pdb``
-          — keep the first one and delete the rest. PELE writes one per task
-          and they are essentially identical for a given simulation.
+          — keep the first one and delete the rest. PELE writes one per task.
+          **Only applied when the files are verified byte-identical.** In an
+          induced-fit run each holds a different protein conformation, and
+          deleting them loses that data silently (trajectories still load,
+          because atom count and ordering are shared). Such simulations are
+          detected and skipped automatically; the count is reported.
         - ``drop_clustering``       : ``output/output/<iter>/clustering/`` —
           adaptive-sampling internal state per epoch (cluster centers, weights).
           Useful only while the simulation is still running.
@@ -4755,6 +4762,7 @@ class peleAnalysis:
         import os, shutil
 
         recovered = {}
+        skipped_dedup = 0
         for protein in self.pele_directories:
             if only_proteins and protein not in only_proteins:
                 continue
@@ -4783,12 +4791,24 @@ class peleAnalysis:
                             f for f in os.listdir(topo_dir)
                             if f.startswith('topology_') and f.endswith('.pdb')
                         )
-                        # Keep topology_0.pdb (or the first one), drop the rest
-                        for f in topology_pdbs[1:]:
-                            path = topo_dir + '/' + f
-                            sz = os.path.getsize(path)
-                            actions.append(('rm', path, sz))
-                            freed += sz
+                        # Refuse to dedup unless the files really are identical.
+                        # Induced-fit runs write one conformation per explorer;
+                        # dropping them would silently discard that data.
+                        if not topologies_are_identical(topo_dir, topology_pdbs):
+                            skipped_dedup += 1
+                            if verbose:
+                                print('  %s%s%s: %d topologies differ from each '
+                                      'other -- skipping dedup (per-explorer '
+                                      'conformations preserved)'
+                                      % (protein, self.separator, ligand,
+                                         len(topology_pdbs)))
+                        else:
+                            # Keep topology_0.pdb (or the first one), drop the rest
+                            for f in topology_pdbs[1:]:
+                                path = topo_dir + '/' + f
+                                sz = os.path.getsize(path)
+                                actions.append(('rm', path, sz))
+                                freed += sz
 
                 # --- topologies.pkl ---
                 if drop_topology_pickle:
@@ -4840,6 +4860,10 @@ class peleAnalysis:
             tag = 'would recover' if dry_run else 'recovered'
             print(f'\nTotal: {tag} {total/1024/1024/1024:.2f} GB '
                   f'across {len(recovered)} simulations.')
+            if skipped_dedup:
+                print(f'Topology dedup skipped for {skipped_dedup} simulation(s) '
+                      f'whose topologies are not identical '
+                      f'(per-explorer conformations preserved).')
         return recovered
 
     def setUpSiteMapCalculation(self, job_folder, residue_selection, only_proteins=None, only_ligands=None,
